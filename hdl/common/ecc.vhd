@@ -205,9 +205,6 @@ architecture struct of ecc is
 			trngrdy : out std_logic;
 			trngdata : in std_logic_vector(ww - 1 downto 0);
 			trngaxiirncount : in std_logic_vector(log2(irn_fifo_size_axi)-1 downto 0);
-			trngefpirncount : in std_logic_vector(log2(irn_fifo_size_fp)-1 downto 0);
-			trngcurirncount : in std_logic_vector(log2(irn_fifo_size_curve)-1 downto 0);
-			trngshfirncount : in std_logic_vector(log2(irn_fifo_size_sh)-1 downto 0);
 			-- broadcast interface to Montgomery multipliers
 			pen : out std_logic;
 			nndyn_mask : out std_logic_vector(ww - 1 downto 0);
@@ -231,7 +228,6 @@ architecture struct of ecc is
 			dbgpgmstate : in std_logic_vector(3 downto 0);
 			dbgnbbits : in std_logic_vector(15 downto 0);
 			dbgjoyebit : in std_logic_vector(log2(2*nn - 1) - 1 downto 0);
-			dbgnbstarvrndxyshuf : in std_logic_vector(15 downto 0);
 			-- debug features (interface with ecc_curve)
 			dbgbreakpoints : out breakpoints_type;
 			dbgnbopcodes : out std_logic_vector(15 downto 0);
@@ -263,20 +259,27 @@ architecture struct of ecc is
 			dbgtrngrawduration : in unsigned(31 downto 0);
 			dbgtrngvonneuman : out std_logic;
 			dbgtrngidletime : out unsigned(3 downto 0);
+			dbgtrngefpirncount : in std_logic_vector(log2(irn_fifo_size_efp)-1 downto 0);
+			dbgtrngcrvirncount : in std_logic_vector(log2(irn_fifo_size_crv)-1 downto 0);
+			dbgtrngshfirncount : in std_logic_vector(log2(irn_fifo_size_shf)-1 downto 0);
+			dbgtrngrawcount : in std_logic_vector(log2(raw_ram_size) - 1 downto 0);
 			dbgtrngusepseudosource : out std_logic;
 			dbgtrngrawpullppdis : out std_logic;
 			-- handshake signals between entropy server ecc_trng
 			-- and the different clients (for debug diagnostics)
 			dbgtrngaxirdy : in std_logic;
 			dbgtrngaxivalid : in std_logic;
-			dbgtrngfprdy : in std_logic;
-			dbgtrngfpvalid : in std_logic;
+			dbgtrngefprdy : in std_logic;
+			dbgtrngefpvalid : in std_logic;
 			dbgtrngcrvrdy : in std_logic;
 			dbgtrngcrvvalid : in std_logic;
-			dbgtrngshrdy : in std_logic;
-			dbgtrngshvalid : in std_logic;
+			dbgtrngshfrdy : in std_logic;
+			dbgtrngshfvalid : in std_logic;
+			dbgtrngrawrdy : in std_logic;
+			dbgtrngrawvalid : in std_logic;
 			-- debug feature (off-chip trigger)
-			dbgtrigger : out std_logic
+			dbgtrigger : out std_logic;
+			clkmm : in std_logic
 		);
 	end component ecc_axi;
 
@@ -373,7 +376,7 @@ architecture struct of ecc is
 			dbgpgmstate : out std_logic_vector(3 downto 0);
 			dbgnbbits : out std_logic_vector(15 downto 0);
 			dbgjoyebit : out std_logic_vector(log2(2*nn - 1) - 1 downto 0);
-			dbgnbstarvrndxyshuf : out std_logic_vector(15 downto 0)
+			dbgtrngcompletebypass : in std_logic
 			-- pragma translate_off
 			-- interface with ecc_fp (simu only)
 			; logr0r1 : out std_logic;
@@ -446,6 +449,7 @@ architecture struct of ecc is
 			dbgdecodepc : out std_logic_vector(IRAM_ADDR_SZ - 1 downto 0);
 			dbgbreakpointid : out std_logic_vector(1 downto 0);
 			dbgbreakpointhit : out std_logic;
+			dbgtrngcompletebypass : in std_logic;
 			-- debug features (interface with ecc_scalar shared w/ ecc_axi)
 			dbgpgmstate : in std_logic_vector(3 downto 0);
 			dbgnbbits : in std_logic_vector(15 downto 0)
@@ -542,6 +546,8 @@ architecture struct of ecc is
 			token_generating : in std_logic;
 			-- debug features (interface with ecc_axi)
 			dbgtrngnnrnddet : in std_logic;
+			dbgtrngcompletebypass : in std_logic;
+			dbgtrngcompletebypassbit : in std_logic;
 			-- debug feature (ecc_scalar)
 			dbghalted : in std_logic
 			-- pragma translate_off
@@ -598,17 +604,17 @@ architecture struct of ecc is
 			rdy1 : in std_logic;
 			valid1 : out std_logic;
 			data1 : out std_logic_vector(ww - 1 downto 0);
-			irncount1 : out std_logic_vector(log2(irn_fifo_size_fp) - 1 downto 0);
+			irncount1 : out std_logic_vector(log2(irn_fifo_size_efp) - 1 downto 0);
 			-- interface with entropy client ecc_curve
 			rdy2 : in std_logic;
 			valid2 : out std_logic;
 			data2 : out std_logic_vector(1 downto 0);
-			irncount2 : out std_logic_vector(log2(irn_fifo_size_curve) - 1 downto 0);
+			irncount2 : out std_logic_vector(log2(irn_fifo_size_crv) - 1 downto 0);
 			-- interface with entropy client ecc_fp_dram_sh_*
 			rdy3 : in std_logic;
 			valid3 : out std_logic;
 			data3 : out std_logic_vector(irn_width_sh - 1 downto 0);
-			irncount3 : out std_logic_vector(log2(irn_fifo_size_sh) - 1 downto 0);
+			irncount3 : out std_logic_vector(log2(irn_fifo_size_shf) - 1 downto 0);
 			-- interface with ecc_axi (only usable in debug mode)
 			dbgtrngta : in unsigned(15 downto 0);
 			dbgtrngrawreset : in std_logic;
@@ -622,12 +628,15 @@ architecture struct of ecc is
 			dbgtrngrawduration : out unsigned(31 downto 0);
 			dbgtrngvonneuman : in std_logic;
 			dbgtrngidletime : in unsigned(3 downto 0);
+			dbgtrngrawcount : out std_logic_vector(log2(raw_ram_size) - 1 downto 0);
 			dbgtrngusepseudosource : in std_logic;
 			dbgtrngrawpullppdis : in std_logic;
 			-- interface with the external pseudo TRNG component
 			dbgpseudotrngdata : in std_logic_vector(7 downto 0);
 			dbgpseudotrngvalid : in std_logic;
-			dbgpseudotrngrdy : out std_logic
+			dbgpseudotrngrdy : out std_logic;
+			dbgtrngrawrdy : out std_logic;
+			dbgtrngrawvalid : out std_logic
 		);
 	end component ecc_trng;
 
@@ -933,9 +942,9 @@ architecture struct of ecc is
 	signal trng_valid_axi : std_logic;
 	signal trng_data_axi : std_logic_vector(ww - 1 downto 0);
 	signal trngaxiirncount : std_logic_vector(log2(irn_fifo_size_axi) - 1 downto 0);
-	signal trngefpirncount : std_logic_vector(log2(irn_fifo_size_fp) - 1 downto 0);
-	signal trngcurirncount : std_logic_vector(log2(irn_fifo_size_curve) - 1 downto 0);
-	signal trngshfirncount : std_logic_vector(log2(irn_fifo_size_sh) - 1 downto 0);
+	--   debug
+	signal dbgtrngrawrdy : std_logic;
+	signal dbgtrngrawvalid : std_logic;
 	-- signals between ecc_trng & entropy user ecc_fp
 	signal trng_rdy_fp : std_logic;
 	signal trng_valid_fp : std_logic;
@@ -952,7 +961,6 @@ architecture struct of ecc is
 	signal dbgpgmstate : std_logic_vector(3 downto 0);
 	signal dbgnbbits : std_logic_vector(15 downto 0);
 	signal dbgjoyebit : std_logic_vector(log2(2*nn - 1) - 1 downto 0);
-	signal dbgnbstarvrndxyshuf : std_logic_vector(15 downto 0);
 	signal dbghalted_s : std_logic;
 	-- debug features (signals between ecc_axi & ecc_curve_iram)
 	signal dbgiwaddr : std_logic_vector(IRAM_ADDR_SZ - 1 downto 0);
@@ -968,8 +976,9 @@ architecture struct of ecc is
 	signal dbgdecodepc : std_logic_vector(IRAM_ADDR_SZ - 1 downto 0);
 	signal dbgbreakpointid : std_logic_vector(1 downto 0);
 	signal dbgbreakpointhit : std_logic;
-	-- debug features (signals between ecc_axi & ecc_trng)
+	-- debug features (signals between ecc_axi & ecc_fp)
 	signal dbgtrngnnrnddet : std_logic;
+	-- debug features (signals between ecc_axi & ecc_trng)
 	signal dbgtrngta : unsigned(15 downto 0);
 	signal dbgtrngrawreset : std_logic;
 	signal dbgtrngirnreset : std_logic;
@@ -982,6 +991,10 @@ architecture struct of ecc is
 	signal dbgtrngrawduration : unsigned(31 downto 0);
 	signal dbgtrngvonneuman : std_logic;
 	signal dbgtrngidletime : unsigned(3 downto 0);
+	signal dbgtrngefpirncount : std_logic_vector(log2(irn_fifo_size_efp) - 1 downto 0);
+	signal dbgtrngcrvirncount : std_logic_vector(log2(irn_fifo_size_crv) - 1 downto 0);
+	signal dbgtrngshfirncount : std_logic_vector(log2(irn_fifo_size_shf) - 1 downto 0);
+	signal dbgtrngrawcount : std_logic_vector(log2(raw_ram_size) - 1 downto 0);
 	signal dbgtrngusepseudosource : std_logic;
 	signal dbgtrngrawpullppdis : std_logic;
 
@@ -1145,9 +1158,9 @@ begin
 			trngrdy => trng_rdy_axi,
 			trngdata => trng_data_axi,
 			trngaxiirncount => trngaxiirncount,
-			trngefpirncount => trngefpirncount,
-			trngcurirncount => trngcurirncount,
-			trngshfirncount => trngshfirncount,
+			dbgtrngefpirncount => dbgtrngefpirncount,
+			dbgtrngcrvirncount => dbgtrngcrvirncount,
+			dbgtrngshfirncount => dbgtrngshfirncount,
 			-- broadcast interface to Montgomery multipliers
 			pen => pen,
 			nndyn_mask => nndyn_mask,
@@ -1171,7 +1184,6 @@ begin
 			dbgpgmstate => dbgpgmstate,
 			dbgnbbits => dbgnbbits,
 			dbgjoyebit => dbgjoyebit,
-			dbgnbstarvrndxyshuf => dbgnbstarvrndxyshuf,
 			-- debug features (interface with ecc_curve)
 			dbgbreakpoints => dbgbreakpoints,
 			dbgnbopcodes => dbgnbopcodes,
@@ -1187,8 +1199,9 @@ begin
 			dbgiwaddr => dbgiwaddr,
 			dbgiwdata => dbgiwdata,
 			dbgiwe => dbgiwe,
-			-- debug features (interface with ecc_trng)
+			-- debug features (interface with ecc_fp)
 			dbgtrngnnrnddet => dbgtrngnnrnddet,
+			-- debug features (interface with ecc_trng)
 			dbgtrngta => dbgtrngta,
 			dbgtrngrawreset => dbgtrngrawreset,
 			dbgtrngirnreset => dbgtrngirnreset,
@@ -1202,20 +1215,24 @@ begin
 			dbgtrngrawduration => dbgtrngrawduration,
 			dbgtrngvonneuman => dbgtrngvonneuman,
 			dbgtrngidletime => dbgtrngidletime,
+			dbgtrngrawcount => dbgtrngrawcount,
 			dbgtrngusepseudosource => dbgtrngusepseudosource,
 			dbgtrngrawpullppdis => dbgtrngrawpullppdis,
 			-- handshake signals between entropy server ecc_trng
 			-- and the different clients (for debug diagnostics)
 			dbgtrngaxirdy => trng_rdy_axi,
 			dbgtrngaxivalid => trng_valid_axi,
-			dbgtrngfprdy => trng_rdy_fp,
-			dbgtrngfpvalid => trng_valid_fp,
+			dbgtrngefprdy => trng_rdy_fp,
+			dbgtrngefpvalid => trng_valid_fp,
 			dbgtrngcrvrdy => trng_rdy_curve,
 			dbgtrngcrvvalid => trng_valid_curve,
-			dbgtrngshrdy => trng_rdy_sh,
-			dbgtrngshvalid => trng_valid_sh,
+			dbgtrngshfrdy => trng_rdy_sh,
+			dbgtrngshfvalid => trng_valid_sh,
+			dbgtrngrawrdy => dbgtrngrawrdy,
+			dbgtrngrawvalid => dbgtrngrawvalid,
 			-- debug feature (off-chip trigger)
-			dbgtrigger => dbgtrigger
+			dbgtrigger => dbgtrigger,
+			clkmm => clkmm
 		); -- ecc_axi
 
 	-- scalar arithmetic block
@@ -1311,7 +1328,7 @@ begin
 			dbgpgmstate => dbgpgmstate,
 			dbgnbbits => dbgnbbits,
 			dbgjoyebit => dbgjoyebit,
-			dbgnbstarvrndxyshuf => dbgnbstarvrndxyshuf
+			dbgtrngcompletebypass => dbgtrngcompletebypass
 			-- pragma translate_off
 			-- interface with ecc_fp (simu only)
 			, logr0r1 => logr0r1,
@@ -1383,6 +1400,7 @@ begin
 			dbgdecodepc => dbgdecodepc,
 			dbgbreakpointid => dbgbreakpointid,
 			dbgbreakpointhit => dbgbreakpointhit,
+			dbgtrngcompletebypass => dbgtrngcompletebypass,
 			-- debug features (interface with ecc_scalar)
 			dbgpgmstate => dbgpgmstate,
 			dbgnbbits => dbgnbbits
@@ -1471,6 +1489,8 @@ begin
 			token_generating => token_generating,
 			-- debug feature (ecc_axi)
 			dbgtrngnnrnddet => dbgtrngnnrnddet,
+			dbgtrngcompletebypass => dbgtrngcompletebypass,
+			dbgtrngcompletebypassbit => dbgtrngcompletebypassbit,
 			-- debug feature (ecc_scalar)
 			dbghalted => dbghalted_s
 			-- pragma translate_off
@@ -1526,17 +1546,17 @@ begin
 			rdy1 => trng_rdy_fp,
 			valid1 => trng_valid_fp,
 			data1 => trng_data_fp,
-			irncount1 => trngefpirncount,
+			irncount1 => dbgtrngefpirncount,
 			-- interface with entropy client ecc_curve
 			rdy2 => trng_rdy_curve,
 			valid2 => trng_valid_curve,
 			data2 => trng_data_curve,
-			irncount2 => trngcurirncount,
+			irncount2 => dbgtrngcrvirncount,
 			-- interface with entropy client ecc_fp_dram_sh
 			rdy3 => trng_rdy_sh,
 			valid3 => trng_valid_sh,
 			data3 => trng_data_sh,
-			irncount3 => trngshfirncount,
+			irncount3 => dbgtrngshfirncount,
 			-- interface with ecc_axi (only usable in debug mode)
 			dbgtrngta => dbgtrngta,
 			dbgtrngrawreset => dbgtrngrawreset,
@@ -1550,12 +1570,15 @@ begin
 			dbgtrngrawduration => dbgtrngrawduration,
 			dbgtrngvonneuman => dbgtrngvonneuman,
 			dbgtrngidletime => dbgtrngidletime,
+			dbgtrngrawcount => dbgtrngrawcount,
 			dbgtrngusepseudosource => dbgtrngusepseudosource,
 			dbgtrngrawpullppdis => dbgtrngrawpullppdis,
 			-- interface with the external pseudo TRNG component
 			dbgpseudotrngdata => dbgptdata,
 			dbgpseudotrngvalid => dbgptvalid,
-			dbgpseudotrngrdy => dbgptrdy
+			dbgpseudotrngrdy => dbgptrdy,
+			dbgtrngrawrdy => dbgtrngrawrdy,
+			dbgtrngrawvalid => dbgtrngrawvalid
 		); -- ecc_trng
 
 	-- static-memory storing temporary variables read-&-written
@@ -1806,15 +1829,15 @@ begin
 		echo(" words of ");
 		echo(integer'image(ww));
 		echo("-bit, irn fp=");
-		echo(integer'image(irn_fifo_size_fp));
+		echo(integer'image(irn_fifo_size_efp));
 		echo(" words of ");
 		echo(integer'image(ww));
 		echo("-bit, irn curve=");
-		echo(integer'image(irn_fifo_size_curve));
+		echo(integer'image(irn_fifo_size_crv));
 		echo(" words of ");
 		echo(integer'image(2));
 		echo("-bit, irn sh=");
-		echo(integer'image(irn_fifo_size_sh));
+		echo(integer'image(irn_fifo_size_shf));
 		echo(" words of ");
 		echo(integer'image((irn_width_sh)));
 		echol("-bit");

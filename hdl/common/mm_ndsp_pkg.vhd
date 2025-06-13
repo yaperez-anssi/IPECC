@@ -26,6 +26,8 @@ package mm_ndsp_pkg is
 
 	function get_dsp_maxacc return positive;
 
+	function get_nbrp(sr, nd : positive) return positive;
+
 	constant WEIGHT_BITS : positive := log2((2*w) - 1);
 
 	type maccx_in_type is record
@@ -64,5 +66,23 @@ package body mm_ndsp_pkg is
 		end if;
 		return tmp;
 	end function get_dsp_maxacc;
+
+	-- sr = sramlat
+	-- nd = ndsp
+	function get_nbrp(sr, nd : positive) return positive is
+		variable tmp : positive;
+	begin
+		-- default value
+		tmp :=   sr + 1 -- ORAM read latency, incl. r.prod.rdata latch, see (s1)
+	         + nd -- because ndsp x_i terms are first read before first y_j term
+	         + 1 -- latch into r.prod.bb, see (s38)
+	         + 1 -- latch into B register of first DSP block, see (s39)
+	         + 2 -- latch into M & P register of first DSP block
+	         + (nd - 1) -- accumulation through the chain of DSP blocks
+	         + 1 -- latch into r.acc.ppend, see (s123) & (s34)
+	         + 1; -- latch into r.acc.ppacc, see (s44)
+		       -- = sramlat + (2 * ndsp) + 6
+		return tmp;
+	end function get_nbrp;
 
 end package body mm_ndsp_pkg;

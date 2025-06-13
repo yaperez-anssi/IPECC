@@ -215,7 +215,7 @@ package ecc_tb_pkg is
 		signal axi: out axi_in_type;
 		signal axo: in axi_out_type;
 		constant valnn: in positive;
-		constant token: in std_logic512);
+		constant token: in std_logic1024);
 
 	-- Emulate software driver reading [k]P result's coordinates
 	-- and returning them as passed arguments.
@@ -224,9 +224,9 @@ package ecc_tb_pkg is
 		signal axi: out axi_in_type;
 		signal axo: in axi_out_type;
 		constant valnn: in positive;
-		constant token: in std_logic512;
-		variable kpx : inout std_logic512;
-		variable kpy : inout std_logic512);
+		constant token: in std_logic1024;
+		variable kpx : inout std_logic1024;
+		variable kpy : inout std_logic1024);
 
 	-- Emulate software driver acknowledging all errors.
 	procedure ack_all_errors(
@@ -301,8 +301,8 @@ package ecc_tb_pkg is
 		signal axi: out axi_in_type;
 		signal axo: in axi_out_type;
 		constant valnn: in positive;
-		variable pax : inout std_logic512;
-		variable pay : inout std_logic512);
+		variable pax : inout std_logic1024;
+		variable pay : inout std_logic1024);
 
 	-- Emulate software driver issuing command 'do point-doubling'
 	procedure run_point_double(
@@ -345,8 +345,8 @@ package ecc_tb_pkg is
 		signal axi: out axi_in_type;
 		signal axo: in axi_out_type;
 		constant valnn: in positive;
-		variable pdx : inout std_logic512;
-		variable pdy : inout std_logic512);
+		variable pdx : inout std_logic1024;
+		variable pdy : inout std_logic1024);
 
 	-- Emulate software driver issuing command 'do point-negate'
 	procedure run_point_negate(
@@ -380,8 +380,8 @@ package ecc_tb_pkg is
 		signal axi: out axi_in_type;
 		signal axo: in axi_out_type;
 		constant valnn: in positive;
-		variable pnx: inout std_logic512;
-		variable pny: inout std_logic512);
+		variable pnx: inout std_logic1024;
+		variable pny: inout std_logic1024);
 
 	-- Emulate software driver issuing command 'do P == Q test'
 	procedure run_point_test_equal(
@@ -617,15 +617,7 @@ package ecc_tb_pkg is
 		signal axi: out axi_in_type;
 		signal axo: in axi_out_type;
 		constant valnn : in positive;
-		variable vtoken : inout std_logic512);
-
-	-- Emulate software resetting the counters used for TRNG diagnostic
-	-- "starving ratio" counters
-	-- (only possible in debug mode)
-	procedure debug_reset_trng_diagnostic_counters(
-		signal clk: in std_logic;
-		signal axi: out axi_in_type;
-		signal axo: in axi_out_type);
+		variable vtoken : inout std_logic1024);
 
 	-- Emulate software driver setting the IP to use the pseudo TRNG feed
 	-- as the random source instead of the real one
@@ -669,6 +661,35 @@ package ecc_tb_pkg is
 
 	-- Emulate software driver resetting the TRNG irn random generation logic
 	procedure debug_trng_reset_irn(
+		signal clk: in std_logic;
+		signal axi: out axi_in_type;
+		signal axo: in axi_out_type);
+
+	-- Emulate software driver activating the complete bypass of the TRNG
+	-- (generating instead a deterministic bit which is given as argument)
+	procedure debug_trng_complete_bypass_TRNG(
+		signal clk: in std_logic;
+		signal axi: out axi_in_type;
+		signal axo: in axi_out_type;
+		constant instead_bit: in std_logic);
+
+	-- Emulate software driver (RE-)activating the TRNG
+	procedure debug_trng_remove_complete_bypass_TRNG(
+		signal clk: in std_logic;
+		signal axi: out axi_in_type;
+		signal axo: in axi_out_type);
+
+	-- Emulate software driver asking for a deterministic NNRND instruction
+	-- (random large numbers generated using NNRND in microcode will be
+	-- filled with only 1 bits = 0xffff...ffff)
+	procedure debug_trng_nnrnd_deterministic(
+		signal clk: in std_logic;
+		signal axi: out axi_in_type;
+		signal axo: in axi_out_type);
+
+	-- Emulate software driver (RE-)activating nominal effect of NNRND
+	-- instruction (not determinstic anymore, generate real random instead).
+	procedure debug_trng_nnrnd_not_deterministic(
 		signal clk: in std_logic;
 		signal axi: out axi_in_type;
 		signal axo: in axi_out_type);
@@ -1277,10 +1298,10 @@ package body ecc_tb_pkg is
 		signal axi: out axi_in_type;
 		signal axo: in axi_out_type;
 		constant valnn: in positive;
-		constant token: in std_logic512)
+		constant token: in std_logic1024)
 	is
-		variable kpx : std_logic512 := (others => '0');
-		variable kpy : std_logic512 := (others => '0');
+		variable kpx : std_logic1024 := (others => '0');
+		variable kpy : std_logic1024 := (others => '0');
 		variable xmsb, ymsb : integer;
 		variable tmsb : integer;
 		variable dmsb : integer;
@@ -1338,12 +1359,12 @@ package body ecc_tb_pkg is
 		signal axi: out axi_in_type;
 		signal axo: in axi_out_type;
 		constant valnn: in positive;
-		constant token: in std_logic512;
-		variable kpx : inout std_logic512;
-		variable kpy : inout std_logic512)
+		constant token: in std_logic1024;
+		variable kpx : inout std_logic1024;
+		variable kpy : inout std_logic1024)
 	is
-		--variable kpx : std_logic512 := (others => '0');
-		--variable kpy : std_logic512 := (others => '0');
+		--variable kpx : std_logic1024 := (others => '0');
+		--variable kpy : std_logic1024 := (others => '0');
 		variable xmsb, ymsb : integer;
 		variable tmsb : integer;
 		variable dmsb : integer;
@@ -1586,8 +1607,8 @@ package body ecc_tb_pkg is
 		signal axo: in axi_out_type;
 		constant valnn: in positive)
 	is
-		variable pax : std_logic512 := (others => '0');
-		variable pay : std_logic512 := (others => '0');
+		variable pax : std_logic1024 := (others => '0');
+		variable pay : std_logic1024 := (others => '0');
 		variable xmsb, ymsb : integer;
 		variable vz1 : boolean;
 	begin
@@ -1666,8 +1687,8 @@ package body ecc_tb_pkg is
 		signal axi: out axi_in_type;
 		signal axo: in axi_out_type;
 		constant valnn: in positive;
-		variable pax : inout std_logic512;
-		variable pay : inout std_logic512)
+		variable pax : inout std_logic1024;
+		variable pay : inout std_logic1024)
 	is
 		variable xmsb, ymsb : integer;
 		variable vz1 : boolean;
@@ -1778,8 +1799,8 @@ package body ecc_tb_pkg is
 		signal axo: in axi_out_type;
 		constant valnn: in positive)
 	is
-		variable pax : std_logic512 := (others => '0');
-		variable pay : std_logic512 := (others => '0');
+		variable pax : std_logic1024 := (others => '0');
+		variable pay : std_logic1024 := (others => '0');
 		variable xmsb, ymsb : integer;
 		variable vz1 : boolean;
 	begin
@@ -1826,8 +1847,8 @@ package body ecc_tb_pkg is
 		signal axi: out axi_in_type;
 		signal axo: in axi_out_type;
 		constant valnn: in positive;
-		variable pdx : inout std_logic512;
-		variable pdy : inout std_logic512)
+		variable pdx : inout std_logic1024;
+		variable pdy : inout std_logic1024)
 	is
 		variable xmsb, ymsb : integer;
 		variable vz1 : boolean;
@@ -1915,8 +1936,8 @@ package body ecc_tb_pkg is
 		signal axo: in axi_out_type;
 		constant valnn: in positive)
 	is
-		variable pax : std_logic512 := (others => '0');
-		variable pay : std_logic512 := (others => '0');
+		variable pax : std_logic1024 := (others => '0');
+		variable pay : std_logic1024 := (others => '0');
 		variable xmsb, ymsb : integer;
 		variable vz1 : boolean;
 	begin
@@ -1963,8 +1984,8 @@ package body ecc_tb_pkg is
 		signal axi: out axi_in_type;
 		signal axo: in axi_out_type;
 		constant valnn: in positive;
-		variable pnx: inout std_logic512;
-		variable pny: inout std_logic512)
+		variable pnx: inout std_logic1024;
+		variable pny: inout std_logic1024)
 	is
 		variable xmsb, ymsb : integer;
 		variable vz1 : boolean;
@@ -2392,7 +2413,7 @@ package body ecc_tb_pkg is
 		constant valnn: in positive;
 		constant addr: in natural range 0 to nblargenb - 1)
 	is
-		variable lgnb: std_logic512 := (others => '0');
+		variable lgnb: std_logic1024 := (others => '0');
 	begin
 		wait until clk'event and clk = '1';
 		lgnb := (others => '0');
@@ -2409,7 +2430,7 @@ package body ecc_tb_pkg is
 		constant valnn: in positive;
 		constant addr: in natural range 0 to nblargenb - 1)
 	is
-		variable lgnb: std_logic512 := (others => '0');
+		variable lgnb: std_logic1024 := (others => '0');
 	begin
 		wait until clk'event and clk = '1';
 		lgnb := (others => '0');
@@ -2425,8 +2446,8 @@ package body ecc_tb_pkg is
 		signal axo: in axi_out_type;
 		constant valnn: in positive)
 	is
-		variable pax : std_logic512 := (others => '0');
-		variable pay : std_logic512 := (others => '0');
+		variable pax : std_logic1024 := (others => '0');
+		variable pay : std_logic1024 := (others => '0');
 		variable xmsb, ymsb : integer;
 	begin
 		wait until clk'event and clk = '1';
@@ -2738,7 +2759,7 @@ package body ecc_tb_pkg is
 		signal axi: out axi_in_type;
 		signal axo: in axi_out_type;
 		constant valnn : in positive;
-		variable vtoken : inout std_logic512)
+		variable vtoken : inout std_logic1024)
 	is
 		variable tup, xup : integer;
 		variable dw : std_logic_vector(AXIDW - 1 downto 0);
@@ -2791,27 +2812,6 @@ package body ecc_tb_pkg is
 		end loop;
 		wait until clk'event and clk = '1';
 	end procedure get_token;
-
-	procedure debug_reset_trng_diagnostic_counters(
-		signal clk: in std_logic;
-		signal axi: out axi_in_type;
-		signal axo: in axi_out_type)
-	is 
-		variable dw : std_logic_vector(AXIDW - 1 downto 0);
-	begin
-		-- write register W_DBG_RESET_TRNG_CNT (content is indifferent, only
-		-- matters the action of writing at the proper register address)
-		wait until clk'event and clk = '1';
-		axi.awaddr <= W_DBG_RESET_TRNG_CNT & "000"; axi.awvalid <= '1';
-		wait until clk'event and clk = '1' and axo.awready = '1';
-		axi.awaddr <= (others => 'X'); axi.awvalid <= '0';
-		dw := (others => 'X');
-		axi.wdata <= dw;
-		axi.wvalid <= '1';
-		wait until clk'event and clk = '1' and axo.wready = '1';
-		axi.wdata <= (others => 'X'); axi.wvalid <= '0';
-		wait until clk'event and clk = '1';
-	end procedure debug_reset_trng_diagnostic_counters;
 
 	procedure debug_trng_use_pseudo(
 		signal clk: in std_logic;
@@ -2875,14 +2875,14 @@ package body ecc_tb_pkg is
 		variable dw : std_logic_vector(AXIDW - 1 downto 0);
 	begin
 		wait until clk'event and clk = '1';
-		-- Write W_DBG_TRNG_CTRL register.
-		axi.awaddr <= W_DBG_TRNG_CTRL & "000";
+		-- Write W_DBG_TRNG_CTRL_POSTP register.
+		axi.awaddr <= W_DBG_TRNG_CTRL_POSTP & "000";
 		axi.awvalid <= '1';
 		wait until clk'event and clk = '1' and axo.awready = '1';
 		axi.awaddr <= (others => 'X');
 		axi.awvalid <= '0';
 		dw := (others => '0');
-		-- Assert the DBG_TRNG_CTRL_RAW_PULL_PP_DISABLE bit.
+		-- Assert the DBG_TRNG_CTRL_POSTPROC_DISABLE bit.
 		dw(DBG_TRNG_CTRL_POSTPROC_DISABLE) := '1';
 		axi.wdata <= dw;
 		axi.wvalid <= '1';
@@ -2900,14 +2900,14 @@ package body ecc_tb_pkg is
 		variable dw : std_logic_vector(AXIDW - 1 downto 0);
 	begin
 		wait until clk'event and clk = '1';
-		-- Write W_DBG_TRNG_CTRL register.
-		axi.awaddr <= W_DBG_TRNG_CTRL & "000";
+		-- Write W_DBG_TRNG_CTRL_POSTP register.
+		axi.awaddr <= W_DBG_TRNG_CTRL_POSTP & "000";
 		axi.awvalid <= '1';
 		wait until clk'event and clk = '1' and axo.awready = '1';
 		axi.awaddr <= (others => 'X');
 		axi.awvalid <= '0';
 		dw := (others => '0');
-		-- Deassert the DBG_TRNG_CTRL_RAW_PULL_PP_DISABLE bit.
+		-- Deassert the DBG_TRNG_CTRL_POSTPROC_DISABLE bit.
 		dw(DBG_TRNG_CTRL_POSTPROC_DISABLE) := '0';
 		axi.wdata <= dw;
 		axi.wvalid <= '1';
@@ -2925,15 +2925,15 @@ package body ecc_tb_pkg is
 		variable dw : std_logic_vector(AXIDW - 1 downto 0);
 	begin
 		wait until clk'event and clk = '1';
-		-- Write W_DBG_TRNG_CTRL register.
-		axi.awaddr <= W_DBG_TRNG_CTRL & "000";
+		-- Write W_DBG_TRNG_RESET register.
+		axi.awaddr <= W_DBG_TRNG_RESET & "000";
 		axi.awvalid <= '1';
 		wait until clk'event and clk = '1' and axo.awready = '1';
 		axi.awaddr <= (others => 'X');
 		axi.awvalid <= '0';
 		dw := (others => '0');
-		-- Assert the DBG_TRNG_CTRL_RAW_RESET bit.
-		dw(DBG_TRNG_CTRL_RAW_RESET) := '1';
+		-- Assert the DBG_TRNG_RESET_RAW bit.
+		dw(DBG_TRNG_RESET_RAW) := '1';
 		axi.wdata <= dw;
 		axi.wvalid <= '1';
 		wait until clk'event and clk = '1' and axo.wready = '1';
@@ -2950,15 +2950,15 @@ package body ecc_tb_pkg is
 		variable dw : std_logic_vector(AXIDW - 1 downto 0);
 	begin
 		wait until clk'event and clk = '1';
-		-- Write W_DBG_TRNG_CTRL register.
-		axi.awaddr <= W_DBG_TRNG_CTRL & "000";
+		-- Write W_DBG_TRNG_RESET register.
+		axi.awaddr <= W_DBG_TRNG_RESET & "000";
 		axi.awvalid <= '1';
 		wait until clk'event and clk = '1' and axo.awready = '1';
 		axi.awaddr <= (others => 'X');
 		axi.awvalid <= '0';
 		dw := (others => '0');
-		-- Assert the DBG_TRNG_CTRL_IRN_RESET bit.
-		dw(DBG_TRNG_CTRL_IRN_RESET) := '1';
+		-- Assert the DBG_TRNG_RESET_IRN bit.
+		dw(DBG_TRNG_RESET_IRN) := '1';
 		axi.wdata <= dw;
 		axi.wvalid <= '1';
 		wait until clk'event and clk = '1' and axo.wready = '1';
@@ -2966,5 +2966,109 @@ package body ecc_tb_pkg is
 		axi.wvalid <= '0';
 		wait until clk'event and clk = '1';
 	end procedure debug_trng_reset_irn;
+
+	procedure debug_trng_complete_bypass_TRNG(
+		signal clk: in std_logic;
+		signal axi: out axi_in_type;
+		signal axo: in axi_out_type;
+		constant instead_bit: in std_logic)
+	is
+		variable dw : std_logic_vector(AXIDW - 1 downto 0);
+	begin
+		wait until clk'event and clk = '1';
+		-- Write W_DBG_TRNG_CTRL_BYPASS register.
+		axi.awaddr <= W_DBG_TRNG_CTRL_BYPASS & "000";
+		axi.awvalid <= '1';
+		wait until clk'event and clk = '1' and axo.awready = '1';
+		axi.awaddr <= (others => 'X');
+		axi.awvalid <= '0';
+		dw := (others => '0');
+		-- Assert the DBG_TRNG_CTRL_COMPLETE_BYPASS bit
+		-- Set the DBG_TRNG_CTRL_COMPLETE_BYPASS_BIT bit according to
+		-- 'instead_bit' input argument.
+		dw(DBG_TRNG_CTRL_COMPLETE_BYPASS) := '1';
+		dw(DBG_TRNG_CTRL_COMPLETE_BYPASS_BIT) := instead_bit;
+		axi.wdata <= dw;
+		axi.wvalid <= '1';
+		wait until clk'event and clk = '1' and axo.wready = '1';
+		axi.wdata <= (others => 'X');
+		axi.wvalid <= '0';
+		wait until clk'event and clk = '1';
+	end procedure debug_trng_complete_bypass_TRNG;
+
+	procedure debug_trng_remove_complete_bypass_TRNG(
+		signal clk: in std_logic;
+		signal axi: out axi_in_type;
+		signal axo: in axi_out_type)
+	is
+		variable dw : std_logic_vector(AXIDW - 1 downto 0);
+	begin
+		wait until clk'event and clk = '1';
+		-- Write W_DBG_TRNG_CTRL_BYPASS register.
+		axi.awaddr <= W_DBG_TRNG_CTRL_BYPASS & "000";
+		axi.awvalid <= '1';
+		wait until clk'event and clk = '1' and axo.awready = '1';
+		axi.awaddr <= (others => 'X');
+		axi.awvalid <= '0';
+		dw := (others => '0');
+		-- DEassert the DBG_TRNG_CTRL_COMPLETE_BYPASS bit
+		dw(DBG_TRNG_CTRL_COMPLETE_BYPASS) := '0';
+		axi.wdata <= dw;
+		axi.wvalid <= '1';
+		wait until clk'event and clk = '1' and axo.wready = '1';
+		axi.wdata <= (others => 'X');
+		axi.wvalid <= '0';
+		wait until clk'event and clk = '1';
+	end procedure debug_trng_remove_complete_bypass_TRNG;
+
+	procedure debug_trng_nnrnd_deterministic(
+		signal clk: in std_logic;
+		signal axi: out axi_in_type;
+		signal axo: in axi_out_type)
+	is
+		variable dw : std_logic_vector(AXIDW - 1 downto 0);
+	begin
+		wait until clk'event and clk = '1';
+		-- Write W_DBG_TRNG_CTRL_NNRND register.
+		axi.awaddr <= W_DBG_TRNG_CTRL_NNRND & "000";
+		axi.awvalid <= '1';
+		wait until clk'event and clk = '1' and axo.awready = '1';
+		axi.awaddr <= (others => 'X');
+		axi.awvalid <= '0';
+		dw := (others => '0');
+		-- Assert the DBG_TRNG_CTRL_NNRND_DETERMINISTIC bit
+		dw(DBG_TRNG_CTRL_NNRND_DETERMINISTIC) := '1';
+		axi.wdata <= dw;
+		axi.wvalid <= '1';
+		wait until clk'event and clk = '1' and axo.wready = '1';
+		axi.wdata <= (others => 'X');
+		axi.wvalid <= '0';
+		wait until clk'event and clk = '1';
+	end procedure debug_trng_nnrnd_deterministic;
+
+	procedure debug_trng_nnrnd_not_deterministic(
+		signal clk: in std_logic;
+		signal axi: out axi_in_type;
+		signal axo: in axi_out_type)
+	is
+		variable dw : std_logic_vector(AXIDW - 1 downto 0);
+	begin
+		wait until clk'event and clk = '1';
+		-- Write W_DBG_TRNG_CTRL_NNRND register.
+		axi.awaddr <= W_DBG_TRNG_CTRL_NNRND & "000";
+		axi.awvalid <= '1';
+		wait until clk'event and clk = '1' and axo.awready = '1';
+		axi.awaddr <= (others => 'X');
+		axi.awvalid <= '0';
+		dw := (others => '0');
+		-- DEassert the DBG_TRNG_CTRL_NNRND_DETERMINISTIC bit
+		dw(DBG_TRNG_CTRL_NNRND_DETERMINISTIC) := '0';
+		axi.wdata <= dw;
+		axi.wvalid <= '1';
+		wait until clk'event and clk = '1' and axo.wready = '1';
+		axi.wdata <= (others => 'X');
+		axi.wvalid <= '0';
+		wait until clk'event and clk = '1';
+	end procedure debug_trng_nnrnd_not_deterministic;
 
 end package body;

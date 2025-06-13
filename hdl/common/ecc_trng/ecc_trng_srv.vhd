@@ -47,17 +47,17 @@ entity ecc_trng_srv is
 		rdy1 : in std_logic;
 		valid1 : out std_logic;
 		data1 : out std_logic_vector(ww - 1 downto 0);
-		irncount1 : out std_logic_vector(log2(irn_fifo_size_fp) - 1 downto 0);
+		irncount1 : out std_logic_vector(log2(irn_fifo_size_efp) - 1 downto 0);
 		-- interface with entropy client ecc_curve
 		rdy2 : in std_logic;
 		valid2 : out std_logic;
 		data2 : out std_logic_vector(1 downto 0);
-		irncount2 : out std_logic_vector(log2(irn_fifo_size_curve) - 1 downto 0);
+		irncount2 : out std_logic_vector(log2(irn_fifo_size_crv) - 1 downto 0);
 		-- interface with entropy client ecc_fp_dram_sh
 		rdy3 : in std_logic;
 		valid3 : out std_logic;
 		data3 : out std_logic_vector(irn_width_sh - 1 downto 0);
-		irncount3 : out std_logic_vector(log2(irn_fifo_size_sh) - 1 downto 0);
+		irncount3 : out std_logic_vector(log2(irn_fifo_size_shf) - 1 downto 0);
 		-- interface with ecc_axi (only usable in debug mode)
 		dbgtrngcompletebypassbit : in std_logic;
 		dbgtrngcompletebypass : in std_logic
@@ -109,14 +109,14 @@ architecture struct of ecc_trng_srv is
 	signal ppdataout3 : std_logic_vector(irn_width_sh - 1 downto 0);
 	signal empty, full : std_logic_vector(3 downto 0);
 	signal count0 : std_logic_vector(log2(irn_fifo_size_axi) - 1 downto 0);
-	signal count1 : std_logic_vector(log2(irn_fifo_size_fp) - 1 downto 0);
-	signal count2 : std_logic_vector(log2(irn_fifo_size_curve) - 1 downto 0);
-	signal count3 : std_logic_vector(log2(irn_fifo_size_sh) - 1 downto 0);
+	signal count1 : std_logic_vector(log2(irn_fifo_size_efp) - 1 downto 0);
+	signal count2 : std_logic_vector(log2(irn_fifo_size_crv) - 1 downto 0);
+	signal count3 : std_logic_vector(log2(irn_fifo_size_shf) - 1 downto 0);
 	signal gnd : std_logic;
 	signal gndd0 : std_logic_vector(log2(irn_fifo_size_axi - 1) - 1 downto 0);
-	signal gndd1 : std_logic_vector(log2(irn_fifo_size_fp - 1) - 1 downto 0);
-	signal gndd2 : std_logic_vector(log2(irn_fifo_size_curve - 1) - 1 downto 0);
-	signal gndd3 : std_logic_vector(log2(irn_fifo_size_sh - 1) - 1 downto 0);
+	signal gndd1 : std_logic_vector(log2(irn_fifo_size_efp - 1) - 1 downto 0);
+	signal gndd2 : std_logic_vector(log2(irn_fifo_size_crv - 1) - 1 downto 0);
+	signal gndd3 : std_logic_vector(log2(irn_fifo_size_shf - 1) - 1 downto 0);
 
 	signal r, rin : reg_type;
 
@@ -168,7 +168,7 @@ begin
 	-- IRN fifo for ecc_fp random data
 	f1: fifo
 		generic map(
-			datawidth => ww, datadepth => irn_fifo_size_fp,
+			datawidth => ww, datadepth => irn_fifo_size_efp,
 			debug => debug)
 		port map(
 			clk => clk,
@@ -193,7 +193,7 @@ begin
 	-- IRN fifo for ecc_curve random data
 	f2: fifo
 		generic map(
-			datawidth => 2, datadepth => irn_fifo_size_curve,
+			datawidth => 2, datadepth => irn_fifo_size_crv,
 			debug => debug)
 		port map(
 			clk => clk,
@@ -218,7 +218,7 @@ begin
 	-- IRN fifo for ecc_fp_dram_sh random data
 	f3: fifo
 		generic map(
-			datawidth => irn_width_sh, datadepth => irn_fifo_size_sh,
+			datawidth => irn_width_sh, datadepth => irn_fifo_size_shf,
 			debug => debug)
 		port map(
 			clk => clk,
@@ -241,7 +241,8 @@ begin
 		);
 
 	comb: process(r, rstn, irn_reset, data_s, valid_s, rdy, swrst,
-		            --rdy0, rdy1, rdy2, rdy3, dbgtrngcompletebypass,
+		            --rdy0, rdy1, rdy2, rdy3,
+		            dbgtrngcompletebypass,
 	              full, empty, ppdataout0, ppdataout1,
 		            ppdataout2, ppdataout3, count0, count1, count2, count3)
 		variable v : reg_type;
@@ -438,7 +439,7 @@ begin
 		end if;
 		if r.irn(1).valid = '1' and r.irn(1).rdy = '1' and full(1) = '0' then
 			if not (r.irn(1).we = '1' and count1 = std_logic_vector(to_unsigned(
-				irn_fifo_size_fp - 1, log2(irn_fifo_size_fp))))
+				irn_fifo_size_efp - 1, log2(irn_fifo_size_efp))))
 			then
 				v.irn(1).we := '1';
 				v.irn(1).valid := '0';
@@ -446,7 +447,7 @@ begin
 		end if;
 		if r.irn(2).valid = '1' and r.irn(2).rdy = '1' and full(2) = '0' then
 			if not (r.irn(2).we = '1' and count2 = std_logic_vector(to_unsigned(
-				irn_fifo_size_curve - 1, log2(irn_fifo_size_curve))))
+				irn_fifo_size_crv - 1, log2(irn_fifo_size_crv))))
 			then
 				v.irn(2).we := '1';
 				v.irn(2).valid := '0';
@@ -454,7 +455,7 @@ begin
 		end if;
 		if r.irn(3).valid = '1' and r.irn(3).rdy = '1' and full(3) = '0' then
 			if not (r.irn(3).we = '1' and count3 = std_logic_vector(to_unsigned(
-				irn_fifo_size_curve - 1, log2(irn_fifo_size_sh))))
+				irn_fifo_size_crv - 1, log2(irn_fifo_size_shf))))
 			then
 				v.irn(3).we := '1';
 				v.irn(3).valid := '0';
@@ -476,7 +477,7 @@ begin
 		end if;
 		-- deassertion of r.irn(1).rdy
 		if r.irn(1).we = '1' and count1 = std_logic_vector(
-			to_unsigned(irn_fifo_size_fp - 2, log2(irn_fifo_size_fp)))
+			to_unsigned(irn_fifo_size_efp - 2, log2(irn_fifo_size_efp)))
 		then
 			v.irn(1).rdy := '0';
 		elsif full(1) = '0' then
@@ -484,7 +485,7 @@ begin
 		end if;
 		-- deassertion of r.irn(2).rdy
 		if r.irn(2).we = '1' and count2 = std_logic_vector(
-			to_unsigned(irn_fifo_size_curve - 2, log2(irn_fifo_size_curve)))
+			to_unsigned(irn_fifo_size_crv - 2, log2(irn_fifo_size_crv)))
 		then
 			v.irn(2).rdy := '0';
 		elsif full(2) = '0' then
@@ -492,7 +493,7 @@ begin
 		end if;
 		-- deassertion of r.irn(3).rdy
 		if r.irn(3).we = '1' and count3 = std_logic_vector(
-			to_unsigned(irn_fifo_size_sh - 2, log2(irn_fifo_size_sh)))
+			to_unsigned(irn_fifo_size_shf - 2, log2(irn_fifo_size_shf)))
 		then
 			v.irn(3).rdy := '0';
 		elsif full(3) = '0' then
@@ -530,19 +531,19 @@ begin
 		end if;
 		-- specific to target 1
 		if r.irn(1).re = '1' and
-			unsigned(count1) = to_unsigned(1, log2(irn_fifo_size_fp))
+			unsigned(count1) = to_unsigned(1, log2(irn_fifo_size_efp))
 		then
 			v.irn(1).re := '0';
 		end if;
 		-- specific to target 2
 		if r.irn(2).re = '1' and
-			unsigned(count2) = to_unsigned(1, log2(irn_fifo_size_curve))
+			unsigned(count2) = to_unsigned(1, log2(irn_fifo_size_crv))
 		then
 			v.irn(2).re := '0';
 		end if;
 		-- specific to target 3
 		if r.irn(3).re = '1' and
-			unsigned(count3) = to_unsigned(1, log2(irn_fifo_size_sh))
+			unsigned(count3) = to_unsigned(1, log2(irn_fifo_size_shf))
 		then
 			v.irn(3).re := '0';
 		end if;
@@ -577,7 +578,24 @@ begin
 				v.valid(i) := '0';
 			end if;
 		end loop;
-	
+
+		-- If complete bypass of TRNG wasn't a debug feature, we could set
+		-- a multi-cycle constraint on paths:
+		--     dbgtrngcompletebypass -> r.valid
+		--     dbgtrngcompletebypass[bit] -> r.data[0-3]
+		if debug then -- statically resolved by synthesizer
+			if dbgtrngcompletebypass = '1' then
+				v.valid(0) := '1';
+				v.valid(1) := '1';
+				v.valid(2) := '1';
+				v.valid(3) := '1';
+				v.data0 := (others => dbgtrngcompletebypassbit);
+				v.data1 := (others => dbgtrngcompletebypassbit);
+				v.data2 := (others => dbgtrngcompletebypassbit);
+				v.data3 := (others => dbgtrngcompletebypassbit);
+			end if;
+		end if;
+
 		-- synchronous reset
 		if rstn = '0' or (debug and irn_reset = '1') or swrst = '1' then
 			v.ppdatain_can_be_emptied := '0';
@@ -614,36 +632,33 @@ begin
 		end if;
 	end process regs;
 
-	-- FIFO can only be emptied using their 'dbgrst' port if in debug mode
-	dbgrsti <= irn_reset when debug else gnd;
+	-- FIFOs can only be emptied using their 'dbgrst' port if in debug mode
+	dbgrsti <= irn_reset when debug else gnd; -- statically resolved by synthesizer
 
+	-- -------------
 	-- drive outputs
+	-- -------------
+
 	--   client 0
-	valid0 <= r.valid(0) when ((not debug) or dbgtrngcompletebypass = '0')
-						else '1';
-	-- if complete bypass of TRNG wasn't a debug feature, we could set
-	-- a multi-cycle constraint on path: dbgtrngcompletebypass -> data[0-3]
-	data0 <= r.data0 when ((not debug) or dbgtrngcompletebypass = '0')
-	         else (data0'range => dbgtrngcompletebypassbit);
+	valid0 <= r.valid(0);
+	data0 <= r.data0;
 	irncount0 <= count0;
+
 	--   client 1
-	valid1 <= r.valid(1) when ((not debug) or dbgtrngcompletebypass = '0')
-						else '1';
-	data1 <= r.data1 when ((not debug) or dbgtrngcompletebypass = '0')
-	         else (data1'range => dbgtrngcompletebypassbit);
+	valid1 <= r.valid(1);
+	data1 <= r.data1;
 	irncount1 <= count1;
+
 	--   client 2
-	valid2 <= r.valid(2) when ((not debug) or dbgtrngcompletebypass = '0')
-						else '1';
-	data2 <= r.data2 when ((not debug) or dbgtrngcompletebypass = '0')
-	         else (data2'range => dbgtrngcompletebypassbit);
+	valid2 <= r.valid(2);
+	data2 <= r.data2;
 	irncount2 <= count2;
+
 	--   client 3
-	valid3 <= r.valid(3) when ((not debug) or dbgtrngcompletebypass = '0')
-						else '1';
-	data3 <= r.data3 when ((not debug) or dbgtrngcompletebypass = '0')
-	         else (data3'range => dbgtrngcompletebypassbit);
+	valid3 <= r.valid(3);
+	data3 <= r.data3;
 	irncount3 <= count3;
+
 	--   handshake with ecc_trng_pp
 	rdy_s <= r.rdy_s;
 

@@ -17,6 +17,8 @@
 
 #include <stdint.h>
 
+#include "ecc_platform.h"
+
 #if defined(WITH_EC_HW_ACCELERATOR) && !defined(WITH_EC_HW_SOCKET_EMUL)
 
 /* The IP "physical" address in RAM.
@@ -33,14 +35,31 @@
 #define IPECC_PHYS_PSEUDO_TRNG_BADDR    (NULL)
 #endif
 #else
+#ifdef IPECC_PLATFORM_ULTRASCALE
+#define IPECC_PHYS_BADDR                0x80000000
+#define IPECC_PHYS_PSEUDO_TRNG_BADDR    0x80001000
+#else
+#ifdef IPECC_PLATFORM_SERIES7
 #define IPECC_PHYS_BADDR                0x40000000
 #define IPECC_PHYS_PSEUDO_TRNG_BADDR    0x40001000
+#else
+#error "hw_accelerator_driver_ipecc_platform.c: could not determine platform embedding the IP ("series7", "ultrascale" ?)"
+#endif
+#endif
 #endif
 
 #define IPECC_PHYS_SZ                   (4096) /* One page size */
 
+#ifdef IPECC_PLATFORM_ULTRASCALE
+#define IPECC_DEV_UIO_IPECC             "/dev/uio4"
+#define IPECC_DEV_UIO_PSEUDOTRNG        "/dev/uio5"
+#else
+#ifdef IPECC_PLATFORM_SERIES7
 #define IPECC_DEV_UIO_IPECC             "/dev/uio0"
 #define IPECC_DEV_UIO_PSEUDOTRNG        "/dev/uio1"
+#endif
+#endif
+
 /* Setup the driver depending on the environment.
  *
  * If 'pseudotrng_base_addr_p' is not NULL then the setup will also try

@@ -142,6 +142,7 @@ architecture syn of ecc_fp_dram_sh_fishy_nb is
 		brlout_sel : std_logic_vector(0 to NB_JSH_REG);
 		brlout_sel_next : std_logic_vector(0 to NB_JSH_REG);
 		doburst : std_logic;
+		endburst : std_logic;
 		finish : std_logic_vector(rdlat downto 0);
 		-- pragma translate_off
 		-- for sake of waveform readability during simulation
@@ -340,7 +341,7 @@ begin
 	begin
 		v := r;
 
-		-- (s0), bypassed by (s1), (s6), (s19) & (s37)
+		-- (s0), bypassed by (s1), (s19) & (s37)
 		v.vp.re0 := '0'; -- (s0)
 
 		-- (s7), bypassed by (s8) & (s13)
@@ -576,6 +577,7 @@ begin
 		end if;
 
 		-- Burst (swapping the 'w' limbs of large numbers a_i & a_j)
+		v.permute.endburst := '0'; -- (s46), bypassed by (s47)
 		if r.permute.doburst = '1' then -- (s45)
 			v.fp.resh(rdlat) := '1'; -- (s11), bypass of (s9), bypassed by (s12)
 			if r.fp.resh1(rdlat) = '0' then
@@ -600,10 +602,7 @@ begin
 						-- (operating the last swap of the Fisher-Yates algo) to complete
 						v.permute.finish(rdlat) := '1'; -- (s43)
 					else
-						v.permute.trngrdy := '1';
-						v.permute.brlcmd := r.permute.brlcmd_next;
-						v.vp.raddr0 := r.permute.i_next;
-						v.vp.re0 := '1'; -- (s37), bypass of (s0)
+						v.permute.endburst := '1'; -- (s47), happens only 1 cyc thx to (s46)
 					end if;
 					-- pragma translate_off
 					v.permute.ok := '0';
@@ -621,6 +620,14 @@ begin
 			elsif r.fp.resh1(rdlat) = '0' then -- identifies a_j, see (s21)
 				v.fp.raddr(FP_ADDR - 1 downto FP_ADDR_LSB) := r.permute.aofi; --vp0rdata;
 			end if;
+		end if;
+
+		-- This happens only 1 cycle thx to (s46)-(s47)
+		if r.permute.endburst = '1' then
+			v.permute.trngrdy := '1';
+			v.permute.brlcmd := r.permute.brlcmd_next;
+			v.vp.raddr0 := r.permute.i_next;
+			v.vp.re0 := '1'; -- (s37), bypass of (s0)
 		end if;
 
 		v.fp.we :=  '0'; -- (s15), bypassed by (s16) & (s18)
@@ -732,6 +739,7 @@ begin
 			v.permute.doburst := '0';
 			v.permute.do_brlphase_sh := "00";
 			v.permute.finish := (others => '0');
+			-- no need to reset r.permute.endburst thx to (s36)
 		end if;
 
 		rin <= v;

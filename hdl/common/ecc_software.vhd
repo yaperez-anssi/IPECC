@@ -35,6 +35,13 @@ package ecc_software is
 	--
 	-- Note: the disgracious 'rat' type is defined in ecc_pkg.vhd.
 	--
+	-- DO NOT remove the two comment banners '</start of ECC registers'
+	-- and 'end of ECC registers/>' below, they are used by automatic
+	-- scripting to generate the C header file (ecc_regs.h) used by
+	-- driver to automatically get the proper address of IP hardware
+	-- registers.
+	--
+	-- </start of ECC registers
 	-- -----------------------------------------------
 	-- addresses of all AXI-accessible write registers
 	-- -----------------------------------------------
@@ -61,16 +68,20 @@ package ecc_software is
 	constant W_DBG_TRIG_DOWN : rat := std_nat(37, ADB);      -- 0x128
 	constant W_DBG_OP_WADDR : rat := std_nat(38, ADB);       -- 0x130
 	constant W_DBG_OPCODE : rat := std_nat(39, ADB);         -- 0x138
-	constant W_DBG_TRNG_CTRL : rat := std_nat(40, ADB);      -- 0x140
-	constant W_DBG_TRNG_CFG : rat := std_nat(41, ADB);       -- 0x148
-	constant W_DBG_FP_WADDR : rat := std_nat(42, ADB);       -- 0x150
-	constant W_DBG_FP_WDATA : rat := std_nat(43, ADB);       -- 0x158
-	constant W_DBG_FP_RADDR : rat := std_nat(44, ADB);       -- 0x160
-	constant W_DBG_CFG_XYSHUF : rat := std_nat(45, ADB);     -- 0x168
-	constant W_DBG_CFG_AXIMSK : rat := std_nat(46, ADB);     -- 0x170
-	constant W_DBG_CFG_TOKEN : rat := std_nat(47, ADB);      -- 0x178
-	constant W_DBG_RESET_TRNG_CNT : rat := std_nat(48, ADB); -- 0x180
-	-- reserved                                              -- 0x188...0x1f8
+	constant W_DBG_TRNG_CFG : rat := std_nat(40, ADB);       -- 0x140
+	constant W_DBG_TRNG_RESET : rat := std_nat(41, ADB);     -- 0x148
+	constant W_DBG_TRNG_CTRL_POSTP : rat:= std_nat(42, ADB); -- 0x150
+	constant W_DBG_TRNG_CTRL_BYPASS: rat:= std_nat(43, ADB); -- 0x158
+	constant W_DBG_TRNG_CTRL_NNRND : rat:= std_nat(44, ADB); -- 0x160
+	constant W_DBG_TRNG_CTRL_DIAG : rat := std_nat(45, ADB); -- 0x168
+	constant W_DBG_TRNG_RAW_READ : rat := std_nat(46, ADB);  -- 0x170
+	constant W_DBG_FP_WADDR : rat := std_nat(47, ADB);       -- 0x178
+	constant W_DBG_FP_WDATA : rat := std_nat(48, ADB);       -- 0x180
+	constant W_DBG_FP_RADDR : rat := std_nat(49, ADB);       -- 0x188
+	constant W_DBG_CFG_XYSHUF : rat := std_nat(50, ADB);     -- 0x190
+	constant W_DBG_CFG_AXIMSK : rat := std_nat(51, ADB);     -- 0x198
+	constant W_DBG_CFG_TOKEN : rat := std_nat(52, ADB);      -- 0x1a0
+	-- reserved                                              -- 0x1a8...0x1f8
 	-- ----------------------------------------------
 	-- addresses of all AXI-accessible read registers
 	-- ----------------------------------------------
@@ -86,27 +97,26 @@ package ecc_software is
 	constant R_DBG_CAPABILITIES_2 : rat := std_nat(34, ADB); -- 0x110
 	constant R_DBG_STATUS : rat := std_nat(35, ADB);         -- 0x118
 	constant R_DBG_TIME : rat := std_nat(36, ADB);           -- 0x120
-	constant R_DBG_RAWDUR : rat := std_nat(37, ADB);         -- 0x128
-	constant R_DBG_FLAGS : rat := std_nat(38, ADB);          -- 0x130
-	constant R_DBG_TRNG_STATUS : rat := std_nat(39, ADB);    -- 0x138
-	constant R_DBG_TRNG_RAW_DATA : rat := std_nat(40, ADB);  -- 0x140
-	constant R_DBG_FP_RDATA : rat := std_nat(41, ADB);       -- 0x148
-	constant R_DBG_IRN_CNT_AXI : rat := std_nat(42, ADB);    -- 0x150
-	constant R_DBG_IRN_CNT_EFP : rat := std_nat(43, ADB);    -- 0x158
-	constant R_DBG_IRN_CNT_CRV : rat := std_nat(44, ADB);    -- 0x160
-	constant R_DBG_IRN_CNT_SHF : rat := std_nat(45, ADB);    -- 0x168
-	constant R_DBG_FP_RDATA_RDY : rat := std_nat(46, ADB);   -- 0x170
-	constant R_DBG_EXP_FLAGS : rat := std_nat(47, ADB);      -- 0x178
-	constant R_DBG_TRNG_DIAG_0 : rat := std_nat(48, ADB);    -- 0x180
-	constant R_DBG_TRNG_DIAG_1 : rat := std_nat(49, ADB);    -- 0x188
-	constant R_DBG_TRNG_DIAG_2 : rat := std_nat(50, ADB);    -- 0x190
-	constant R_DBG_TRNG_DIAG_3 : rat := std_nat(51, ADB);    -- 0x198
-	constant R_DBG_TRNG_DIAG_4 : rat := std_nat(52, ADB);    -- 0x1a0
-	constant R_DBG_TRNG_DIAG_5 : rat := std_nat(53, ADB);    -- 0x1a8
-	constant R_DBG_TRNG_DIAG_6 : rat := std_nat(54, ADB);    -- 0x1b0
-	constant R_DBG_TRNG_DIAG_7 : rat := std_nat(55, ADB);    -- 0x1b8
-	constant R_DBG_TRNG_DIAG_8 : rat := std_nat(56, ADB);    -- 0x1c0
-	-- reserved                                              -- 0x1c8...0x1f8
+	constant R_DBG_TRNG_RAWDUR : rat := std_nat(37, ADB);    -- 0x128
+	constant R_DBG_TRNG_STATUS : rat := std_nat(38, ADB);    -- 0x130
+	constant R_DBG_TRNG_RAW_DATA : rat := std_nat(39, ADB);  -- 0x138
+	constant R_DBG_TRNG_DIAG_MIN : rat := std_nat(40, ADB);  -- 0x140
+	constant R_DBG_TRNG_DIAG_MAX : rat := std_nat(41, ADB);  -- 0x148
+	constant R_DBG_TRNG_DIAG_OK : rat := std_nat(42, ADB);   -- 0x150
+	constant R_DBG_TRNG_DIAG_STARV: rat := std_nat(43, ADB); -- 0x158
+	constant R_DBG_FP_RDATA : rat := std_nat(44, ADB);       -- 0x160
+	constant R_DBG_FP_RDATA_RDY : rat := std_nat(45, ADB);   -- 0x168
+	constant R_DBG_EXP_FLAGS : rat := std_nat(46, ADB);      -- 0x170
+	constant R_DBG_CLK_MHZ : rat := std_nat(47, ADB);        -- 0x178
+	constant R_DBG_CLKMM_MHZ : rat := std_nat(48, ADB);      -- 0x180
+	-- TODO: remove R_DBG_HW_CONFIG_[012]; R_DBG_HW_TEST_NB & R_DBG_HW_RANDOM
+	constant R_DBG_HW_CONFIG_0 : rat := std_nat(49, ADB);    -- 0x188
+	constant R_DBG_HW_CONFIG_1 : rat := std_nat(50, ADB);    -- 0x190
+	constant R_DBG_HW_CONFIG_2 : rat := std_nat(51, ADB);    -- 0x198
+	constant R_DBG_HW_TEST_NB : rat := std_nat(52, ADB);     -- 0x1a0
+	constant R_DBG_HW_RANDOM : rat := std_nat(53, ADB);      -- 0x1a8
+	-- reserved                                              -- 0x1b0...0x1f8
+	-- end of ECC registers/>
 
 	-- Register bank of pseudo TRNG device (external to the IP), if any.
 	-- Write-only registers
@@ -192,21 +202,6 @@ package ecc_software is
 	constant TRIG_LSB : natural := 0;
 	constant TRIG_MSB : natural := 31;
 
-	-- bit positions in W_DBG_TRNG_CTRL register
-	-- In debug mode software must clear bit 'RAW_PULL_PP_DISABLE'
-	-- to enable random generation.
-	constant DBG_TRNG_CTRL_POSTPROC_DISABLE : natural := 0;
-	constant DBG_TRNG_CTRL_RAW_RESET : natural := 1;
-	constant DBG_TRNG_CTRL_IRN_RESET : natural := 2;
-	constant DBG_TRNG_CTRL_RAW_READ : natural := 4;
-	constant DBG_TRNG_CTRL_RAW_ADDR_LSB : natural := 8;
-	constant DBG_TRNG_CTRL_RAW_ADDR_MSB : natural := 27;
-	-- to allow software to read the content of raw random FIFO
-	constant DBG_TRNG_CTRL_RAW_DISABLE_FIFO_READ_PORT : natural := 28;
-	constant DBG_TRNG_CTRL_COMPLETE_BYPASS : natural := 29;
-	constant DBG_TRNG_CTRL_COMPLETE_BYPASS_BIT : natural := 30;
-	constant DBG_TRNG_CTRL_NNRND_DETERMINISTIC : natural := 31;
-
 	-- bit positions in W_DBG_TRNG_CFG register
 	constant DBG_TRNG_VONM : natural := 0;
 	constant DBG_TRNG_TA_LSB : natural := 4;
@@ -214,6 +209,36 @@ package ecc_software is
 	constant DBG_TRNG_IDLE_LSB : natural := 20;
 	constant DBG_TRNG_IDLE_MSB : natural := 23;
 	constant DBG_TRNG_USE_PSEUDO : natural := 24;
+
+	-- bit positions in W_DBG_TRNG_RESET register
+	constant DBG_TRNG_RESET_RAW : natural := 0;
+	constant DBG_TRNG_RESET_IRN : natural := 4;
+
+	-- bit positions in W_DBG_TRNG_CTRL_POSTP register
+	constant DBG_TRNG_CTRL_POSTPROC_DISABLE : natural := 0;
+	-- to allow software to read the content of raw random FIFO
+	constant DBG_TRNG_CTRL_RAW_DISABLE_FIFO_READ_PORT : natural := 4;
+
+	-- bit positions in W_DBG_TRNG_CTRL_BYPASS register
+	constant DBG_TRNG_CTRL_COMPLETE_BYPASS : natural := 0;
+	constant DBG_TRNG_CTRL_COMPLETE_BYPASS_BIT : natural := 4;
+
+	-- bit positions in W_DBG_TRNG_CTRL_NNRND register
+	constant DBG_TRNG_CTRL_NNRND_DETERMINISTIC : natural := 0;
+
+	-- bit positions in W_DBG_TRNG_CTRL_DIAG register
+	constant DBG_TRNG_CTRL_DIAG_SELECT_MSB : natural := 2;
+	constant DBG_TRNG_CTRL_DIAG_SELECT_LSB : natural := 0;
+	constant DBG_TRNG_CTRL_DIAG_AXI : natural := 0;
+	constant DBG_TRNG_CTRL_DIAG_EFP : natural := 1;
+	constant DBG_TRNG_CTRL_DIAG_CRV : natural := 2;
+	constant DBG_TRNG_CTRL_DIAG_SHF : natural := 3;
+	constant DBG_TRNG_CTRL_DIAG_RAW : natural := 4;
+
+	-- bit positions in W_DBG_TRNG_RAW_READ register
+	constant DBG_TRNG_CTRL_RAW_READ : natural := 0;
+	constant DBG_TRNG_CTRL_RAW_ADDR_LSB : natural := 4;
+	constant DBG_TRNG_CTRL_RAW_ADDR_MSB : natural := 23;
 
 	-- bit positions in W_DBG_CFG_XYSHUF register
 	constant XYSHF_EN : natural := 0;
@@ -281,7 +306,8 @@ package ecc_software is
 	constant HW_VERSION_PATCH_MSB : natural := 15;
 
 	-- bit positions in R_DBG_CAPABILITIES_1 & R_DBG_CAPABILITIES_2
-	constant DBG_CAP_SPLIT : natural := 16;
+	constant DBG_CAP_SPLIT_1 : natural := 16;
+	constant DBG_CAP_SPLIT_2 : natural := 20;
 
 	-- bit positions in R_DBG_STATUS register
 	constant DBG_STATUS_HALTED : natural := 0;
@@ -295,17 +321,56 @@ package ecc_software is
 	constant DBG_STATUS_STATE_LSB : natural := 28;
 	constant DBG_STATUS_STATE_MSB : natural := 31;
 
-	-- bit flags in R_DBG_FLAGS register
-	constant FLAGS_P_NOT_SET : natural := 0;
-	constant FLAGS_P_NOT_SET_MTY : natural := 1;
-	constant FLAGS_A_NOT_SET : natural := 2;
-	constant FLAGS_A_NOT_SET_MTY : natural := 3;
-	constant FLAGS_B_NOT_SET : natural := 4;
-	constant FLAGS_K_NOT_SET : natural := 5;
-	constant FLAGS_NNDYN_NOERR : natural := 6;
-	constant FLAGS_NOT_BLN_OR_Q_NOT_SET : natural := 7;
+	-- bit positions in R_DBG_TIME register
+	constant DBG_TIME_MSB : natural := 31;
+	constant DBG_TIME_LSB : natural := 0;
+
+	-- bit positions in R_DBG_TRNG_RAWDUR register
+	constant DBG_RAWDUR_MSB : natural := 31;
+	constant DBG_RAWDUR_LSB : natural := 0;
+
+	-- bit positions in R_DBG_TRNG_STATUS register
+	constant DBG_TRNG_STATUS_RAW_FULL : natural := 0;
+	constant DBG_TRNG_STATUS_RAW_WADDR_MSB : natural := 31;
+	constant DBG_TRNG_STATUS_RAW_WADDR_LSB : natural := 8;
+
+	-- bit positions in R_DBG_TRNG_RAW_DATA register
+	constant DBG_TRNG_RAW_BIT_POS : natural := 0;
+
+	-- bit positions in R_DBG_TRNG_DIAG_MIN register
+	constant R_DBG_TRNG_DIAG_MIN_MSB : natural := 31;
+	constant R_DBG_TRNG_DIAG_MIN_LSB : natural := 0;
+
+	-- bit positions in R_DBG_TRNG_DIAG_MAX register
+	constant R_DBG_TRNG_DIAG_MAX_MSB : natural := 31;
+	constant R_DBG_TRNG_DIAG_MAX_LSB : natural := 0;
+
+	-- bit positions in R_DBG_TRNG_DIAG_OK register
+	constant R_DBG_TRNG_DIAG_OK_MSB : natural := 31;
+	constant R_DBG_TRNG_DIAG_OK_LSB : natural := 0;
+
+	-- bit positions in R_DBG_TRNG_DIAG_STARV register
+	constant R_DBG_TRNG_DIAG_ST_MSB : natural := 31;
+	constant R_DBG_TRNG_DIAG_ST_LSB : natural := 0;
+
+	-- bit positions in R_DBG_FP_RDATA register
+	constant R_DBG_FP_RDATA_MSB : natural := ww - 1;
+	constant R_DBG_FP_RDATA_LSB : natural := 0;
 
 	-- bit positions in R_DBG_FP_RDATA_RDY
 	constant DBG_FP_RDATA_IS_RDY : natural := 0;
+
+	-- bit positions in R_DBG_EXP_FLAGS register
+	--   (this register will be removed)
+
+	-- bit positions in R_DBG_CLK_MHZ register
+	constant R_DBG_CLK_MHZ_PRECNT :  natural := 16;
+	constant R_DBG_CLK_MHZ_MSB : natural := 31;
+	constant R_DBG_CLK_MHZ_LSB : natural := 0;
+
+	-- bit positions in R_DBG_CLKMM_MHZ register
+	constant R_DBG_CLKMM_MHZ_PRECNT :  natural := 16;
+	constant R_DBG_CLKMM_MHZ_MSB : natural := 31;
+	constant R_DBG_CLKMM_MHZ_LSB : natural := 0;
 
 end package ecc_software;

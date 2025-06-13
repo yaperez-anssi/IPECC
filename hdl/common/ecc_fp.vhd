@@ -74,6 +74,8 @@ entity ecc_fp is
 		token_generating : in std_logic;
 		-- debug feature (ecc_axi)
 		dbgtrngnnrnddet : in std_logic;
+		dbgtrngcompletebypass : in std_logic;
+		dbgtrngcompletebypassbit : in std_logic;
 		-- debug feature (ecc_scalar)
 		dbghalted : in std_logic
 		-- pragma translate_off
@@ -127,6 +129,11 @@ architecture rtl of ecc_fp is
 
 	type mm_push_type is record
 		do : std_logic;
+		-- Register 'busy' below (actually r.mm.push.busy) statys asserted high
+		-- from the moment/clock-cycle we start pushing operand data to one of
+		-- the Mongomery multiplier (see (s148) below) till the moment/clock-cycle
+		-- we have reading back the last limb of REDC result from it
+		-- (see (s11) below).
 		busy : std_logic;
 		oneavail : std_logic;
 		id0 : integer range 0 to nbmult - 1;
@@ -143,10 +150,7 @@ architecture rtl of ecc_fp is
 		-- for 'xypushsh' some bits will be pruned by syn. depending on shuffle
 		xypushsh : std_logic_vector(readlat - 1 downto 0);
 		-- resync registers
-		rdy0, rdy1, rdy : std_logic;
 		go_ack0, go_ack1, go_ack : std_logic;
-		xen_ack0, xen_ack1, xen_ack : std_logic;
-		yen_ack0, yen_ack1, yen_ack : std_logic;
 	end record;
 
 	type mm_pull_type is record
@@ -160,19 +164,21 @@ architecture rtl of ecc_fp is
 		shend : std_logic_vector(sramlat + 1 downto 0);
 		zrencnt : unsigned(log2(w - 1) - 1 downto 0);
 		zcntonce : std_logic;
-		-- resync registers
-		irq0, irq1, irq : std_logic;
-		zren_ack0, zren_ack1, zren_ack : std_logic;
 		z0, z1, z : std_logic;
 	end record;
 
 	type mm_type is record
+		-- One of the bit of the 'busy' reg below is asserted high from the
+		-- moment/clock-cycle we start pushing operand data to the corresponding
+		-- Mongomery multiplier (see (s146) below) till the moment/clock-cycle
+		-- we have finished reading back the last limb of REDC result from it
+		-- (see (s11) below). See also (s147)
 		busy : std_logic_vector(0 to nbmult - 1); -- 1 bit for each mm_ndsp comp.
 		push : mm_push_type;
 		pull : mm_pull_type;
 		mmi : mmi_type;
 		-- resynchronization registers of mmo bus input signals
-		mmo0, mmo1, mmo2, mmo3 : mmo_type;
+		mmo0, mmo1, mmo2 : mmo_type;
 		irq_prev : std_logic_vector(nbmult - 1 downto 0);
 		nb_pending_redc : unsigned(log2(nbmult) - 1 downto 0);
 		pending_redc : std_logic;
@@ -329,7 +335,7 @@ architecture rtl of ecc_fp is
 		done : std_logic;
 		ctrl : ctrl_type;
 		-- the 5 in the definition of fields op[abc] below accounts for the
-		-- size of ecc_fp_dram memory, namely 32 big-numbers
+		-- size of ecc_fp_dram memory, namely 32 large numbers
 		opa : std_logic_vector(FP_ADDR - 1 downto 0);
 		opb : std_logic_vector(FP_ADDR - 1 downto 0);
 		opc : std_logic_vector(FP_ADDR - 1 downto 0);
@@ -691,6 +697,7 @@ begin
 	               opi, mmo, fprdata, xwe, xaddr, xwdata, xre, initkp,
 	               compkp, compcstmty, comppop, trngdata, trngvalid,
 	               dbgtrngnnrnddet, dbghalted,
+	               dbgtrngcompletebypass, dbgtrngcompletebypassbit,
 	               nndyn_nnrnd_mask, nndyn_nnrnd_zerowm1, nndyn_wm1,
 								 nndyn_2wm1, swrst, token_generating)
 		variable v : reg_type;
@@ -705,12 +712,13 @@ begin
 
 		v.done := '0'; -- (s7), see (s31), (s137), (s138), (s139), (s140), (s8)
 
-		-- resynchronization of mmo bus input signals
+		-- Resynchronization of mmo bus input signals
+		-- (regarding r.mm.mmo[0-2] signals below, only the rdy, irq & go_ack
+		-- fields are actually used and will be inferred as registers - the 'z'
+		-- field is not and shall be trimmed by synthesizer).
 		v.mm.mmo0 := mmo;
 		v.mm.mmo1 := r.mm.mmo0;
 		v.mm.mmo2 := r.mm.mmo1;
-		v.mm.mmo3 := r.mm.mmo2;
-
 
 		-- -----------------------------------------------------------
 		--    Continously (at each cycle) gather information about
@@ -742,7 +750,7 @@ begin
 		--                    r.mm.pull.oneavail
 		--                  & r.mm.pull.done_id0)
 		-- -----------------------------------------------------------
-		-- clean detection of irq raising calls for comparison of the
+		-- Clean detection of irq raising calls for comparison of the
 		-- current value of irq signal value with the one at previous cycle
 		if not async then -- statically resolved by syntheiszer
 			for i in 0 to nbmult - 1 loop
@@ -754,30 +762,37 @@ begin
 			end loop;
 		end if;
 		for i in 0 to nbmult - 1 loop
-			-- mind that in the async = FALSE case the irq is asserted only 1 cycle
+			-- Mind that in the async = FALSE case the irq is asserted only 1 cycle
 			-- by Montgomery multipliers
-			if ((not async) and mmo(i).irq = '1' and r.mm.irq_prev(i) = '0') -- (s130)
-			  or (async and r.mm.mmo2(i).irq = '1' and r.mm.irq_prev(i) = '0')
-				-- testing the previous value .irq_prev in (s130) is particularly
+			if ((not async) -- statically resolved by synthesizer
+					and mmo(i).irq = '1' and r.mm.irq_prev(i) = '0') -- (s130)
+			  or -- statically resolved by synthesizer
+					(async and r.mm.mmo2(i).irq = '1'
+					and r.mm.irq_prev(i) = '0') -- (s130)
+				-- Testing the previous value .irq_prev in (s130) is particularly
 				-- important in the asynchronous case, when the clock of Montgomery
 				-- multipliers is not fast enough to ensure that their IRQ is already
 				-- lowered down by the time (s13) deasserts .done (if it is not,
 				-- then (s12) will assert .done again, which in turn will trigger
 				-- assertion of .oneavail by (s92) and that is an error)
 			then
-				-- for (s12) right down below, .done(i) will be reset low when
+				-- For (s12) right down below, .done(i) will be reset low when
 				-- pulling result back from the Montgomery multiplier is over
 				v.mm.pull.done(i) := '1'; -- (s12), bypassed by (s13)
-				-- note that the (s13) bypass of (s12) cannot accidently mask an
+				-- Note that the (s13) bypass of (s12) cannot accidently mask an
 				-- assertion of .done(i) made by (s12), because for an obvious
 				-- functionnal reason, assertion on .done(i) can only happen after
 				-- result is pulled back from the corresponding Montgomery multiplier.
 				-- If a .done(i) is reset in current cycle by (s13), the early
 				-- assertion made by (s12) can only concern another value j different
 				-- from i
-				v.mm.mmi(i).irq_ack := '1';
+				-- Assertion of .irq_ack
+				if async then -- statically resolved by synthesizer
+					v.mm.mmi(i).irq_ack := '1';
+				end if;
 			end if;
 			if async and r.mm.mmi(i).irq_ack = '1' and r.mm.mmo2(i).irq = '0' then
+				-- Deassertion of .irq_ack
 				v.mm.mmi(i).irq_ack := '0'; -- acknowledge was seen, lower it down
 			end if;
 		end loop;
@@ -959,11 +974,11 @@ begin
 			-- if a multiplication operation (REDC) is pending we must check for
 			-- availability of at least one Montgomery multiplier before we
 			-- actually start processing the operation (that's the reason for
-			-- condition r.mm.push.oneavail = 1 below)
+			-- condition 'r.mm.push.oneavail' = 1 below)
 			-- we must also ensure that the logic pulling result from the Montgomery
 			-- multipliers when one has completed its computation is not about
-			-- to start doing so (that's the reason for the part 'r.mm.pull.pulling
-			-- and r.mm.pull.oneavail = 0' below)
+			-- to start doing so (that's the reason for the part 'r.trypull' = 0 and
+			-- 'r.mm.pull.pulling' = 0 below)
 			if r.mm.push.oneavail = '1' -- (s123) one Montgomery multiplier is avail.
 				and r.trypull = '0' -- (s133), see (s134)
 				and r.mm.pull.pulling = '0' -- (s136) not currently pulling REDC data
@@ -974,7 +989,7 @@ begin
 				-- pragma translate_on
 				-- (s34) means that address will now be driven by r.opa, see (s17)
 				v.fpram.raddrmuxsel := "00"; -- (s34)
-				v.mm.push.busy := '1';
+				v.mm.push.busy := '1'; -- (s148)
 				-- increment the nb of FPREDC computations that are currently posted/
 				-- pending to the Montgomery multipliers.
 				-- Note that there cannot be a simultaneous decrease of register
@@ -988,7 +1003,7 @@ begin
 				v.mm.pending_redc := '1';
 				-- book the multiplier so that selection algo in (s0) above
 				-- does exclude it from its arbitration
-				v.mm.busy(r.mm.push.id0) := '1';
+				v.mm.busy(r.mm.push.id0) := '1'; -- (s146)
 				v.mm.push.id1 := r.mm.push.id0; -- (s5) see also (s33)
 				-- we register the value of opc into 'r.mm.push.opc(r.mm.push.id0)'
 				-- (this is the address where to store the result of multiplica-
@@ -1086,14 +1101,25 @@ begin
 			v.mm.mmi(r.mm.push.id1).yen := '1';
 		end if;
 
-		for i in 0 to nbmult - 1 loop
-			v.mm.mmi(i).go := '0'; -- (s6)
-		end loop;
+		-- Deassertion of r.mm.mmi().go
+		--   - in the 'not async' case (synchronous) systematically after assertion
+		--     (hence assertion of .go lasts only 1 cycle)
+		--   - in the 'async' case (asynchronous) only when matching go_ack input
+		--     has been asserted.
+		if not async then -- statically resolved by synthesizer
+			for i in 0 to nbmult - 1 loop
+				v.mm.mmi(i).go := '0'; -- (s6)
+			end loop;
+		else -- statically resolved by synthesizer
+			if r.mm.mmi(r.mm.push.id1).go = '1' and r.mm.mmo2(r.mm.push.id1).go_ack = '1' then
+				v.mm.mmi(r.mm.push.id1).go := '0';
+			end if;
+		end if;
 		-- give selected multiplier a go so that Montgomery multiplication
 		-- is actually started
 		if r.mm.push.gosh(0) = '1' then
 			v.mm.mmi(r.mm.push.id1).yen := '0';
-			v.mm.mmi(r.mm.push.id1).go := '1'; -- asserted 1 cycle thx to (s6)
+			v.mm.mmi(r.mm.push.id1).go := '1'; -- 1 cycle thx to (s6) in !async case
 		end if;
 
 		-- Data-path feeding X & Y (input operands) to selected Montgomery
@@ -1111,15 +1137,20 @@ begin
 			v.mm.mmi(r.mm.push.id1).xy := fprdata; --r.fpram.fprdata;
 		end if;
 
-		if r.mm.push.gosh(0) = '1' then
-			-- signal end of operation to ecc_curve, along with
+		if ((not async) -- statically resolved by synthesizer
+					and r.mm.push.gosh(0) = '1' and r.mm.push.gosh(1) = '0')
+		  or (async -- statically resolved by synthesizer
+					and r.mm.mmi(r.mm.push.id1).go = '1'
+					and r.mm.mmo2(r.mm.push.id1).go_ack = '1')
+		then
+			-- Signal end of operation to ecc_curve, along with
 			-- availability for accepting a new operation
 			-- (ecc_curve does not need the multiplication to be completed
 			-- to present us with a new operation, no more than we need the
 			-- multiplication to be completed to accept any new operation -
 			-- multiplication is handled asynchronously, which means that
 			-- writing its result in memory will be done many cycles later,
-			-- with execution of other instructions taking place in-between)
+			-- with execution of other instructions taking place in-between).
 			-- The barrier flag in instructions' opcode is precisely made
 			-- to allow execution synchronization from a higher level point
 			-- of view
@@ -1127,13 +1158,13 @@ begin
 			v.active := '0';
 			-- pragma translate_on
 			v.ctrl.redc := '0';
-			v.mm.push.busy := '0';
-			-- note that r.mm.busy(r.mm.push.id1) is not modified (reset)
+			v.mm.push.busy := '0'; -- (s147)
+			-- Note that r.mm.busy(r.mm.push.id1) is not modified (reset)
 			-- so that selection algo in (s0) won't select the multiplier
 			-- again (this should not happen before we have pulled back
 			-- the result of multiplication from it - see (s11))
 
-			-- we could reassert r.rdy but let's give priority to pulling
+			-- We could reassert r.rdy but let's give priority to pulling
 		 	-- data back from Montgomery multipliers	
 			v.trypull := '1'; -- (s128), same remark as for (s127)
 		end if;
@@ -1854,7 +1885,7 @@ begin
 			v.active := '1';
 			-- pragma translate_on
 			v.rnd.busy := '1';
-			v.rnd.trngrdy := '1'; -- to pull random numbers
+			v.rnd.trngrdy := '1'; -- to start pulling random numbers
 			v.rnd.opccnt := nndyn_wm1;
 			v.fpram.waddrmuxsel := "100"; -- (s141), see (s20)
 			v.rnd.zero := '1';
@@ -1863,16 +1894,25 @@ begin
 
 		-- actual transfer of random words into ecc_fp_dram memory
 		-- (taking into account the possible masking of the most significant
-		-- ww-bit word, so as to guarantee that the size of the random big number
-		-- is nn (or nn_dyn) bits
+		-- ww-bit word, so as to guarantee that the size of the random large
+		-- number is nn (or nn_dyn) bits)
 		v.rnd.write := '0'; -- (s116)
 		if r.rnd.busy = '1' then
-			if r.rnd.trngrdy = '1' -- (s107)
-				and (trngvalid = '1' or (debug and dbgtrngnnrnddet = '1'))
-			then
-				v.rnd.write := '1';
+			if r.rnd.trngrdy = '1' and trngvalid = '1' then -- (s107)
+				v.rnd.trngrdy := '0'; -- (s143)
+				v.rnd.write := '1'; -- stays asserted only 1 cycle thx to (s116)
 				if r.rnd.masked = '0' then
-					v.rnd.data := trngdata(ww - 1 downto 0);
+					if debug then
+						if dbgtrngcompletebypass = '1' then
+							v.rnd.data := (others => dbgtrngcompletebypassbit);
+						elsif dbgtrngnnrnddet = '1' then
+							v.rnd.data := (others => '1');
+						else
+							v.rnd.data := trngdata(ww - 1 downto 0);
+						end if;
+					elsif dbgtrngnnrnddet = '0' then
+						v.rnd.data := trngdata(ww - 1 downto 0);
+					end if;
 				elsif r.rnd.masked = '1' then
 					-- this is an NNRNDm instruction that is being executed
 					if r.rnd.opccnt = to_unsigned(0, log2(w - 1)) then
@@ -1884,11 +1924,18 @@ begin
 							v.rnd.data := (others => '0');
 						elsif nndyn_nnrnd_zerowm1 = '0' then
 							-- last ww-bit word must be masked w/ nndyn_nnrnd_mask
-							if dbgtrngnnrnddet = '0' then
+							if debug then -- statically resolved by synthesizer
+								if dbgtrngcompletebypass = '1' then
+									v.rnd.data := (others => dbgtrngcompletebypassbit);
+									v.rnd.data := v.rnd.data and nndyn_nnrnd_mask;
+								elsif dbgtrngnnrnddet = '1' then
+									v.rnd.data := (others => '1'); -- useless but for readability
+									v.rnd.data := v.rnd.data and nndyn_nnrnd_mask;
+								else
+									v.rnd.data := trngdata(ww - 1 downto 0) and nndyn_nnrnd_mask;
+								end if;
+							else
 								v.rnd.data := trngdata(ww - 1 downto 0) and nndyn_nnrnd_mask;
-							elsif dbgtrngnnrnddet = '1' then
-								v.rnd.data := CST_REPLACE_TRNG_BY_ONES and
-									nndyn_nnrnd_mask; -- set 1 where mask bits are 1
 							end if;
 						end if;
 					elsif r.rnd.opccnt = to_unsigned(1, log2(w - 1)) then
@@ -1898,28 +1945,47 @@ begin
 							-- (s102) if most significant ww-bit word must be set to 0
 							-- (see (s101) above) then it means mask 'nndyn_nnrnd_mask'
 							-- is to be applied to the one before the last, i.e now
-							if dbgtrngnnrnddet = '0' then
+							if debug then -- statically resolved by synthesizer
+								if dbgtrngcompletebypass = '1' then
+									v.rnd.data := (others => dbgtrngcompletebypassbit);
+									v.rnd.data := v.rnd.data and nndyn_nnrnd_mask;
+								elsif dbgtrngnnrnddet = '1' then
+									v.rnd.data := (others => '1'); -- useless but for readability
+									v.rnd.data := v.rnd.data and nndyn_nnrnd_mask;
+								else
+									v.rnd.data := trngdata(ww - 1 downto 0) and nndyn_nnrnd_mask;
+								end if;
+							else
 								v.rnd.data := trngdata(ww - 1 downto 0) and nndyn_nnrnd_mask;
-							elsif dbgtrngnnrnddet = '1' then
-								v.rnd.data := CST_REPLACE_TRNG_BY_ONES and
-									nndyn_nnrnd_mask; -- set 1 where mask bits are 1
 							end if;
 						elsif nndyn_nnrnd_zerowm1 = '0' then
 							-- if last word is not to be set to 0 (see (s101) above)
 							-- then the next-to-the-last word is to be handled as any
 							-- other one (i.e no mask, as in the nominal case)
-							if dbgtrngnnrnddet = '0' then
+							if debug then -- statically resolved by synthesizer
+								if dbgtrngcompletebypass = '1' then
+									v.rnd.data := (others => dbgtrngcompletebypassbit);
+								elsif dbgtrngnnrnddet = '1' then
+									v.rnd.data := (others =>'1');
+								else
+									v.rnd.data := trngdata(ww - 1 downto 0);
+								end if;
+							else
 								v.rnd.data := trngdata(ww - 1 downto 0);
-							elsif dbgtrngnnrnddet = '1' then
-								v.rnd.data := CST_REPLACE_TRNG_BY_ONES;
 							end if;
 						end if;
 					else
 						-- nominal case (r.rnd.opccnt modulo w is neither 0 nor 1)
-						if dbgtrngnnrnddet = '0' then
+						if debug then
+							if dbgtrngcompletebypass = '1' then
+								v.rnd.data := (others => dbgtrngcompletebypassbit);
+							elsif dbgtrngnnrnddet = '1' then
+								v.rnd.data := (others => '1');
+							else
+								v.rnd.data := trngdata(ww - 1 downto 0);
+							end if;
+						else
 							v.rnd.data := trngdata(ww - 1 downto 0);
-						elsif dbgtrngnnrnddet = '1' then
-							v.rnd.data := CST_REPLACE_TRNG_BY_ONES;
 						end if;
 					end if; -- r.rnd.opccnt
 				end if; -- r.rnd.masked
@@ -1929,7 +1995,7 @@ begin
 				-- to transfer the random ww-bit data word into the adequate
 				-- shift-register
 				if r.rnd.shift = '1' then
-					v.rnd.trngrdy := '0'; -- (s108)
+					--v.rnd.trngrdy := '0'; -- useless, already deasserted by (s143)
 					v.rnd.doshx(to_integer(r.rnd.shregid)) := '1'; -- (s112)
 					v.rnd.dosh := '1';
 					v.rnd.doshcnt := to_unsigned(ww - 1, log2(ww - 1));
@@ -1973,9 +2039,9 @@ begin
 					if r.rnd.shiftf = '0' then
 						if r.rnd.burstdone = '1' then -- (s105)
 							v.rnd.last := '1';
-							--v.rnd.trngrdy := '0'; useless, already deasserted thx to (s108)
+							--v.rnd.trngrdy := '0'; useless, already deasserted by (s143)
 						elsif r.rnd.burstdone = '0' then
-							-- (s106) will re-authorize TRNG incoming data
+							-- (s106) just below will re-authorize TRNG incoming data
 							v.rnd.trngrdy := '1'; -- (s106), see (s107) above
 						end if;
 					elsif r.rnd.shiftf = '1' then
@@ -1984,7 +2050,7 @@ begin
 								(r.rnd.doshxcnt(0)'range => '0')
 							then
 								v.rnd.last := '1';
-								--v.rnd.trngrdy := '0'; useless, already deass. thx to (s108)
+								--v.rnd.trngrdy := '0'; useless, already deasserted by (s143)
 							else
 								-- (s113) is a bypass of (s109)
 								v.rnd.doshx(to_integer(r.rnd.shregid)) := '1'; -- (s113)
@@ -1992,8 +2058,8 @@ begin
 								v.rnd.data(0) := '0'; -- nasty, but works
 							end if;
 						elsif r.rnd.burstdone = '0' then
-							-- (s106) will re-authorize TRNG incoming data
-							v.rnd.trngrdy := '1'; -- (s106), see (s107) above
+							-- (s144) just below will re-authorize TRNG incoming data
+							v.rnd.trngrdy := '1'; -- (s144), see (s107) above
 						end if;
 					end if;  -- r.rnd.shiftf
 				--end if; -- r.rnd.shift
@@ -2020,7 +2086,7 @@ begin
 				v.rnd.doshx := (others => '0'); -- (s115)
 				v.rnd.finalizesh := '0';
 				v.rnd.last := '1';
-				--v.rnd.trngrdy := '0'; useless, already deasserted thx to (s108)
+				--v.rnd.trngrdy := '0'; useless, already deasserted by (s143)
 			end if;
 		end if;
 
@@ -2035,12 +2101,16 @@ begin
 				if r.rnd.shift = '0' then
 					v.rnd.last := '1';
 					v.rnd.trngrdy := '0';
+					--v.rnd.write := '0'; -- useless due to (s116)
 				elsif r.rnd.shift = '1' then
 					-- end of write-bursts is handled by (s103) above, just post info
 					-- here that the burst is over so that (s105) can later detect &
 					-- handle it
 					v.rnd.burstdone := '1';
 				end if;
+			elsif r.rnd.shift = '0' then
+				-- (s145) just below will re-authorize TRNG incoming data
+				v.rnd.trngrdy := '1'; -- (s145), see (s107) above
 			end if;
 		end if;
 

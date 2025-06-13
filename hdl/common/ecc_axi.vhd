@@ -141,9 +141,6 @@ entity ecc_axi is
 		trngrdy : out std_logic;
 		trngdata : in std_logic_vector(ww - 1 downto 0);
 		trngaxiirncount : in std_logic_vector(log2(irn_fifo_size_axi) - 1 downto 0);
-		trngefpirncount : in std_logic_vector(log2(irn_fifo_size_fp) - 1 downto 0);
-		trngcurirncount : in std_logic_vector(log2(irn_fifo_size_curve)-1 downto 0);
-		trngshfirncount : in std_logic_vector(log2(irn_fifo_size_sh) - 1 downto 0);
 		-- broadcast interface to Montgomery multipliers
 		pen : out std_logic;
 		nndyn_mask : out std_logic_vector(ww - 1 downto 0);
@@ -167,7 +164,6 @@ entity ecc_axi is
 		dbgpgmstate : in std_logic_vector(3 downto 0);
 		dbgnbbits : in std_logic_vector(15 downto 0);
 		dbgjoyebit : in std_logic_vector(log2(2*nn - 1) - 1 downto 0);
-		dbgnbstarvrndxyshuf : in std_logic_vector(15 downto 0);
 		-- debug features (interface with ecc_curve)
 		dbgbreakpoints : out breakpoints_type;
 		dbgnbopcodes : out std_logic_vector(15 downto 0);
@@ -196,23 +192,30 @@ entity ecc_axi is
 		dbgtrngrawfiforeaddis : out std_logic;
 		dbgtrngcompletebypass : out std_logic;
 		dbgtrngcompletebypassbit : out std_logic;
-		dbgtrngrawduration : in unsigned(31 downto 0);
+		dbgtrngrawduration : in unsigned(DBG_RAWDUR_MSB downto DBG_RAWDUR_LSB);
 		dbgtrngvonneuman : out std_logic;
 		dbgtrngidletime : out unsigned(3 downto 0);
+		dbgtrngefpirncount : in std_logic_vector(log2(irn_fifo_size_efp) - 1 downto 0);
+		dbgtrngcrvirncount : in std_logic_vector(log2(irn_fifo_size_crv) - 1 downto 0);
+		dbgtrngshfirncount : in std_logic_vector(log2(irn_fifo_size_shf) - 1 downto 0);
+		dbgtrngrawcount : in std_logic_vector(log2(raw_ram_size) - 1 downto 0);
 		dbgtrngusepseudosource : out std_logic;
 		dbgtrngrawpullppdis : out std_logic;
 		-- handshake signals between entropy server ecc_trng
 		-- and the different clients (for debug diagnostics)
 		dbgtrngaxirdy : in std_logic;
 		dbgtrngaxivalid : in std_logic;
-		dbgtrngfprdy : in std_logic;
-		dbgtrngfpvalid : in std_logic;
+		dbgtrngefprdy : in std_logic;
+		dbgtrngefpvalid : in std_logic;
 		dbgtrngcrvrdy : in std_logic;
 		dbgtrngcrvvalid : in std_logic;
-		dbgtrngshrdy : in std_logic;
-		dbgtrngshvalid : in std_logic;
+		dbgtrngshfrdy : in std_logic;
+		dbgtrngshfvalid : in std_logic;
+		dbgtrngrawrdy : in std_logic;
+		dbgtrngrawvalid : in std_logic;
 		-- debug feature (off-chip trigger)
-		dbgtrigger : out std_logic
+		dbgtrigger : out std_logic;
+		clkmm : in std_logic
 	);
 end entity ecc_axi;
 
@@ -467,6 +470,37 @@ architecture rtl of ecc_axi is
 		idletime : unsigned(3 downto 0);
 		usepseudo : std_logic;
 		rawpullppdis : std_logic;
+		--/For diagid: 0 selects axi, 1 efp, 2 crv, 3 shf, others select raw
+		diagid : std_logic_vector(
+			DBG_TRNG_CTRL_DIAG_SELECT_MSB downto DBG_TRNG_CTRL_DIAG_SELECT_LSB);
+		--/
+		rawmin : unsigned(log2(raw_ram_size) - 1 downto 0);
+		rawmax : unsigned(log2(raw_ram_size) - 1 downto 0);
+		rawok : unsigned(31 downto 0);
+		rawstarv : unsigned(31 downto 0);
+		aximin : unsigned(log2(irn_fifo_size_axi) - 1 downto 0);
+		aximax : unsigned(log2(irn_fifo_size_axi) - 1 downto 0);
+		axiok : unsigned(31 downto 0);
+		axistarv : unsigned(31 downto 0);
+		efpmin : unsigned(log2(irn_fifo_size_efp) - 1 downto 0);
+		efpmax : unsigned(log2(irn_fifo_size_efp) - 1 downto 0);
+		efpok : unsigned(31 downto 0);
+		efpstarv : unsigned(31 downto 0);
+		crvmin : unsigned(log2(irn_fifo_size_crv) - 1 downto 0);
+		crvmax : unsigned(log2(irn_fifo_size_crv) - 1 downto 0);
+		crvok : unsigned(31 downto 0);
+		crvstarv : unsigned(31 downto 0);
+		shfmin : unsigned(log2(irn_fifo_size_shf) - 1 downto 0);
+		shfmax : unsigned(log2(irn_fifo_size_shf) - 1 downto 0);
+		shfok : unsigned(31 downto 0);
+		shfstarv : unsigned(31 downto 0);
+		-- pragma translate_off
+		axi100 : integer;
+		efp100 : integer;
+		crv100 : integer;
+		shf100 : integer;
+		raw100 : integer;
+		-- pragma translate_on
 	end record;
 
 	-- debug features
@@ -474,7 +508,7 @@ architecture rtl of ecc_axi is
 		iwaddr : std_logic_vector(IRAM_ADDR_SZ - 1 downto 0);
 		iwdata : std_logic_vector(OPCODE_SZ - 1 downto 0);
 		iwe : std_logic;
-		counter : unsigned(31 downto 0);
+		counter : unsigned(DBG_TIME_MSB downto DBG_TIME_LSB);
 		idatabeat : std_logic;
 		trigger : std_logic;
 		trigup : std_logic_vector(31 downto 0);
@@ -492,20 +526,11 @@ architecture rtl of ecc_axi is
 		readsh : std_logic_vector(readlat downto 0);
 		noxyshuf : std_logic;
 		noaxirnd : std_logic;
-		trngaxistarv : unsigned(31 downto 0);
-		trngaxiok : unsigned(31 downto 0);
-		trngfpstarv : unsigned(31 downto 0);
-		trngfpok : unsigned(31 downto 0);
-		trngcrvstarv : unsigned(31 downto 0);
-		trngcrvok : unsigned(31 downto 0);
-		trngshstarv : unsigned(31 downto 0);
-		trngshok : unsigned(31 downto 0);
-		-- pragma translate_off
-		trngaxi100 : integer;
-		trngfp100 : integer;
-		trngcrv100 : integer;
-		trngsh100 : integer;
-		-- pragma translate_on
+		clkcnt0 : unsigned(R_DBG_CLK_MHZ_PRECNT - 1 downto 0);
+		clkcnt : unsigned(31 downto 0);
+		clkmmcnt_resync0 : unsigned(31 downto 0);
+		clkmmcnt_resync1 : unsigned(31 downto 0);
+		clkmmcnt : unsigned(31 downto 0);
 	end record;
 
 	-- all registers
@@ -547,7 +572,26 @@ architecture rtl of ecc_axi is
 	signal rkx_on : std_logic;
 	-- pragma translate_on
 
+	-- in clkmm clock domain (debug only)
+	signal r_debug_clkmmcnt0 : unsigned(R_DBG_CLKMM_MHZ_PRECNT - 1 downto 0);
+	signal r_debug_clkmmcnt : unsigned(31 downto 0);
+
 begin
+
+	-- in clkmm clock domain (debug only)
+	process(clkmm) is
+		variable vtmp : unsigned(R_DBG_CLKMM_MHZ_PRECNT - 1 downto 0);
+	begin
+		if clkmm'event and clkmm = '1' then
+			vtmp := r_debug_clkmmcnt0 - 1;
+			r_debug_clkmmcnt0 <= vtmp;
+			if r_debug_clkmmcnt0(R_DBG_CLKMM_MHZ_PRECNT - 1) = '0'
+				and vtmp(R_DBG_CLKMM_MHZ_PRECNT - 1) = '1'
+			then
+				r_debug_clkmmcnt <= r_debug_clkmmcnt + 1;
+			end if;
+		end if;
+	end process;
 
 	-- (s35), see (s31)
 	assert(log2(nn) <= C_S_AXI_DATA_WIDTH)
@@ -594,26 +638,27 @@ begin
 			severity FAILURE;
 
 	-- (s144), see (s145)
-	assert ( (not debug) or ww <= C_S_AXI_DATA_WIDTH )
+	assert ((not debug) or ww <= C_S_AXI_DATA_WIDTH)
 		report "In debug mode ww must be smaller than or equal to "
 		     & "C_S_AXI_DATA_WIDTH."
 			severity FAILURE;
 
 	-- (s146), see (s147)
-	assert (nbopcodes <= 2**DBG_CAP_SPLIT)
-		report "In debug mode nbopcodes must be smaller than or equal to 65536."
+	assert ((not debug) or (nbopcodes <= 2**DBG_CAP_SPLIT_1))
+		report "In debug mode nbopcodes must be smaller than or equal to 2**"
+				 & integer'image(DBG_CAP_SPLIT_1) & "."
 			severity FAILURE;
 
 	-- (s148), see (s149)
-	assert ((not debug) or (log2(OPCODE_SZ) <= 32 - DBG_CAP_SPLIT))
+	assert ((not debug) or (log2(OPCODE_SZ) <= 32 - DBG_CAP_SPLIT_1))
 		report "In debug mode OPCODE_SZ must be less than or equal to 2**"
-		     & integer'image(32 - DBG_CAP_SPLIT) & "."
+		     & integer'image(32 - DBG_CAP_SPLIT_1) & "."
 			severity FAILURE;
 
 	-- (s150), see (s151)
-	assert (log2(raw_ram_size) <= DBG_CAP_SPLIT)
+	assert ((not debug) or (log2(raw_ram_size) <= DBG_CAP_SPLIT_2))
 		report "In debug mode bit-width of parameter raw_ram_size must not "
-		     & "exceed " & integer'image(DBG_CAP_SPLIT) & "."
+		     & "exceed " & integer'image(DBG_CAP_SPLIT_2) & "."
 			severity FAILURE;
 
 	-- (s152), see (s153)
@@ -643,14 +688,21 @@ begin
 			(log2(raw_ram_size) <=
 		 			(DBG_TRNG_CTRL_RAW_ADDR_MSB - DBG_TRNG_CTRL_RAW_ADDR_LSB + 1)))
 		report "The TRNG raw random FIFO is too large for its size to fit in "
-	       & "register W_DBG_TRNG_CTRL. Access to raw random data will be "
+	       & "register W_DBG_TRNG_RAW_READ. Access to raw random data will be "
 				 & "impacted (address will be truncated)."
 			severity WARNING;
 
 	-- (s264), see (s263)
-	assert ((not debug) or log2(irn_width_sh) <= 32 - DBG_CAP_SPLIT)
+	assert ((not debug) or log2(irn_width_sh) <= 32 - DBG_CAP_SPLIT_2)
 		report "In debug mode bit-width of parameter irn_width_sh must not "
-		     & "exceed " & integer'image(32 - DBG_CAP_SPLIT) & "."
+		     & "exceed " & integer'image(32 - DBG_CAP_SPLIT_2) & "."
+			severity WARNING;
+
+	-- (s266), see (s265)
+	assert ((not debug) or log2(raw_ram_size-1) <=
+		DBG_TRNG_STATUS_RAW_WADDR_MSB - DBG_TRNG_STATUS_RAW_WADDR_LSB + 1)
+	report "The size of the raw random FIFO is too large for its addresses "
+			 & "to fit in register R_DBG_TRNG_STATUS."
 			severity WARNING;
 
 	-- combinational logic
@@ -662,23 +714,25 @@ begin
 	              aerr_outpt_not_on_curve,
 	              kpdone, mtydone, popdone, yes, yesen, xrdata,
 	              trngvalid, trngdata, initdone,
-	              trngaxiirncount, trngefpirncount, trngcurirncount,
-	              trngshfirncount,
+	              trngaxiirncount,
+	              dbgtrngefpirncount, dbgtrngcrvirncount, dbgtrngshfirncount,
 	              ar01zien, ar0zi, ar1zi, amtydone, tokendone,
 	              -- debug features
 	              dbghalted, dbgdecodepc, dbgbreakpointid,
 	              dbgpgmstate, dbgnbbits, dbgbreakpointhit,
 	              dbgtrngrawfull, dbgtrngrawwaddr,
 	              dbgtrngrawdata, dbgtrngrawduration,
-	              dbgnbstarvrndxyshuf
+	              dbgtrngrawcount
 	              -- nndyn_x_s signals looped back for AXI register reads
 	              , nndyn_wm2_s, nndyn_wm1_s, nndyn_2wm1_s,
 	              nndyn_mask_is_zero_s, nndyn_mask_is_all1_but_msb_s,
 	              nndyn_mask_wm2_s, nndyn_wmin_s, nndyn_nnrnd_zerowm1_s,
 	              nndyn_nnm3_s, nndyn_nnp1_s,
 	              small_k_sz_en_ack, small_k_sz_kpdone,
-	              dbgtrngaxirdy, dbgtrngaxivalid, dbgtrngfprdy, dbgtrngfpvalid,
-	              dbgtrngcrvrdy, dbgtrngcrvvalid, dbgtrngshrdy, dbgtrngshvalid
+	              dbgtrngaxirdy, dbgtrngaxivalid, dbgtrngefprdy, dbgtrngefpvalid,
+	              dbgtrngcrvrdy, dbgtrngcrvvalid, dbgtrngshfrdy, dbgtrngshfvalid,
+	              dbgtrngrawrdy, dbgtrngrawvalid,
+	              r_debug_clkmmcnt
 								-- /debug only
 	              , laststep, firstzdbl, firstzaddu, first2pz, first3pz, 
 	              torsion2, kap, kapp, zu, zc, r0z, r1z, dbgjoyebit,
@@ -716,6 +770,13 @@ begin
 		variable v_fpaddr0_msb : std_logic_vector(FP_ADDR_MSB - 1 downto 0);
 		variable v_read_no_error : boolean;
 		variable vtmp19, vtmp20, vtmp21 : unsigned(log2(nn - 1) downto 0);
+		-- debug (TRNG diagnostic counters)
+		variable vtmp22, vtmp23, vtmp24 : unsigned(log2(irn_fifo_size_axi) downto 0);
+		variable vtmp25, vtmp26, vtmp27 : unsigned(log2(irn_fifo_size_efp) downto 0);
+		variable vtmp28, vtmp29, vtmp30 : unsigned(log2(irn_fifo_size_crv) downto 0);
+		variable vtmp31, vtmp32, vtmp33 : unsigned(log2(irn_fifo_size_shf) downto 0);
+		variable vtmp34, vtmp35, vtmp36 : unsigned(log2(raw_ram_size) downto 0);
+		variable vid : integer range 0 to 4;
 	begin
 		v := r;
 
@@ -763,95 +824,73 @@ begin
 			-- ecc_trng/ecc_axi interface
 			if dbgtrngaxirdy = '1' then
 				if dbgtrngaxivalid = '1' then
-					v.debug.trngaxiok := r.debug.trngaxiok + 1;
+					v.debug.trng.axiok := r.debug.trng.axiok + 1;
 				elsif dbgtrngaxivalid = '0' then
-					v.debug.trngaxistarv := r.debug.trngaxistarv + 1;
-				end if;
-				-- reset both counters when one of them overflows
-				if (r.debug.trngaxistarv(r.debug.trngaxistarv'length - 1) = '1'
-					and v.debug.trngaxistarv(r.debug.trngaxistarv'length - 1) = '0')
-			 		or (r.debug.trngaxiok(r.debug.trngaxiok'length - 1) = '1'
-					and v.debug.trngaxiok(r.debug.trngaxiok'length - 1) = '0')
-				then
-					v.debug.trngaxiok := (others => '0');
-					v.debug.trngaxistarv := (others => '0');
+					v.debug.trng.axistarv := r.debug.trng.axistarv + 1;
 				end if;
 			end if;
 			-- ecc_trng/ecc_fp interface
-			if dbgtrngfprdy = '1' then
-				if dbgtrngfpvalid = '1' then
-					v.debug.trngfpok := r.debug.trngfpok + 1;
-				elsif dbgtrngfpvalid = '0' then
-					v.debug.trngfpstarv := r.debug.trngfpstarv + 1;
-				end if;
-				-- reset both counters when one of them overflows
-				if (r.debug.trngfpstarv(r.debug.trngfpstarv'length - 1) = '1'
-					and v.debug.trngfpstarv(r.debug.trngfpstarv'length - 1) = '0')
-			 		or (r.debug.trngfpok(r.debug.trngfpok'length - 1) = '1'
-					and v.debug.trngfpok(r.debug.trngfpok'length - 1) = '0')
-				then
-					v.debug.trngfpok := (others => '0');
-					v.debug.trngfpstarv := (others => '0');
+			if dbgtrngefprdy = '1' then
+				if dbgtrngefpvalid = '1' then
+					v.debug.trng.efpok := r.debug.trng.efpok + 1;
+				elsif dbgtrngefpvalid = '0' then
+					v.debug.trng.efpstarv := r.debug.trng.efpstarv + 1;
 				end if;
 			end if;
 			-- ecc_trng/ecc_curve interface
 			if dbgtrngcrvrdy = '1' then
 				if dbgtrngcrvvalid = '1' then
-					v.debug.trngcrvok := r.debug.trngcrvok + 1;
+					v.debug.trng.crvok := r.debug.trng.crvok + 1;
 				elsif dbgtrngcrvvalid = '0' then
-					v.debug.trngcrvstarv := r.debug.trngcrvstarv + 1;
-				end if;
-				-- reset both counters when one of them overflows
-				if (r.debug.trngcrvstarv(r.debug.trngcrvstarv'length - 1) = '1'
-					and v.debug.trngcrvstarv(r.debug.trngcrvstarv'length - 1) = '0')
-			 		or (r.debug.trngcrvok(r.debug.trngcrvok'length - 1) = '1'
-					and v.debug.trngcrvok(r.debug.trngcrvok'length - 1) = '0')
-				then
-					v.debug.trngcrvok := (others => '0');
-					v.debug.trngcrvstarv := (others => '0');
+					v.debug.trng.crvstarv := r.debug.trng.crvstarv + 1;
 				end if;
 			end if;
 			-- ecc_trng/ecc_fp_dram_sh_* interface
-			if dbgtrngshrdy = '1' then
-				if dbgtrngshvalid = '1' then
-					v.debug.trngshok := r.debug.trngshok + 1;
-				elsif dbgtrngshvalid = '0' then
-					v.debug.trngshstarv := r.debug.trngshstarv + 1;
+			if dbgtrngshfrdy = '1' then
+				if dbgtrngshfvalid = '1' then
+					v.debug.trng.shfok := r.debug.trng.shfok + 1;
+				elsif dbgtrngshfvalid = '0' then
+					v.debug.trng.shfstarv := r.debug.trng.shfstarv + 1;
 				end if;
-				-- reset both counters when one of them overflows
-				if (r.debug.trngshstarv(r.debug.trngshstarv'length - 1) = '1'
-					and v.debug.trngshstarv(r.debug.trngshstarv'length - 1) = '0')
-			 		or (r.debug.trngshok(r.debug.trngshok'length - 1) = '1'
-					and v.debug.trngshok(r.debug.trngshok'length - 1) = '0')
-				then
-					v.debug.trngshok := (others => '0');
-					v.debug.trngshstarv := (others => '0');
+			end if;
+			-- raw random bits
+			if dbgtrngrawrdy = '1' then
+				if dbgtrngrawvalid = '1' then
+					v.debug.trng.rawok := r.debug.trng.rawok + 1;
+				elsif dbgtrngrawvalid = '0' then
+					v.debug.trng.rawstarv := r.debug.trng.rawstarv + 1;
 				end if;
 			end if;
 			-- pragma translate_off
-			if (to_integer(r.debug.trngaxistarv) + to_integer(r.debug.trngaxiok)) /= 0
+			if (to_integer(r.debug.trng.axistarv) + to_integer(r.debug.trng.axiok)) /= 0
 			then
-				v.debug.trngaxi100 := integer(100.0 *
-					real(to_integer(r.debug.trngaxistarv)) / real(
-						to_integer(r.debug.trngaxistarv) + to_integer(r.debug.trngaxiok)));
+				v.debug.trng.axi100 := integer(100.0 *
+					real(to_integer(r.debug.trng.axistarv)) / real(
+						to_integer(r.debug.trng.axistarv) + to_integer(r.debug.trng.axiok)));
 			end if;
-			if (to_integer(r.debug.trngfpstarv) + to_integer(r.debug.trngfpok)) /= 0
+			if (to_integer(r.debug.trng.efpstarv) + to_integer(r.debug.trng.efpok)) /= 0
 			then
-				v.debug.trngfp100 := integer(100.0 *
-					real(to_integer(r.debug.trngfpstarv)) / real(
-						to_integer(r.debug.trngfpstarv) + to_integer(r.debug.trngfpok)));
+				v.debug.trng.efp100 := integer(100.0 *
+					real(to_integer(r.debug.trng.efpstarv)) / real(
+						to_integer(r.debug.trng.efpstarv) + to_integer(r.debug.trng.efpok)));
 			end if;
-			if (to_integer(r.debug.trngcrvstarv) + to_integer(r.debug.trngcrvok)) /= 0
+			if (to_integer(r.debug.trng.crvstarv) + to_integer(r.debug.trng.crvok)) /= 0
 			then
-				v.debug.trngcrv100 := integer(100.0 *
-					real(to_integer(r.debug.trngcrvstarv)) / real(
-						to_integer(r.debug.trngcrvstarv) + to_integer(r.debug.trngcrvok)));
+				v.debug.trng.crv100 := integer(100.0 *
+					real(to_integer(r.debug.trng.crvstarv)) / real(
+						to_integer(r.debug.trng.crvstarv) + to_integer(r.debug.trng.crvok)));
 			end if;
-			if (to_integer(r.debug.trngshstarv) + to_integer(r.debug.trngshok)) /= 0
+			if (to_integer(r.debug.trng.shfstarv) + to_integer(r.debug.trng.shfok)) /= 0
 			then
-				v.debug.trngsh100 := integer(100.0 *
-					real(to_integer(r.debug.trngshstarv)) / real(
-						to_integer(r.debug.trngshstarv) + to_integer(r.debug.trngshok)));
+				v.debug.trng.shf100 := integer(100.0 *
+					real(to_integer(r.debug.trng.shfstarv)) / real(
+						to_integer(r.debug.trng.shfstarv) + to_integer(r.debug.trng.shfok)));
+			end if;
+			if (to_integer(r.debug.trng.rawstarv) + to_integer(r.debug.trng.rawok)) /= 0
+			then
+				v.debug.trng.raw100 := integer(100.0 *
+					real(to_integer(r.debug.trng.rawstarv)) / real(
+						to_integer(r.debug.trng.rawstarv) + to_integer(r.debug.trng.rawok)));
 			end if;
 			-- pragma translate_on
 		end if; -- debug
@@ -1519,6 +1558,18 @@ begin
 								v.write.rnd.carry := 0;
 								-- remove any previous possible error
 								v.ctrl.ierrid(STATUS_ERR_I_NOT_ENOUGH_RANDOM_WK) := '0';
+								if debug then -- statically resolved by synthesizer
+									-- (s267) - Reset TRNG diagnostic counters for "AXI"
+									-- Other counters are reset when [k]P computation starts,
+									-- see (s268)
+									v.debug.trng.aximin := (others => '1');
+									v.debug.trng.aximax := (others => '0');
+									v.debug.trng.axiok := (others => '0');
+									v.debug.trng.axistarv := (others => '0');
+									-- pragma translate_off
+									v.debug.trng.axi100 := 0;
+									-- pragma translate_on
+								end if;
 							else -- not enough random
 								v_writebn_accepted := FALSE; -- (s55), see (s56)
 								v.ctrl.ierrid(STATUS_ERR_I_NOT_ENOUGH_RANDOM_WK) := '1';
@@ -2191,10 +2242,120 @@ begin
 				v.axi.awready := '1';
 				v.axi.arready := '1';
 				v.axi.bvalid := '1';
+			-- --------------------------------------------------------------
+			-- decoding write to W_DBG_TRNG_CFG register
+			-- --------------------------------------------------------------
+			elsif debug and r.axi.waddr = W_DBG_TRNG_CFG then
+				v.debug.trng.vonneuman := r.axi.wdatax(DBG_TRNG_VONM);
+				v.debug.trng.ta :=
+					unsigned(r.axi.wdatax(DBG_TRNG_TA_MSB downto DBG_TRNG_TA_LSB));
+				v.debug.trng.idletime :=
+					unsigned(r.axi.wdatax(DBG_TRNG_IDLE_MSB downto DBG_TRNG_IDLE_LSB));
+				v.debug.trng.usepseudo := r.axi.wdatax(DBG_TRNG_USE_PSEUDO);
+				-- assert both AWREADY & WREADY signals to allow a new AXI data-beat
+				-- to happen again
+				v.axi.awready := '1';
+				v.axi.wready := '1';
+				v.axi.arready := '1';
+				-- drive write-response to initiator
+				v.axi.bvalid := '1';
 			-- ------------------------------------------------------------
-			-- decoding write to W_DBG_TRNG_CTRL register
+			-- decoding write to W_DBG_TRNG_RESET register
 			-- ------------------------------------------------------------
-			elsif debug and r.axi.waddr = W_DBG_TRNG_CTRL then
+			elsif debug and r.axi.waddr = W_DBG_TRNG_RESET then
+				-- assert both AWREADY & WREADY signals to allow a new AXI data-beat
+				-- to happen again
+				v.axi.awready := '1';
+				v.axi.wready := '1';
+				v.axi.arready := '1';
+				-- drive write-response to initiator
+				v.axi.bvalid := '1';
+				if r.axi.wdatax(DBG_TRNG_RESET_RAW) = '1' then
+					-- ----------------------------------------------------------
+					--       debug software is asking for a TRNG raw reset
+					-- ----------------------------------------------------------
+					v.debug.trng.rawreset := '1'; -- stays asserted 1 cycle thx to (s58)
+				end if;
+				if r.axi.wdatax(DBG_TRNG_RESET_IRN) = '1' then
+					-- ----------------------------------------------------------
+					--       debug software is asking for a TRNG irn reset
+					-- ----------------------------------------------------------
+					v.debug.trng.irnreset := '1'; -- stays asserted 1 cycle thx to (s59)
+				end if;
+			-- ------------------------------------------------------------
+			-- decoding write to W_DBG_TRNG_CTRL_POSTP register
+			-- ------------------------------------------------------------
+			-- TODO: put back 'debug' condition!
+			elsif -- debug and
+				r.axi.waddr = W_DBG_TRNG_CTRL_POSTP
+			then
+				-- assert both AWREADY & WREADY signals to allow a new AXI data-beat
+				-- to happen again
+				v.axi.awready := '1';
+				v.axi.wready := '1';
+				v.axi.arready := '1';
+				-- drive write-response to initiator
+				v.axi.bvalid := '1';
+				-- This inhibits ecc_trng_pp from demanding bytes to the raw random
+				-- source, whether that source is currently the real one (as for
+				-- '.rawfiforeaddis' signal/'DBG_TRNG_DISABLE_FIFO_READ_PORT' bit,
+				-- see just below) or if it's the pseudo external one.
+				v.debug.trng.rawpullppdis := r.axi.wdatax(DBG_TRNG_CTRL_POSTPROC_DISABLE);
+				-- This inhibits the read function on the raw random FIFO internal
+				-- to the IP (the purpose here being to allow software to read its
+				-- whole content and avoid the post-processing to consume a subset
+				-- of this content without software to see them passing through).
+				v.debug.trng.rawfiforeaddis := r.axi.wdatax(
+					DBG_TRNG_CTRL_RAW_DISABLE_FIFO_READ_PORT);
+			-- ------------------------------------------------------------
+			-- decoding write to W_DBG_TRNG_CTRL_BYPASS register
+			-- ------------------------------------------------------------
+			elsif debug and r.axi.waddr = W_DBG_TRNG_CTRL_BYPASS then
+				-- assert both AWREADY & WREADY signals to allow a new AXI data-beat
+				-- to happen again
+				v.axi.awready := '1';
+				v.axi.wready := '1';
+				v.axi.arready := '1';
+				-- drive write-response to initiator
+				v.axi.bvalid := '1';
+				-- Complete bypass
+				v.debug.trng.completebypass :=
+					r.axi.wdatax(DBG_TRNG_CTRL_COMPLETE_BYPASS);
+				v.debug.trng.completebypassbit := r.axi.wdatax(
+					DBG_TRNG_CTRL_COMPLETE_BYPASS_BIT);
+			-- ------------------------------------------------------------
+			-- decoding write to W_DBG_TRNG_CTRL_NNRND register
+			-- ------------------------------------------------------------
+			elsif debug and r.axi.waddr = W_DBG_TRNG_CTRL_NNRND then
+				-- assert both AWREADY & WREADY signals to allow a new AXI data-beat
+				-- to happen again
+				v.axi.awready := '1';
+				v.axi.wready := '1';
+				v.axi.arready := '1';
+				-- drive write-response to initiator
+				v.axi.bvalid := '1';
+				-- Instruction NNRND becomes deterministic (with all bits at 1)
+				v.debug.trng.nnrnddeterm :=
+					r.axi.wdatax(DBG_TRNG_CTRL_NNRND_DETERMINISTIC);
+			-- ------------------------------------------------------------
+			-- decoding write to W_DBG_TRNG_CTRL_DIAG register
+			-- ------------------------------------------------------------
+			elsif debug and r.axi.waddr = W_DBG_TRNG_CTRL_DIAG then
+				-- assert both AWREADY & WREADY signals to allow a new AXI data-beat
+				-- to happen again
+				v.axi.awready := '1';
+				v.axi.wready := '1';
+				v.axi.arready := '1';
+				-- drive write-response to initiator
+				v.axi.bvalid := '1';
+				-- Select the set of registers that can be accessed through
+				-- R_DBG_TRNG_DIAG_[MIN|MAX|OK|STARV]
+				v.debug.trng.diagid := r.axi.wdatax(
+					DBG_TRNG_CTRL_DIAG_SELECT_MSB downto DBG_TRNG_CTRL_DIAG_SELECT_LSB);
+			-- ------------------------------------------------------------
+			-- decoding write to W_DBG_TRNG_RAW_READ register
+			-- ------------------------------------------------------------
+			elsif debug and r.axi.waddr = W_DBG_TRNG_RAW_READ then
 				-- assert both AWREADY & WREADY signals to allow a new AXI data-beat
 				-- to happen again
 				v.axi.awready := '1';
@@ -2227,54 +2388,6 @@ begin
 						v.read.trngreading := '1';
 					end if;
 				end if;
-				if r.axi.wdatax(DBG_TRNG_CTRL_RAW_RESET) = '1' then
-					-- ----------------------------------------------------------
-					--       debug software is asking for a TRNG raw reset
-					-- ----------------------------------------------------------
-					v.debug.trng.rawreset := '1'; -- stays asserted 1 cycle thx to (s58)
-				end if;
-				if r.axi.wdatax(DBG_TRNG_CTRL_IRN_RESET) = '1' then
-					-- ----------------------------------------------------------
-					--       debug software is asking for a TRNG irn reset
-					-- ----------------------------------------------------------
-					v.debug.trng.irnreset := '1'; -- stays asserted 1 cycle thx to (s59)
-				end if;
-				-- This inhibits ecc_trng_pp from demanding bytes to the raw random
-				-- source, whether that source is currently the real one (as for
-				-- '.rawfiforeaddis' signal/'DBG_TRNG_DISABLE_FIFO_READ_PORT' bit,
-				-- see just below) or if it's the pseudo external one.
-				v.debug.trng.rawpullppdis := r.axi.wdatax(DBG_TRNG_CTRL_POSTPROC_DISABLE);
-				-- This inhibits the read function on the raw random FIFO internal
-				-- to the IP (the purpose here being to allow software to read its
-				-- whole content and avoid the post-processing to get a subset of
-				-- of this content without software seeing them pass through).
-				v.debug.trng.rawfiforeaddis := r.axi.wdatax(
-					DBG_TRNG_CTRL_RAW_DISABLE_FIFO_READ_PORT);
-				-- Complete bypass
-				v.debug.trng.completebypass :=
-					r.axi.wdatax(DBG_TRNG_CTRL_COMPLETE_BYPASS);
-				v.debug.trng.completebypassbit := r.axi.wdatax(
-					DBG_TRNG_CTRL_COMPLETE_BYPASS_BIT);
-				-- Instruction NNRND becomes deterministic (with all bits at 1)
-				v.debug.trng.nnrnddeterm :=
-					r.axi.wdatax(DBG_TRNG_CTRL_NNRND_DETERMINISTIC);
-			-- --------------------------------------------------------------
-			-- decoding write to W_DBG_TRNG_CFG register
-			-- --------------------------------------------------------------
-			elsif debug and r.axi.waddr = W_DBG_TRNG_CFG then
-				v.debug.trng.vonneuman := r.axi.wdatax(DBG_TRNG_VONM);
-				v.debug.trng.ta :=
-					unsigned(r.axi.wdatax(DBG_TRNG_TA_MSB downto DBG_TRNG_TA_LSB));
-				v.debug.trng.idletime :=
-					unsigned(r.axi.wdatax(DBG_TRNG_IDLE_MSB downto DBG_TRNG_IDLE_LSB));
-				v.debug.trng.usepseudo := r.axi.wdatax(DBG_TRNG_USE_PSEUDO);
-				-- assert both AWREADY & WREADY signals to allow a new AXI data-beat
-				-- to happen again
-				v.axi.awready := '1';
-				v.axi.wready := '1';
-				v.axi.arready := '1';
-				-- drive write-response to initiator
-				v.axi.bvalid := '1';
 			-- -------------------------------------------------------------
 			-- decoding write to W_DBG_FP_WADDR register
 			-- -------------------------------------------------------------
@@ -2351,29 +2464,6 @@ begin
 				v.axi.awready := '1';
 				v.axi.arready := '1';
 				v.axi.bvalid := '1';
-			-- -------------------------------------------------------------
-			-- decoding write to W_DBG_RESET_TRNG_CNT register - (s259)
-			-- -------------------------------------------------------------
-			elsif debug and r.axi.waddr = W_DBG_RESET_TRNG_CNT then
-				-- reset counters below are bypasses of (s260) increments
-				v.debug.trngaxiok := (others => '0');
-				v.debug.trngaxistarv := (others => '0');
-				v.debug.trngfpok := (others => '0');
-				v.debug.trngfpstarv := (others => '0');
-				v.debug.trngcrvok := (others => '0');
-				v.debug.trngcrvstarv := (others => '0');
-				v.debug.trngshok := (others => '0');
-				v.debug.trngshstarv := (others => '0');
-				v.axi.wready := '1';
-				v.axi.awready := '1';
-				v.axi.arready := '1';
-				v.axi.bvalid := '1';
-				-- pragma translate_off
-				v.debug.trngaxi100 := 0;
-				v.debug.trngfp100 := 0;
-				v.debug.trngcrv100 := 0;
-				v.debug.trngsh100 := 0;
-				-- pragma translate_on
 			else
 				-- unknown target address
 				-- (simply ignore & acknowledge everything)
@@ -2929,6 +3019,37 @@ begin
 				v.debug.trigger := '0';
 				v.debug.counter := (others => '0');
 			end if;
+			if debug then -- statically resolved by synthesizer
+				-- (s268)
+				-- Reset TRNG diagnostic counters (all except AXI,
+				-- which are reset when software starts transimitting
+				-- the scalar, see (s267).
+				-- Min init's to all 0
+				v.debug.trng.efpmin := (others => '1');
+				v.debug.trng.crvmin := (others => '1');
+				v.debug.trng.shfmin := (others => '1');
+				v.debug.trng.rawmin := (others => '1');
+				-- Max init'd to all 1s
+				v.debug.trng.crvmax := (others => '0');
+				v.debug.trng.efpmax := (others => '0');
+				v.debug.trng.shfmax := (others => '0');
+				v.debug.trng.rawmax := (others => '0');
+				-- ok & starv reset to 0
+				v.debug.trng.efpok := (others => '0');
+				v.debug.trng.crvok := (others => '0');
+				v.debug.trng.shfok := (others => '0');
+				v.debug.trng.rawok := (others => '0');
+				v.debug.trng.efpstarv := (others => '0');
+				v.debug.trng.crvstarv := (others => '0');
+				v.debug.trng.shfstarv := (others => '0');
+				v.debug.trng.rawstarv := (others => '0');
+				-- pragma translate_off
+				v.debug.trng.efp100 := 0;
+				v.debug.trng.crv100 := 0;
+				v.debug.trng.shf100 := 0;
+				v.debug.trng.raw100 := 0;
+				-- pragma translate_on
+			end if;
 		end if;
 
 		if debug then -- statically resolved by synthesizer
@@ -3138,10 +3259,10 @@ begin
 				-- 2nd byte: minor number
 				-- 3rd & 4th bytes: patch number
 				dw := (others => '0');
-				-- Version 1.2.39
+				-- Version 1.4.0
 				dw(HW_VERSION_MAJ_MSB downto HW_VERSION_MAJ_LSB) := x"01"; -- major
-				dw(HW_VERSION_MIN_MSB downto HW_VERSION_MIN_LSB) := x"02"; -- minor
-				dw(HW_VERSION_PATCH_MSB downto HW_VERSION_PATCH_LSB) := x"0027"; -- patch
+				dw(HW_VERSION_MIN_MSB downto HW_VERSION_MIN_LSB) := x"04"; -- minor
+				dw(HW_VERSION_PATCH_MSB downto HW_VERSION_PATCH_LSB) := x"0000"; -- patch
 				v.axi.rdatax := dw;
 				v.axi.rvalid := '1'; -- (s5)
 			-- --------------------------------------
@@ -3186,7 +3307,7 @@ begin
 				dw := (others => '0');
 				dw(log2(nbopcodes) - 1 downto 0) := -- (s147), see (s146)
 					std_logic_vector(to_unsigned(nbopcodes, log2(nbopcodes)));
-				dw(DBG_CAP_SPLIT + log2(OPCODE_SZ) - 1 downto DBG_CAP_SPLIT) :=
+				dw(DBG_CAP_SPLIT_1 + log2(OPCODE_SZ) - 1 downto DBG_CAP_SPLIT_1) :=
 					-- (s149), see (s148)
 					std_logic_vector(to_unsigned(OPCODE_SZ, log2(OPCODE_SZ)));
 				v.axi.rdatax := dw;
@@ -3200,7 +3321,7 @@ begin
 				dw := (others => '0');
 				dw(log2(raw_ram_size) - 1 downto 0) := -- (s151), see (s150)
 					std_logic_vector(to_unsigned(raw_ram_size, log2(raw_ram_size)));
-				dw(DBG_CAP_SPLIT + log2(irn_width_sh) - 1 downto DBG_CAP_SPLIT) :=
+				dw(DBG_CAP_SPLIT_2 + log2(irn_width_sh) - 1 downto DBG_CAP_SPLIT_2) :=
 					-- (s263), see (s264)
 					std_logic_vector(to_unsigned(irn_width_sh, log2(irn_width_sh)));
 				v.axi.rdatax := dw;
@@ -3233,40 +3354,21 @@ begin
 			elsif debug -- statically resolved by synthesizer
 			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_TIME
 			then
-				v.axi.rdatax(31 downto 0) := std_logic_vector(r.debug.counter);
+				dw := (others => '0');
+				dw(DBG_TIME_MSB downto DBG_TIME_LSB) :=
+					std_logic_vector(r.debug.counter);
+				v.axi.rdatax(31 downto 0) := dw;
 				v.axi.rvalid := '1'; -- (s5)
-			-- ---------------------------------------
-			-- decoding read of R_DBG_RAW_DUR register
-			-- ---------------------------------------
+			-- --------------------------------------------
+			-- decoding read of R_DBG_TRNG_RAW_DUR register
+			-- --------------------------------------------
 			elsif debug -- statically resolved by synthesizer
-			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_RAWDUR
-			then
-				v.axi.rdatax(31 downto 0) := std_logic_vector(dbgtrngrawduration);
-				v.axi.rvalid := '1'; -- (s5)
-			-- -------------------------------------
-			-- decoding read of R_DBG_FLAGS register
-			-- -------------------------------------
-			elsif debug -- statically resolved by synthesizer
-			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_FLAGS
+			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_TRNG_RAWDUR
 			then
 				dw := (others => '0');
-				dw(FLAGS_P_NOT_SET) := not r.ctrl.p_set;
-				dw(FLAGS_P_NOT_SET_MTY) := not r.ctrl.p_set_and_mty;
-				dw(FLAGS_A_NOT_SET) := not r.ctrl.a_set;
-				dw(FLAGS_A_NOT_SET_MTY) := not r.ctrl.a_set_and_mty;
-				dw(FLAGS_B_NOT_SET) := not r.ctrl.b_set;
-				dw(FLAGS_K_NOT_SET) := not r.ctrl.k_set;
-				if nn_dynamic then
-					dw(FLAGS_NNDYN_NOERR) := r.nndyn.valwerr;
-				else
-					dw(FLAGS_NNDYN_NOERR) := '0';
-				end if;
-				if r.ctrl.doblinding = '1' then
-					dw(FLAGS_NOT_BLN_OR_Q_NOT_SET) := not r.ctrl.q_set;
-				elsif r.ctrl.doblinding = '0' then
-					dw(FLAGS_NOT_BLN_OR_Q_NOT_SET) := '0';
-				end if;
-				v.axi.rdatax := dw;
+				dw(DBG_RAWDUR_MSB downto DBG_RAWDUR_LSB) :=
+					std_logic_vector(dbgtrngrawduration);
+				v.axi.rdatax(31 downto 0) := dw;
 				v.axi.rvalid := '1'; -- (s5)
 			-- -------------------------------------------
 			-- decoding read of R_DBG_TRNG_STATUS register
@@ -3274,10 +3376,9 @@ begin
 			elsif debug -- statically resolved by synthesizer
 			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_TRNG_STATUS
 			then
-				v.axi.rdatax :=
-				  std_logic_vector(
-					  to_unsigned(0, C_S_AXI_DATA_WIDTH - 8 - log2(raw_ram_size - 1)))
-				  & dbgtrngrawwaddr
+				v.axi.rdatax := -- (s265), see (s266)
+				  std_logic_vector(resize(unsigned(dbgtrngrawwaddr),
+						DBG_TRNG_STATUS_RAW_WADDR_MSB - DBG_TRNG_STATUS_RAW_WADDR_LSB + 1))
 				  & "0000"
 				  & "000" & dbgtrngrawfull;
 				v.axi.rvalid := '1'; -- (s5)
@@ -3289,12 +3390,13 @@ begin
 			then
 				if r.ctrl.state = readraw then
 					--v.debug.trng.raw.arpending := '1';
-					v.axi.rvalid := '1'; -- (s27) see (s26)
-					v.axi.rdatax(C_S_AXI_DATA_WIDTH - 1 downto 1) := (others => '0');
-					v.axi.rdatax(0) := dbgtrngrawdata;
+					dw := (others => '0');
+					dw(DBG_TRNG_RAW_BIT_POS) := dbgtrngrawdata;
+					v.axi.rdatax := dw;
 					-- reading one raw bit requires only 1 AXI read access so we can
 					-- get back to idle state
 					v.ctrl.state := idle;
+					v.axi.rvalid := '1'; -- (s27) see (s26)
 				else
 					v.axi.rvalid := '1'; -- (s5)
 					v.axi.rdatax := (others => '1'); -- 0xFFF...FF
@@ -3306,45 +3408,12 @@ begin
 			elsif debug -- statically resolved by synthesizer
 			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_FP_RDATA
 			then
-				v.axi.rdatax :=
-					(C_S_AXI_DATA_WIDTH-1 downto ww => '0') & xrdata; -- (s50), see (s51)
+				dw := (others => '0');
+				dw(R_DBG_FP_RDATA_MSB downto R_DBG_FP_RDATA_LSB)
+					:= std_logic_vector(resize(unsigned(xrdata), -- (s50), see (s51)
+						R_DBG_FP_RDATA_MSB - R_DBG_FP_RDATA_LSB + 1));
+				v.axi.rdatax := dw; -- 
 				v.debug.readrdy := '0';
-				v.axi.rvalid := '1'; -- (s5)
-			-- -------------------------------------------
-			-- decoding read of R_DBG_IRN_CNT_AXI register
-			-- -------------------------------------------
-			elsif debug -- statically resolved by synthesizer
-			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_IRN_CNT_AXI
-			then
-				v.axi.rdatax(31 downto 0) :=
-					std_logic_vector(resize(unsigned(trngaxiirncount), 32));
-				v.axi.rvalid := '1'; -- (s5)
-			-- -------------------------------------------
-			-- decoding read of R_DBG_IRN_CNT_EFP register
-			-- -------------------------------------------
-			elsif debug -- statically resolved by synthesizer
-			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_IRN_CNT_EFP
-			then
-				v.axi.rdatax(31 downto 0) :=
-					std_logic_vector(resize(unsigned(trngefpirncount), 32));
-				v.axi.rvalid := '1'; -- (s5)
-			-- -------------------------------------------
-			-- decoding read of R_DBG_IRN_CNT_CRV register
-			-- -------------------------------------------
-			elsif debug -- statically resolved by synthesizer
-			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_IRN_CNT_CRV
-			then
-				v.axi.rdatax(31 downto 0) :=
-					std_logic_vector(resize(unsigned(trngcurirncount), 32));
-				v.axi.rvalid := '1'; -- (s5)
-			-- -------------------------------------------
-			-- decoding read of R_DBG_IRN_CNT_SHF register
-			-- -------------------------------------------
-			elsif debug and (shuffle_type /= none) -- both statically resolv. by syn.
-			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_IRN_CNT_SHF
-			then
-				v.axi.rdatax(31 downto 0) :=
-					std_logic_vector(resize(unsigned(trngshfirncount), 32));
 				v.axi.rvalid := '1'; -- (s5)
 			-- --------------------------------------------
 			-- decoding read of R_DBG_FP_RDATA_RDY register
@@ -3383,95 +3452,162 @@ begin
 				dw(31 downto 16) := std_logic_vector(resize(unsigned(dbgjoyebit), 16));
 				v.axi.rdatax := dw;
 				v.axi.rvalid := '1'; -- (s5)
-			-- -------------------------------------------
-			-- decoding read of R_DBG_TRNG_DIAG_0 register
-			-- -------------------------------------------
+			-- ---------------------------------------------
+			-- decoding read of R_DBG_TRNG_DIAG_MIN register
+			-- ---------------------------------------------
 			elsif debug -- statically resolved by synthesizer
-			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_TRNG_DIAG_0
+			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_TRNG_DIAG_MIN
 			then
-				dw(31 downto 0) :=
-					std_logic_vector(resize(unsigned(dbgnbstarvrndxyshuf), 32));
+				vid := to_integer(unsigned(r.debug.trng.diagid));
+				dw := (others => '0');
+				case vid is
+					when 0 =>
+						dw(R_DBG_TRNG_DIAG_MIN_MSB downto R_DBG_TRNG_DIAG_MIN_LSB) :=
+							std_logic_vector(resize(r.debug.trng.aximin,
+								R_DBG_TRNG_DIAG_MIN_MSB - R_DBG_TRNG_DIAG_MIN_LSB + 1));
+					when 1 =>
+						dw(R_DBG_TRNG_DIAG_MIN_MSB downto R_DBG_TRNG_DIAG_MIN_LSB) :=
+							std_logic_vector(resize(r.debug.trng.efpmin,
+								R_DBG_TRNG_DIAG_MIN_MSB - R_DBG_TRNG_DIAG_MIN_LSB + 1));
+					when 2 =>
+						dw(R_DBG_TRNG_DIAG_MIN_MSB downto R_DBG_TRNG_DIAG_MIN_LSB) :=
+							std_logic_vector(resize(r.debug.trng.crvmin,
+								R_DBG_TRNG_DIAG_MIN_MSB - R_DBG_TRNG_DIAG_MIN_LSB + 1));
+					when 3 =>
+						dw(R_DBG_TRNG_DIAG_MIN_MSB downto R_DBG_TRNG_DIAG_MIN_LSB) :=
+							std_logic_vector(resize(r.debug.trng.shfmin,
+								R_DBG_TRNG_DIAG_MIN_MSB - R_DBG_TRNG_DIAG_MIN_LSB + 1));
+					when others =>
+						dw(R_DBG_TRNG_DIAG_MIN_MSB downto R_DBG_TRNG_DIAG_MIN_LSB) :=
+							std_logic_vector(resize(r.debug.trng.rawmin,
+								R_DBG_TRNG_DIAG_MIN_MSB - R_DBG_TRNG_DIAG_MIN_LSB + 1));
+				end case;
 				v.axi.rdatax(31 downto 0) := dw(31 downto 0);
 				v.axi.rvalid := '1'; -- (s5)
-			-- -------------------------------------------
-			-- decoding read of R_DBG_TRNG_DIAG_1 register
-			-- -------------------------------------------
-			elsif debug -- statically resolved by synthesizer
-			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_TRNG_DIAG_1
+			-- ---------------------------------------------
+			-- decoding read of R_DBG_TRNG_DIAG_MAX register
+			-- ---------------------------------------------
+			-- TODO: put back 'debug' condition!
+			elsif -- debug and -- statically resolved by synthesizer
+				s_axi_araddr(ADB + 2 downto 3) = R_DBG_TRNG_DIAG_MAX
 			then
-				dw(31 downto 0) :=
-					std_logic_vector(resize(unsigned(r.debug.trngaxiok), 32));
+				vid := to_integer(unsigned(r.debug.trng.diagid));
+				dw := (others => '0');
+				case vid is
+					when 0 =>
+						dw(R_DBG_TRNG_DIAG_MAX_MSB downto R_DBG_TRNG_DIAG_MAX_LSB) :=
+							std_logic_vector(resize(r.debug.trng.aximax,
+								R_DBG_TRNG_DIAG_MAX_MSB - R_DBG_TRNG_DIAG_MAX_LSB + 1));
+					when 1 =>
+						dw(R_DBG_TRNG_DIAG_MAX_MSB downto R_DBG_TRNG_DIAG_MAX_LSB) :=
+							std_logic_vector(resize(r.debug.trng.efpmax,
+								R_DBG_TRNG_DIAG_MAX_MSB - R_DBG_TRNG_DIAG_MAX_LSB + 1));
+					when 2 =>
+						dw(R_DBG_TRNG_DIAG_MAX_MSB downto R_DBG_TRNG_DIAG_MAX_LSB) :=
+							std_logic_vector(resize(r.debug.trng.crvmax,
+								R_DBG_TRNG_DIAG_MAX_MSB - R_DBG_TRNG_DIAG_MAX_LSB + 1));
+					when 3 =>
+						dw(R_DBG_TRNG_DIAG_MAX_MSB downto R_DBG_TRNG_DIAG_MAX_LSB) :=
+							std_logic_vector(resize(r.debug.trng.shfmax,
+								R_DBG_TRNG_DIAG_MAX_MSB - R_DBG_TRNG_DIAG_MAX_LSB + 1));
+					when others =>
+						dw(R_DBG_TRNG_DIAG_MAX_MSB downto R_DBG_TRNG_DIAG_MAX_LSB) :=
+							std_logic_vector(resize(r.debug.trng.rawmax,
+								R_DBG_TRNG_DIAG_MAX_MSB - R_DBG_TRNG_DIAG_MAX_LSB + 1));
+				end case;
 				v.axi.rdatax(31 downto 0) := dw(31 downto 0);
 				v.axi.rvalid := '1'; -- (s5)
-			-- -------------------------------------------
-			-- decoding read of R_DBG_TRNG_DIAG_2 register
-			-- -------------------------------------------
-			elsif debug -- statically resolved by synthesizer
-			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_TRNG_DIAG_2
+			-- --------------------------------------------
+			-- decoding read of R_DBG_TRNG_DIAG_OK register
+			-- ---------------------------------------------
+			-- TODO: put back 'debug' condition!
+			elsif -- debug and -- statically resolved by synthesizer
+				s_axi_araddr(ADB + 2 downto 3) = R_DBG_TRNG_DIAG_OK
 			then
-				dw(31 downto 0) :=
-					std_logic_vector(resize(unsigned(r.debug.trngaxistarv), 32));
+				vid := to_integer(unsigned(r.debug.trng.diagid));
+				dw := (others => '0');
+				case vid is
+					when 0 =>
+						dw(R_DBG_TRNG_DIAG_OK_MSB downto R_DBG_TRNG_DIAG_OK_LSB) :=
+							std_logic_vector(resize(r.debug.trng.axiok,
+								R_DBG_TRNG_DIAG_OK_MSB - R_DBG_TRNG_DIAG_OK_LSB + 1));
+					when 1 =>
+						dw(R_DBG_TRNG_DIAG_OK_MSB downto R_DBG_TRNG_DIAG_OK_LSB) :=
+							std_logic_vector(resize(r.debug.trng.efpok,
+								R_DBG_TRNG_DIAG_OK_MSB - R_DBG_TRNG_DIAG_OK_LSB + 1));
+					when 2 =>
+						dw(R_DBG_TRNG_DIAG_OK_MSB downto R_DBG_TRNG_DIAG_OK_LSB) :=
+							std_logic_vector(resize(r.debug.trng.crvok,
+								R_DBG_TRNG_DIAG_OK_MSB - R_DBG_TRNG_DIAG_OK_LSB + 1));
+					when 3 =>
+						dw(R_DBG_TRNG_DIAG_OK_MSB downto R_DBG_TRNG_DIAG_OK_LSB) :=
+							std_logic_vector(resize(r.debug.trng.shfok,
+								R_DBG_TRNG_DIAG_OK_MSB - R_DBG_TRNG_DIAG_OK_LSB + 1));
+					when others =>
+						dw(R_DBG_TRNG_DIAG_OK_MSB downto R_DBG_TRNG_DIAG_OK_LSB) :=
+							std_logic_vector(resize(r.debug.trng.rawok,
+								R_DBG_TRNG_DIAG_OK_MSB - R_DBG_TRNG_DIAG_OK_LSB + 1));
+				end case;
 				v.axi.rdatax(31 downto 0) := dw(31 downto 0);
 				v.axi.rvalid := '1'; -- (s5)
-			-- -------------------------------------------
-			-- decoding read of R_DBG_TRNG_DIAG_3 register
-			-- -------------------------------------------
-			elsif debug -- statically resolved by synthesizer
-			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_TRNG_DIAG_3
+			-- -----------------------------------------------
+			-- decoding read of R_DBG_TRNG_DIAG_STARV register
+			-- -----------------------------------------------
+			-- TODO: put back 'debug' condition!
+			elsif -- debug and -- statically resolved by synthesizer
+				s_axi_araddr(ADB + 2 downto 3) = R_DBG_TRNG_DIAG_STARV
 			then
-				dw(31 downto 0) :=
-					std_logic_vector(resize(unsigned(r.debug.trngfpok), 32));
+				vid := to_integer(unsigned(r.debug.trng.diagid));
+				dw := (others => '0');
+				case vid is
+					when 0 =>
+						dw(R_DBG_TRNG_DIAG_ST_MSB downto R_DBG_TRNG_DIAG_ST_LSB) :=
+							std_logic_vector(resize(r.debug.trng.axistarv,
+								R_DBG_TRNG_DIAG_ST_MSB - R_DBG_TRNG_DIAG_ST_LSB + 1));
+					when 1 =>
+						dw(R_DBG_TRNG_DIAG_ST_MSB downto R_DBG_TRNG_DIAG_ST_LSB) :=
+							std_logic_vector(resize(r.debug.trng.efpstarv,
+								R_DBG_TRNG_DIAG_ST_MSB - R_DBG_TRNG_DIAG_ST_LSB + 1));
+					when 2 =>
+						dw(R_DBG_TRNG_DIAG_ST_MSB downto R_DBG_TRNG_DIAG_ST_LSB) :=
+							std_logic_vector(resize(r.debug.trng.crvstarv,
+								R_DBG_TRNG_DIAG_ST_MSB - R_DBG_TRNG_DIAG_ST_LSB + 1));
+					when 3 =>
+						dw(R_DBG_TRNG_DIAG_ST_MSB downto R_DBG_TRNG_DIAG_ST_LSB) :=
+							std_logic_vector(resize(r.debug.trng.shfstarv,
+								R_DBG_TRNG_DIAG_ST_MSB - R_DBG_TRNG_DIAG_ST_LSB + 1));
+					when others =>
+						dw(R_DBG_TRNG_DIAG_ST_MSB downto R_DBG_TRNG_DIAG_ST_LSB) :=
+							std_logic_vector(resize(r.debug.trng.rawstarv,
+								R_DBG_TRNG_DIAG_ST_MSB - R_DBG_TRNG_DIAG_ST_LSB + 1));
+				end case;
 				v.axi.rdatax(31 downto 0) := dw(31 downto 0);
 				v.axi.rvalid := '1'; -- (s5)
-			-- -------------------------------------------
-			-- decoding read of R_DBG_TRNG_DIAG_4 register
-			-- -------------------------------------------
-			elsif debug -- statically resolved by synthesizer
-			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_TRNG_DIAG_4
+			-- ---------------------------------------
+			-- decoding read of R_DBG_CLK_MHZ register
+			-- ---------------------------------------
+			-- TODO: put back 'debug' condition!
+			elsif -- debug and -- statically resolved by synthesizer
+			  s_axi_araddr(ADB + 2 downto 3) = R_DBG_CLK_MHZ
 			then
-				dw(31 downto 0) :=
-					std_logic_vector(resize(unsigned(r.debug.trngfpstarv), 32));
-				v.axi.rdatax(31 downto 0) := dw(31 downto 0);
+				dw := (others => '0');
+				dw(R_DBG_CLK_MHZ_MSB downto R_DBG_CLK_MHZ_LSB) :=
+					std_logic_vector(resize(r.debug.clkcnt,
+						R_DBG_CLK_MHZ_MSB - R_DBG_CLK_MHZ_LSB + 1));
+				v.axi.rdatax(31 downto 0) := dw;
 				v.axi.rvalid := '1'; -- (s5)
-			-- -------------------------------------------
-			-- decoding read of R_DBG_TRNG_DIAG_5 register
-			-- -------------------------------------------
-			elsif debug -- statically resolved by synthesizer
-			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_TRNG_DIAG_5
+			-- -----------------------------------------
+			-- decoding read of R_DBG_CLKMM_MHZ register
+			-- -----------------------------------------
+			-- TODO: put back 'debug' condition!
+			elsif -- debug and -- statically resolved by synthesizer
+				s_axi_araddr(ADB + 2 downto 3) = R_DBG_CLKMM_MHZ
 			then
-				dw(31 downto 0) :=
-					std_logic_vector(resize(unsigned(r.debug.trngcrvok), 32));
-				v.axi.rdatax(31 downto 0) := dw(31 downto 0);
-				v.axi.rvalid := '1'; -- (s5)
-			-- -------------------------------------------
-			-- decoding read of R_DBG_TRNG_DIAG_6 register
-			-- -------------------------------------------
-			elsif debug -- statically resolved by synthesizer
-			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_TRNG_DIAG_6
-			then
-				dw(31 downto 0) :=
-					std_logic_vector(resize(unsigned(r.debug.trngcrvstarv), 32));
-				v.axi.rdatax(31 downto 0) := dw(31 downto 0);
-				v.axi.rvalid := '1'; -- (s5)
-			-- -------------------------------------------
-			-- decoding read of R_DBG_TRNG_DIAG_7 register
-			-- -------------------------------------------
-			elsif debug -- statically resolved by synthesizer
-			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_TRNG_DIAG_7
-			then
-				dw(31 downto 0) :=
-					std_logic_vector(resize(unsigned(r.debug.trngshok), 32));
-				v.axi.rdatax(31 downto 0) := dw(31 downto 0);
-				v.axi.rvalid := '1'; -- (s5)
-			-- -------------------------------------------
-			-- decoding read of R_DBG_TRNG_DIAG_8 register
-			-- -------------------------------------------
-			elsif debug -- statically resolved by synthesizer
-			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_TRNG_DIAG_8
-			then
-				dw(31 downto 0) :=
-					std_logic_vector(resize(unsigned(r.debug.trngshstarv), 32));
-				v.axi.rdatax(31 downto 0) := dw(31 downto 0);
+				dw := (others => '0');
+				dw(R_DBG_CLKMM_MHZ_MSB downto R_DBG_CLKMM_MHZ_LSB) :=
+					std_logic_vector(resize(r.debug.clkmmcnt,
+						R_DBG_CLKMM_MHZ_MSB - R_DBG_CLKMM_MHZ_LSB + 1));
+				v.axi.rdatax(31 downto 0) := dw;
 				v.axi.rvalid := '1'; -- (s5)
 			-- --------------------------------------------
 			-- unknown target address, drive back dumb data (all 1's)
@@ -3482,6 +3618,18 @@ begin
 				-- raise error flag (illicite register access)
 				v.ctrl.ierrid(STATUS_ERR_I_UNKNOWN_REG) := '1';
 			end if;
+		end if;
+
+		-- Resynchronizing the r_debug_clkmm
+		v.debug.clkmmcnt_resync0 := r_debug_clkmmcnt;
+		v.debug.clkmmcnt_resync1 := r.debug.clkmmcnt_resync0;
+		v.debug.clkmmcnt         := r.debug.clkmmcnt_resync1;
+
+		v.debug.clkcnt0 := r.debug.clkcnt0 - 1;
+		if r.debug.clkcnt0(R_DBG_CLK_MHZ_PRECNT - 1) = '0'
+			and v.debug.clkcnt0(R_DBG_CLK_MHZ_PRECNT - 1) = '1'
+		then
+			v.debug.clkcnt := r.debug.clkcnt + 1;
 		end if;
 
 		-- handshake over AXI data-read channel
@@ -4093,6 +4241,96 @@ begin
 
 		end if; -- nn_dynamic
 
+		-- -----------------------------------------------------
+		-- Record min & max of IRN FIFOs during [k]P computation
+		-- -----------------------------------------------------
+		if debug then -- statically resolved by synthesizer
+			if r.ctrl.kppending = '1' then
+				-- Testing MINIMUMs
+				--   AXI irn count (test min)
+				vtmp22 := '0' & unsigned(trngaxiirncount);
+				vtmp23 := '0' & r.debug.trng.aximin;
+				vtmp24 := vtmp22 - vtmp23;
+				if vtmp24(vtmp24'HIGH) = '1' then
+					-- means trngaxiirncount < r.debug.trng.aximin
+					v.debug.trng.aximin := unsigned(trngaxiirncount);
+				end if;
+				--   EFP irn count (test min)
+				vtmp25 := '0' & unsigned(dbgtrngefpirncount);
+				vtmp26 := '0' & r.debug.trng.efpmin;
+				vtmp27 := vtmp25 - vtmp26;
+				if vtmp27(vtmp27'HIGH) = '1' then
+					-- means dbgtrngefpirncount < r.debug.trng.efpmin
+					v.debug.trng.efpmin := unsigned(dbgtrngefpirncount);
+				end if;
+				--   CRV irn count (test min)
+				vtmp28 := '0' & unsigned(dbgtrngcrvirncount);
+				vtmp29 := '0' & r.debug.trng.crvmin;
+				vtmp30 := vtmp28 - vtmp29;
+				if vtmp30(vtmp30'HIGH) = '1' then
+					-- means dbgtrngcrvirncount < r.debug.trng.crvmin
+					v.debug.trng.crvmin := unsigned(dbgtrngcrvirncount);
+				end if;
+				--   SHF irn count (test min)
+				vtmp31 := '0' & unsigned(dbgtrngshfirncount);
+				vtmp32 := '0' & r.debug.trng.shfmin;
+				vtmp33 := vtmp31 - vtmp32;
+				if vtmp33(vtmp33'HIGH) = '1' then
+					-- means dbgtrngshfirncount < r.debug.trng.shfmin
+					v.debug.trng.shfmin := unsigned(dbgtrngshfirncount);
+				end if;
+				--   RAW count (test min)
+				vtmp34 := '0' & unsigned(dbgtrngrawcount);
+				vtmp35 := '0' & r.debug.trng.rawmin;
+				vtmp36 := vtmp34 - vtmp35;
+				if vtmp36(vtmp36'HIGH) = '1' then
+					-- means dbgtrngrawcount < r.debug.trng.rawmin
+					v.debug.trng.rawmin := unsigned(dbgtrngrawcount);
+				end if;
+				-- Testing MAXIMUMs
+				--   AXI irn count (test max)
+				vtmp22 := '0' & r.debug.trng.aximax;
+				vtmp23 := '0' & unsigned(trngaxiirncount);
+				vtmp24 := vtmp22 - vtmp23;
+				if vtmp24(vtmp24'HIGH) = '1' then
+					-- means trngaxiirncount > r.debug.trng.aximax
+					v.debug.trng.aximax := unsigned(trngaxiirncount);
+				end if;
+				--   EFP irn count (test max)
+				vtmp25 := '0' & r.debug.trng.efpmax;
+				vtmp26 := '0' & unsigned(dbgtrngefpirncount);
+				vtmp27 := vtmp25 - vtmp26;
+				if vtmp27(vtmp27'HIGH) = '1' then
+					-- means dbgtrngefpirncount > r.debug.trng.efpmax
+					v.debug.trng.efpmax := unsigned(dbgtrngefpirncount);
+				end if;
+				--   CRV irn count (test max)
+				vtmp28 := '0' & r.debug.trng.crvmax;
+				vtmp29 := '0' & unsigned(dbgtrngcrvirncount);
+				vtmp30 := vtmp28 - vtmp29;
+				if vtmp30(vtmp30'HIGH) = '1' then
+					-- means dbgtrngcrvirncount > r.debug.trng.crvmax
+					v.debug.trng.crvmax := unsigned(dbgtrngcrvirncount);
+				end if;
+				--   SHF irn count (test max)
+				vtmp31 := '0' & r.debug.trng.shfmax;
+				vtmp32 := '0' & unsigned(dbgtrngshfirncount);
+				vtmp33 := vtmp31 - vtmp32;
+				if vtmp33(vtmp33'HIGH) = '1' then
+					-- means dbgtrngshfirncount > r.debug.trng.shfmax
+					v.debug.trng.shfmax := unsigned(dbgtrngshfirncount);
+				end if;
+				--   RAW count (test max)
+				vtmp34 := '0' & r.debug.trng.rawmax;
+				vtmp35 := '0' & unsigned(dbgtrngrawcount);
+				vtmp36 := vtmp34 - vtmp35;
+				if vtmp36(vtmp36'HIGH) = '1' then
+					-- means dbgtrngrawcount > r.debug.trng.rawmax
+					v.debug.trng.rawmax := unsigned(dbgtrngrawcount);
+				end if;
+			end if;
+		end if; -- debug
+
 		-- synchronous (active low) reset
 		if s_axi_aresetn = '0' then
 			v.ctrl.state := idle;
@@ -4340,22 +4578,20 @@ begin
 				-- no need to reset r.debug.i[rw]datacnt
 				v.debug.halt := '0';
 				-- no need to reset r.debug.readsh
+				-- no need to rezet r.debug.trng.diagid
 				v.debug.readrdy := '0';
 				v.debug.noxyshuf := '0'; -- start with XY-shuffling enabled
 				v.debug.noaxirnd := '0'; -- start with AXI rnd masking enabled
-				v.debug.trngaxistarv := (others => '0');
-				v.debug.trngaxiok := (others => '0');
-				v.debug.trngfpstarv := (others => '0');
-				v.debug.trngfpok := (others => '0');
-				v.debug.trngcrvstarv := (others => '0');
-				v.debug.trngcrvok := (others => '0');
-				v.debug.trngshstarv := (others => '0');
-				v.debug.trngshok := (others => '0');
+				-- no need to reset r.debug.trng.axi[starv|ok|min|max]
+				-- no need to reset r.debug.trng.efp[starv|ok|min|max]
+				-- no need to reset r.debug.trng.crv[starv|ok|min|max]
+				-- no need to reset r.debug.trng.shf[starv|ok|min|max]
+				-- no need to reset r.debug.trng.raw[starv|ok|min|max]
 				-- upon reset (in debug mode) we use the real TRNG entropy source
 				v.debug.trng.usepseudo := '0';
 				-- upon reset (in debug mode) we inhibit ecc_trng_pp from reading
 				-- any raw random bytes. Thus software must activate this, by using
-				-- register W_DBG_TRNG_CTRL.
+				-- register W_DBG_TRNG_CTRL_POSTP.
 				v.debug.trng.rawpullppdis := '1';
 			else
 				v.debug.trng.nnrnddeterm := '0'; -- present also when debug=FALSE, see (s38)

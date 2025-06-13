@@ -47,7 +47,7 @@ package ecc_customize is
 	constant shuffle : boolean := TRUE; -- memory shuffling
 	type shuftype is (none, linear, permute_lgnb, permute_limbs);
 	constant shuffle_type : shuftype := permute_lgnb; -- set a 'shuftype' value
-	constant zremask : integer := 4; -- quite arbitrary
+	constant zremask : integer := 4; -- quite arbitrary but quite often too
 	-- -----------------------
 	-- TRNG related parameters
 	-- -----------------------
@@ -56,7 +56,7 @@ package ecc_customize is
 	constant trngta : natural range 1 to 4095 := 32;
 	constant trng_ramsz_raw : positive := 4; -- in kB
 	constant trng_ramsz_axi : positive := 4; -- in kB
-	constant trng_ramsz_fpr : positive := 4; -- in kB
+	constant trng_ramsz_efp : positive := 4; -- in kB
 	constant trng_ramsz_crv : positive := 4; -- in kB
 	constant trng_ramsz_shf : positive := 16; -- in kB
 	-- -------------
@@ -1152,7 +1152,7 @@ end package ecc_customize;
 --
 -- ============================================================================
 -- NAME
---       'trng_ramsz_[raw|axi|fpr|crv|shf]'
+--       'trng_ramsz_[raw|axi|efp|crv|shf]'
 --
 -- DEFINITION
 --       These 5 parameters each set the size of one of the FIFO used to
@@ -1166,7 +1166,7 @@ end package ecc_customize;
 --       In terminology of AIS31 standard, parameter 'trng_ramsz_raw' is
 --       related to "raw random numbers", which are random numbers directly
 --       taken at the output of the physical source, before any logical
---       "post-processing". Other 4 parameters 'trng_ramsz_[axi|fpr|crv|shf]
+--       "post-processing". Other 4 parameters 'trng_ramsz_[axi|efp|crv|shf]
 --       are related to "internal random numbers" (AIS31 terminology again),
 --       which are random numbers taken at the output of the post-processing
 --       operations.
@@ -1179,35 +1179,35 @@ end package ecc_customize;
 --         - 'trng_ramsz_raw' is translated into parameter 'raw_ram_size'.
 --           Now as the raw random FIFO stores bits, we obviously have:
 --
---             'raw_ram_size' = greater or equal power of 2 of qty
+--             'raw_ram_size' = greater or equal power-of-2 of qty
 --                                (  8 * 1024 * 'trng_ramsz_raw' )
 --
 --         - 'trng_ramsz_axi' is translated into parameter 'irn_fifo_size_axi'.
 --           The FIFO of internal random nb served to ecc_axi storing ww-bit
 --           words, we have:
 --
---             'irn_fifo_size_axi' = greater or equal power of 2 of qty
+--             'irn_fifo_size_axi' = greater or equal power-of-2 of qty
 --                                 ( 'trng_ramsz_axi' * 1024 * 8) / ww )
 --
---         - 'trng_ramsz_fpr' is translated into parameter 'irn_fifo_size_fp'.
+--         - 'trng_ramsz_efp' is translated into parameter 'irn_fifo_size_efp'.
 --           The FIFO of internal random nb served to ecc_fp storing ww-bit
 --           words, we have:
 --
---             'irn_fifo_size_fp' = greater or equal power of 2 of qty
---                                 ( 'trng_ramsz_fpr' * 1024 * 8) / ww )
+--             'irn_fifo_size_efp' = greater or equal power-of-2 of qty
+--                                 ( 'trng_ramsz_efp' * 1024 * 8) / ww )
 -- 
---         - 'trng_ramsz_crv' is translated in parameter 'irn_fifo_size_curve'.
+--         - 'trng_ramsz_crv' is translated in parameter 'irn_fifo_size_crv'.
 --           The FIFO of internal random nb served to ecc_curve storing 2-bit
 --           words, we have:
 --
---             'irn_fifo_size_curve' = greater or equal power of 2 of qty
---                                    ( 'trng_ramsz_crv' * 1024 * 8) / 2 )
+--             'irn_fifo_size_crv' = greater or equal power-of-2 of qty
+--                                 ( 'trng_ramsz_crv' * 1024 * 8) / 2 )
 --
---         - 'trng_ramsz_shf' is translated into parameter 'irn_fifo_size_sh'.
+--         - 'trng_ramsz_shf' is translated into parameter 'irn_fifo_size_shf'.
 --           The FIFO of internal random nb served to ecc_fp_dram_sh_* storing
 --           words whose bitwidth depends on the type of shuffling algorithm
 --           selected by parameter 'shuffle_type' (see that parameter and its
---           desccription), parameter 'irn_fifo_size_sh' is deduced from
+--           description), parameter 'irn_fifo_size_shf' is deduced from
 --           'trng_ramsz_shf' through a relation similar as those above but
 --           depending on the parameter 'shuffle_type' (see VHDL function
 --           'set_irn_width_sh' defined in package file ecc_pkg.vhd and used

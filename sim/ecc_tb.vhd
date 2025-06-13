@@ -310,8 +310,8 @@ architecture sim of ecc_tb is
 
 	procedure str_to_stdlogic(
 		variable s: in string; constant inpos: in positive; constant maxpos: in positive;
-		variable st: inout std_logic512;
-		constant valnn: in integer; variable ok: inout boolean; variable outpos: out positive)
+		variable st: inout std_logic1024;
+		constant vnn: in integer; variable ok: inout boolean; variable outpos: out positive)
 	is
 		variable leading_zeros : boolean;
 		variable begpos, endpos: integer;
@@ -376,11 +376,11 @@ architecture sim of ecc_tb is
 		if ok and not zero then
 			outpos := endpos;
 			-- Also enforce that the nb of hexadecimal digits that was found does not
-			-- exceed the maximal nb of hex digits for a bit vector of 'valnn' bits.
-			if endpos - begpos + 1 > div(valnn, 4) then
+			-- exceed the maximal nb of hex digits for a bit vector of 'vnn' bits.
+			if endpos - begpos + 1 > div(vnn, 4) then
 				echol("[     ecc_tb.vhd ]: ERROR: Too large an hexadecimal value "
 						& "as compared to the current value of nn = "
-						& integer'image(valnn) & ".");
+						& integer'image(vnn) & ".");
 				assert FALSE severity FAILURE;
 			end if;
 			if ok then
@@ -390,31 +390,31 @@ architecture sim of ecc_tb is
 				end loop;
 				-- Since we have ignored any leading zeros, we can also enforce that
 				-- the most significant character (the first non-null we met) does not
-				-- create an overflow of 'valnn' bits.
+				-- create an overflow of 'vnn' bits.
 				-- Now parse again, this time backward.
-				if endpos - begpos + 1 = div(valnn, 4) and (valnn mod 4) > 0 then
+				if endpos - begpos + 1 = div(vnn, 4) and (vnn mod 4) > 0 then
 					-- Let fc be set with the first non-null hex digit character met.
 					char_to_stdlogic4(s(begpos), s4);
-					for i in 3 downto (valnn mod 4) loop
+					for i in 3 downto (vnn mod 4) loop
 						if s4(i) /= '0' then
 							echol("[     ecc_tb.vhd ]: ERROR: Too large an hexadecimal value "
 									& "as compared to the current value of nn.");
 							assert FALSE severity FAILURE;
 						end if;
 					end loop;
-				end if; -- valnn not a mult. of 4
+				end if; -- vnn not a mult. of 4
 			end if; -- if ok
 		end if; -- if ok and not zero
 	end procedure str_to_stdlogic;
 
 	-- Compare two points coordinates
-	function compare_two_points_coords(constant x0: in std_logic512;
-		constant y0: in std_logic512; constant x1: in std_logic512;
-		constant y1: in std_logic512; constant valnn : in positive)
+	function compare_two_points_coords(constant x0: in std_logic1024;
+		constant y0: in std_logic1024; constant x1: in std_logic1024;
+		constant y1: in std_logic1024; constant vnn : in positive)
 		return boolean is
 	begin
-		if x0(valnn - 1 downto 0) = x1(valnn - 1 downto 0) and
-			y0(valnn - 1 downto 0) = y1(valnn - 1 downto 0)
+		if x0(vnn - 1 downto 0) = x1(vnn - 1 downto 0) and
+			y0(vnn - 1 downto 0) = y1(vnn - 1 downto 0)
 		then
 			return TRUE;
 		else
@@ -443,7 +443,7 @@ architecture sim of ecc_tb is
 		constant t: in string(1 to 16384); constant sz: in natural;
 		constant op: in string) is
 	begin
-		echo("[     ecc_tb.vhd ]: **** END TEST " & op);
+		echo("[     ecc_tb.vhd ]: >>>> END TEST " & op);
 		if sz > 0 then
 			echo(t(1 to sz));
 		end if;
@@ -476,22 +476,22 @@ begin
 		wait;
 	end process;
 
-	-- Emulate AXI clock (100 MHz).
+	-- Emulate AXI clock (150 MHz).
 	process
 	begin
 		s_axi_aclk <= '0';
-		wait for 5 ns;
+		wait for 3.333 ns;
 		s_axi_aclk <= '1';
-		wait for 5 ns;
+		wait for 3.333 ns;
 	end process;
 
-	-- Emulate clkmm clock (250 MHz).
+	-- Emulate clkmm clock (116 MHz).
 	process
 	begin
 		clkmm <= '0';
-		wait for 2 ns;
+		wait for 4.31 ns;
 		clkmm <= '1';
-		wait for 2 ns;
+		wait for 4.31 ns;
 	end process;
 
 	-- DuT instance
@@ -595,13 +595,14 @@ begin
 		variable newpos : natural;
 		--variable new_test_kp : string(1 to 14); -- "== TEST [k]P #"
 		variable valnn : natural;
+		variable first_curve : boolean := TRUE;
 		--
 		-- Curve specific
 		--
-		variable p_val : std_logic512;
-		variable a_val : std_logic512;
-		variable b_val : std_logic512;
-		variable q_val : std_logic512;
+		variable p_val : std_logic1024;
+		variable a_val : std_logic1024;
+		variable b_val : std_logic1024;
+		variable q_val : std_logic1024;
 		variable curve_param : curve_param_type;
 		--
 		-- Common to different point operations
@@ -609,60 +610,60 @@ begin
 		--   Point P
 		--
 		variable sw_p_is_null : boolean;
-		variable px_val : std_logic512;
-		variable py_val : std_logic512;
+		variable px_val : std_logic1024;
+		variable py_val : std_logic1024;
 		--
 		--   Point Q
 		--
 		variable sw_q_is_null : boolean;
-		variable qx_val : std_logic512;
-		variable qy_val : std_logic512;
+		variable qx_val : std_logic1024;
+		variable qy_val : std_logic1024;
 		--
 		-- Scalar multiplication
 		--
-		variable k_val : std_logic512;
-		variable vtoken : std_logic512;
+		variable k_val : std_logic1024;
+		variable vtoken : std_logic1024;
 		--   Expected (software)
 		variable sw_kp_is_null : boolean;
-		variable sw_kpx_val : std_logic512;
-		variable sw_kpy_val : std_logic512;
+		variable sw_kpx_val : std_logic1024;
+		variable sw_kpy_val : std_logic1024;
 		--   Obtained (hardware)
 		variable hw_kp_is_null : boolean;
-		variable hw_kpx_val : std_logic512;
-		variable hw_kpy_val : std_logic512;
+		variable hw_kpx_val : std_logic1024;
+		variable hw_kpy_val : std_logic1024;
 		--
 		-- Point addition
 		--
 		--   Expected (software)
 		variable sw_pplusq_is_null : boolean;
-		variable sw_pplusqx_val : std_logic512;
-		variable sw_pplusqy_val : std_logic512;
+		variable sw_pplusqx_val : std_logic1024;
+		variable sw_pplusqy_val : std_logic1024;
 		--   Obtained (hardware)
 		variable hw_pplusq_is_null : boolean;
-		variable hw_pplusqx_val : std_logic512;
-		variable hw_pplusqy_val : std_logic512;
+		variable hw_pplusqx_val : std_logic1024;
+		variable hw_pplusqy_val : std_logic1024;
 		--
 		-- Point doubling
 		--
 		--   Expected (software)
 		variable sw_twop_is_null : boolean;
-		variable sw_twopx_val : std_logic512;
-		variable sw_twopy_val : std_logic512;
+		variable sw_twopx_val : std_logic1024;
+		variable sw_twopy_val : std_logic1024;
 		--   Obtained (hardware)
 		variable hw_twop_is_null : boolean;
-		variable hw_twopx_val : std_logic512;
-		variable hw_twopy_val : std_logic512;
+		variable hw_twopx_val : std_logic1024;
+		variable hw_twopy_val : std_logic1024;
 		--
 		-- Point opposite
 		--
 		--   Expected (software)
 		variable sw_negp_is_null : boolean;
-		variable sw_negpx_val : std_logic512;
-		variable sw_negpy_val : std_logic512;
+		variable sw_negpx_val : std_logic1024;
+		variable sw_negpy_val : std_logic1024;
 		--   Obtained (hardware)
 		variable hw_negp_is_null : boolean;
-		variable hw_negpx_val : std_logic512;
-		variable hw_negpy_val : std_logic512;
+		variable hw_negpx_val : std_logic1024;
+		variable hw_negpy_val : std_logic1024;
 		--
 		-- Logical tests on point(s)
 		--
@@ -729,23 +730,22 @@ begin
 
 		configure_irq(s_axi_aclk, axi0, axo0, TRUE);
 
- 		-- Enable XY-shuffling
- 		debug_enable_xyshuf(s_axi_aclk, axi0, axo0);
- 
- 		-- Enable AXI on-the-fly masking of the scalar
- 		debug_enable_aximask(s_axi_aclk, axi0, axo0);
- 
- 		-- Enable memory shuffling
- 		enable_shuffle(s_axi_aclk, axi0, axo0);
+		if debug then
+			-- Enable XY-shuffling
+			debug_enable_xyshuf(s_axi_aclk, axi0, axo0);
+	 
+			-- Enable AXI on-the-fly masking of the scalar
+			debug_enable_aximask(s_axi_aclk, axi0, axo0);
+	 
+			-- Enable memory shuffling
+			enable_shuffle(s_axi_aclk, axi0, axo0);
 
-		-- Reset diagnostic TRNG counters
-		debug_reset_trng_diagnostic_counters(s_axi_aclk, axi0, axo0);
+			-- Choice of the TRNG random source.
+			debug_trng_use_real(s_axi_aclk, axi0, axo0);
 
-		-- Choice of the TRNG random source.
-		debug_trng_use_real(s_axi_aclk, axi0, axo0);
-
-		-- Enable the post-processing unit from reading raw random bytes.
-		debug_trng_pp_start_pulling_raw(s_axi_aclk, axi0, axo0);
+			-- Enable the post-processing unit from reading raw random bytes.
+			debug_trng_pp_start_pulling_raw(s_axi_aclk, axi0, axo0);
+		end if;
 
 		-- End of IP initialization & config
 
@@ -822,7 +822,7 @@ begin
 						-- Line is a "[k]P" line.
 						-- Read test Id.
 						--
-						echo("[     ecc_tb.vhd ]: **** NEW TEST [k]P");
+						echo("[     ecc_tb.vhd ]: <<<< NEW TEST [k]P");
 						-- print anything that may follow "TEST [k]P"
 						test_label_sz := 0;
 						for i in 13 to line_length loop
@@ -842,7 +842,7 @@ begin
 						-- Line is a "P+Q" line.
 						-- Read test Id.
 						--
-						echo("[     ecc_tb.vhd ]: **** NEW TEST P+Q");
+						echo("[     ecc_tb.vhd ]: <<<< NEW TEST P+Q");
 						-- print anything that may follow "TEST P+Q"
 						test_label_sz := 0;
 						for i in 12 to line_length loop
@@ -862,7 +862,7 @@ begin
 						-- Line is a "[2]P" line.
 						-- Read test Id.
 						--
-						echo("[     ecc_tb.vhd ]: **** NEW TEST [2]P");
+						echo("[     ecc_tb.vhd ]: <<<< NEW TEST [2]P");
 						-- print anything that may follow "TEST [2]P"
 						test_label_sz := 0;
 						for i in 13 to line_length loop
@@ -882,7 +882,7 @@ begin
 						-- Line is a "-P" line.
 						-- Read test Id.
 						--
-						echo("[     ecc_tb.vhd ]: **** NEW TEST (-P)");
+						echo("[     ecc_tb.vhd ]: <<<< NEW TEST (-P)");
 						-- print anything that may follow "TEST (-P)"
 						test_label_sz := 0;
 						for i in 11 to line_length loop
@@ -902,7 +902,7 @@ begin
 						-- Line is a "isPoncurve" line.
 						-- Read test Id.
 						--
-						echo("[     ecc_tb.vhd ]: **** NEW TEST isPoncurve");
+						echo("[     ecc_tb.vhd ]: <<<< NEW TEST isPoncurve");
 						-- print anything that may follow "TEST isPoncurve"
 						test_label_sz := 0;
 						for i in 19 to line_length loop
@@ -922,7 +922,7 @@ begin
 						-- Line is a "isP==Q" line.
 						-- Read test Id.
 						--
-						echo("[     ecc_tb.vhd ]: **** NEW TEST isP==Q");
+						echo("[     ecc_tb.vhd ]: <<<< NEW TEST isP==Q");
 						-- print anything that may follow "TEST isP==Q"
 						test_label_sz := 0;
 						for i in 15 to line_length loop
@@ -942,7 +942,7 @@ begin
 						-- Line is a "isP==-Q" line.
 						-- Read test Id.
 						--
-						echo("[     ecc_tb.vhd ]: **** NEW TEST isP==-Q");
+						echo("[     ecc_tb.vhd ]: <<<< NEW TEST isP==-Q");
 						-- print anything that may follow "TEST isP==-Q"
 						test_label_sz := 0;
 						for i in 16 to line_length loop
@@ -1070,11 +1070,11 @@ begin
 							--
 							-- First set 'nn', if needed.
 							--
-							if (nn_s /= valnn) then
+							if first_curve or (nn_s /= valnn) then
+								first_curve := FALSE;
 								set_nn(s_axi_aclk, axi0, axo0, valnn);
 								nn_s <= valnn;
 							end if;
-							--
 							-- Then set curve according to the parameters extracted
 							-- from the testbench input file.
 							--
@@ -1459,6 +1459,7 @@ begin
 							end if;
 							-- Acknowledge possible errors.
 							ack_all_errors(s_axi_aclk, axi0, axo0);
+
 						else -- not rdok
 							echol("[     ecc_tb.vhd ]: ERROR: Wrong syntax in input file "
 								& "(expecting an hexadecimal number after ""kPy=0x"").");

@@ -46,7 +46,8 @@ entity es_trng_sim is
 		dbgtrngrawfiforeaddis : in std_logic;
 		dbgtrngrawduration : out unsigned(31 downto 0);
 		dbgtrngvonneuman : in std_logic;
-		dbgtrngidletime : in unsigned(3 downto 0)
+		dbgtrngidletime : in unsigned(3 downto 0);
+		dbgtrngrawcount : out std_logic_vector(log2(raw_ram_size) - 1 downto 0)
 	);
 end entity es_trng_sim;
 
@@ -105,5 +106,6 @@ begin
 	dbgtrngrawwaddr <= (others => 'X');
 	dbgtrngrawdata <= 'X';
 	dbgtrngrawduration <= (others => 'X');
+	dbgtrngrawcount <= (others => 'X');
 
 end architecture struct;

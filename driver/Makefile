@@ -1,10 +1,10 @@
 # VHD_DIR must be set with the ABSOLUTE path where IPECC microcode
-# has been built (DO NOT use relative path!)
-VHD_DIR=/home/karim/work/github/ANSSI-FR/IPECC/hdl/common/ecc_curve_iram
+# has been built
+VHD_DIR=../hdl/common/ecc_curve_iram
 
 # CONFIG #############
 ARM_CC ?= arm-linux-gnueabihf-gcc
-CFLAGS = -Wall -Wextra -Wpedantic -O3 -g3 -mcpu=cortex-a9 -mfpu=vfpv3 -mfloat-abi=hard -static
+CFLAGS = -Wall -Wextra -Wpedantic -Wno-stringop-truncation -O3 -g3 -mcpu=cortex-a9 -mfpu=vfpv3 -mfloat-abi=hard -static
 CFLAGS += -DWITH_EC_HW_DEBUG
 
 # Comment the following line if your terminal doesn'ot support ANSI Escape Codes
@@ -22,8 +22,7 @@ C_FILES_STDOL = $(C_FILES) stdalone/ecc-test-stdl.c
 all: ecc-test-linux-uio ecc-test-linux-devmem ecc-test-stdalone
 
 
-.PHONY: headers
-headers:
+$(VHD_DIR)/ecc_addr.h $(VHD_DIR)/ecc_vars.h $(VHD_DIR)/ecc_states.h $(VHD_DIR)/ecc_platform.h:
 	@if [ -z "$(VHD_DIR)" ] ; then \
 		echo -e "\033[93m *Error*: makefile variable VHD_DIR is not defined.\033[0m" ; \
 		echo -e "\033[92m\033[4mSolution\033[24m: Edit ./Makefile and set VHD_DIR to point to the folder path\033[0m" ; \
@@ -37,19 +36,19 @@ headers:
 		echo -e "\033[38;5;226m\033[4mDetails\033[24m: Folder '$(VHD_DIR)' doesn't have the 'x' permission\033[0m" ; \
 		exit -1; \
 		fi
-	@for h in ecc_addr.h ecc_vars.h ecc_states.h ; do \
+	@for h in ecc_addr.h ecc_vars.h ecc_states.h ecc_platform.h ; do \
 		if [ ! -r $(VHD_DIR)/$${h} ] ; then \
 			cd $(VHD_DIR) && $(MAKE) -C ./ && cd -; \
 		fi \
 	done
 
-ecc-test-linux-uio: headers $(C_FILES_LINUX) linux/ecc-test-linux.h
+ecc-test-linux-uio: $(VHD_DIR)/ecc_addr.h $(VHD_DIR)/ecc_vars.h $(VHD_DIR)/ecc_states.h $(VHD_DIR)/ecc_platform.h $(C_FILES_LINUX) linux/ecc-test-linux.h
 	$(ARM_CC) $(CFLAGS) -I$(VHD_DIR) -DWITH_EC_HW_ACCELERATOR -DWITH_EC_HW_UIO $(C_FILES_LINUX) -o ecc-test-linux-uio
 
-ecc-test-linux-devmem: headers $(C_FILES_LINUX) linux/ecc-test-linux.h
+ecc-test-linux-devmem: $(VHD_DIR)/ecc_addr.h $(VHD_DIR)/ecc_vars.h $(VHD_DIR)/ecc_states.h $(VHD_DIR)/ecc_platform.h $(C_FILES_LINUX) linux/ecc-test-linux.h
 	$(ARM_CC) $(CFLAGS) -I$(VHD_DIR) -DWITH_EC_HW_ACCELERATOR -DWITH_EC_HW_DEVMEM $(C_FILES_LINUX) -o ecc-test-linux-devmem
 
-ecc-test-stdalone: headers $(C_FILES_STDOL) stdalone/ecc-test-stdl.h
+ecc-test-stdalone: $(VHD_DIR)/ecc_addr.h $(VHD_DIR)/ecc_vars.h $(VHD_DIR)/ecc_states.h $(VHD_DIR)/ecc_platform.h $(C_FILES_STDOL) stdalone/ecc-test-stdl.h
 	$(ARM_CC) $(CFLAGS) -I$(VHD_DIR) -DWITH_EC_HW_ACCELERATOR -DWITH_EC_HW_STANDALONE $(C_FILES_STDOL) -o ecc-test-stdalone
 
 clean:

@@ -22,7 +22,7 @@
 
 extern int cmp_two_pts_coords(point_t*, point_t*, bool*);
 
-int ip_set_pt_and_run_kp(ipecc_test_t* t)
+int ip_test_set_pt_and_run_kp(ipecc_test_t* t)
 {
 	int is_null;
 #ifdef KP_TRACE

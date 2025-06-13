@@ -20,7 +20,7 @@
 #include <stdint.h>
 #include "ecc-test-linux.h"
 
-int ip_set_curve(curve_t* crv)
+int ip_test_set_curve(curve_t* crv)
 {
 	/*
 	 * Sanity check.

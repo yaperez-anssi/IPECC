@@ -17,6 +17,10 @@
 #include "../hw_accelerator_driver_ipecc_platform.h"
 #include "ecc-test-linux.h"
 #include <signal.h>
+#include <sys/time.h>
+#include <errno.h>
+#include <stdlib.h>
+#include <stdio.h>
 
 #if 0
 static uint32_t microcode[499] = {
@@ -108,37 +112,37 @@ static uint32_t microcode[499] = {
 #endif
 
 /* Helper for curve set */
-extern int ip_set_curve(curve_t*);
+extern int ip_test_set_curve(curve_t*);
 /* Point operations helpers */
 /*   [k]P */
-extern int ip_set_pt_and_run_kp(ipecc_test_t*, kp_trace_info_t*);
+extern int ip_test_set_pt_and_run_kp(ipecc_test_t*, kp_trace_info_t*);
 extern int check_kp_result(ipecc_test_t*, bool*, kp_trace_info_t*);
 extern int kp_error_log(ipecc_test_t*);
 /*   P + Q */
-extern int ip_set_pts_and_run_ptadd(ipecc_test_t*);
+extern int ip_test_set_pts_and_run_ptadd(ipecc_test_t*);
 extern int check_ptadd_result(ipecc_test_t*, bool*);
 /*   [2]P */
-extern int ip_set_pt_and_run_ptdbl(ipecc_test_t*);
+extern int ip_test_set_pt_and_run_ptdbl(ipecc_test_t*);
 extern int check_ptdbl_result(ipecc_test_t*, bool*);
 /*   (-P) */
-extern int ip_set_pt_and_run_ptneg(ipecc_test_t*);
+extern int ip_test_set_pt_and_run_ptneg(ipecc_test_t*);
 extern int check_ptneg_result(ipecc_test_t*, bool*);
 /* Point tests helpers */
 /*   is P on curve? */
-extern int ip_set_pt_and_check_on_curve(ipecc_test_t*);
+extern int ip_test_set_pt_and_check_on_curve(ipecc_test_t*);
 extern int check_test_oncurve(ipecc_test_t*, bool* res);
 /*   are P & Q equal? */
-extern int ip_set_pts_and_test_equal(ipecc_test_t*);
+extern int ip_test_set_pts_and_test_equal(ipecc_test_t*);
 extern int check_test_equal(ipecc_test_t*, bool* res);
 /*   are P & Q opposite? */
-extern int ip_set_pts_and_test_oppos(ipecc_test_t*);
+extern int ip_test_set_pts_and_test_oppos(ipecc_test_t*);
 extern int check_test_oppos(ipecc_test_t*, bool* res);
 
 /* Curve definition */
 static curve_t curve = INIT_CURVE();
 
 /* Definition of NBMAXSZ (in ecc-test-linux.h) is done in bytes,
- * here we use int, shence the divisions by 4 below.
+ * here we use int, hence the divisions by 4 below.
  */
 unsigned int debug_lambda[NBMAXSZ/4];
 unsigned int debug_phi0[NBMAXSZ/4];
@@ -151,6 +155,8 @@ unsigned int debug_yr1[NBMAXSZ/4];
 unsigned int debug_zr01[NBMAXSZ/4];
 char debug_msg[KP_TRACE_PRINTF_SZ];
 
+/* for TRNG diagnostics */
+trng_diagcnt_t tdiag;
 /*
  * struct to debug [k]P computation
  */
@@ -190,10 +196,11 @@ static ipecc_test_t test = {
 	.is_an_exception = false,
 	.id = 0,
 #ifdef KP_TRACE
-	.ktrc = &kp_trace_info
+	.ktrc = &kp_trace_info,
 #else
-	.ktrc = NULL
+	.ktrc = NULL,
 #endif
+	.tdg = &tdiag
 };
 
 /* Statistics */
@@ -242,12 +249,12 @@ static bool line_is_empty(char *l)
 
 static void print_stats_regularly(all_stats_t* st, bool force)
 {
-	static bool once = true;
+	static bool only_once = true;
 
 	if (((st->all.total % DISPLAY_MODULO) == DISPLAY_MODULO - 1) || (force)) {
-		if (once) {
+		if (only_once) {
 			printf("\n\n\n\n\n");
-			once = false;
+			only_once = false;
 		}
 		/* nn min, max */
 		printf("%s%s%s%s%s%s%s%s%s%s%s%s",
@@ -464,7 +471,7 @@ int main(int argc, char *argv[])
 		 * post-processing function (because in debug mode it is disabled upon
 		 * reset).
 		 */
-		if (hw_driver_trng_post_proc_enable()){
+		if (hw_driver_trng_post_proc_enable_DBG()){
 			printf("%sError: Enabling TRNG post-processing on hardware triggered an error.%s\n\r", KERR, KNRM);
 			exit(EXIT_FAILURE);
 		}
@@ -845,7 +852,7 @@ int main(int argc, char *argv[])
 					/*
 					 * Transfer curve parameters to the IP.
 					 */
-					if (ip_set_curve(test.curve))
+					if (ip_test_set_curve(test.curve))
 					{
 						printf("%sError: Could not transmit curve parameters to driver.%s\n\r", KERR, KNRM);
 						print_stats_and_exit(&test, &stats, "(debug info: in state 'EXPECT_Q')", __LINE__);
@@ -1103,7 +1110,7 @@ int main(int argc, char *argv[])
 					/*
 					 * Set and execute a [k]P computation test on hardware.
 					 */
-					if (ip_set_pt_and_run_kp(&test, &kp_trace_info))
+					if (ip_test_set_pt_and_run_kp(&test, &kp_trace_info))
 					{
 						stats.kp.nok++;
 						stats.kp.total++;
@@ -1173,7 +1180,7 @@ int main(int argc, char *argv[])
 					/*
 					 * Set and execute a [k]P computation test on harware.
 					 */
-					if (ip_set_pt_and_run_kp(&test, &kp_trace_info))
+					if (ip_test_set_pt_and_run_kp(&test, &kp_trace_info))
 					{
 						stats.kp.nok++;
 						stats.kp.total++;
@@ -1250,7 +1257,7 @@ int main(int argc, char *argv[])
 					/*
 					 * Set and execute a P + Q computation test on hardware.
 					 */
-					if (ip_set_pts_and_run_ptadd(&test))
+					if (ip_test_set_pts_and_run_ptadd(&test))
 					{
 						stats.ptadd.nok++;
 						stats.ptadd.total++;
@@ -1318,7 +1325,7 @@ int main(int argc, char *argv[])
 					/*
 					 * Set and execute a P + Q computation test on harware.
 					 */
-					if (ip_set_pts_and_run_ptadd(&test))
+					if (ip_test_set_pts_and_run_ptadd(&test))
 					{
 						stats.ptadd.nok++;
 						stats.ptadd.total++;
@@ -1391,7 +1398,7 @@ int main(int argc, char *argv[])
 					/*
 					 * Set and execute a [2]P computation test on hardware.
 					 */
-					if (ip_set_pt_and_run_ptdbl(&test))
+					if (ip_test_set_pt_and_run_ptdbl(&test))
 					{
 						stats.ptdbl.nok++;
 						stats.ptdbl.total++;
@@ -1459,7 +1466,7 @@ int main(int argc, char *argv[])
 					/*
 					 * Set and execute a [2]P computation test on hardware.
 					 */
-					if (ip_set_pt_and_run_ptdbl(&test))
+					if (ip_test_set_pt_and_run_ptdbl(&test))
 					{
 						stats.ptdbl.nok++;
 						stats.ptdbl.total++;
@@ -1532,7 +1539,7 @@ int main(int argc, char *argv[])
 					/*
 					 * Set and execute a -P computation test on hardware.
 					 */
-					if (ip_set_pt_and_run_ptneg(&test))
+					if (ip_test_set_pt_and_run_ptneg(&test))
 					{
 						stats.ptneg.nok++;
 						stats.ptneg.total++;
@@ -1600,7 +1607,7 @@ int main(int argc, char *argv[])
 					/*
 					 * Set and execute a -P computation test on hardware.
 					 */
-					if (ip_set_pt_and_run_ptneg(&test))
+					if (ip_test_set_pt_and_run_ptneg(&test))
 					{
 						stats.ptneg.nok++;
 						stats.ptneg.total++;
@@ -1691,7 +1698,7 @@ int main(int argc, char *argv[])
 				 */
 				switch (test.op) {
 					case OP_TST_CHK:{
-						if (ip_set_pt_and_check_on_curve(&test))
+						if (ip_test_set_pt_and_check_on_curve(&test))
 						{
 							stats.test_crv.nok++;
 							stats.test_crv.total++;
@@ -1703,7 +1710,7 @@ int main(int argc, char *argv[])
 						break;
 					}
 					case OP_TST_EQU:{
-						if (ip_set_pts_and_test_equal(&test))
+						if (ip_test_set_pts_and_test_equal(&test))
 						{
 							stats.test_equ.nok++;
 							stats.test_equ.total++;
@@ -1715,7 +1722,7 @@ int main(int argc, char *argv[])
 						break;
 					}
 					case OP_TST_OPP:{
-						if (ip_set_pts_and_test_oppos(&test))
+						if (ip_test_set_pts_and_test_oppos(&test))
 						{
 							stats.test_opp.nok++;
 							stats.test_opp.total++;

@@ -121,7 +121,7 @@ entity ecc_scalar is
 		dbgpgmstate : out std_logic_vector(3 downto 0);
 		dbgnbbits : out std_logic_vector(15 downto 0);
 		dbgjoyebit : out std_logic_vector(log2(2*nn - 1) - 1 downto 0);
-		dbgnbstarvrndxyshuf : out std_logic_vector(15 downto 0)
+		dbgtrngcompletebypass : in std_logic
 		-- pragma translate_off
 		-- interface with ecc_fp (simu only)
 		; logr0r1 : out std_logic;
@@ -254,7 +254,6 @@ architecture rtl of ecc_scalar is
 	-- debug features
 	type debug_reg_type is record
 		joyebit : std_logic_vector(log2(2*nn - 1) - 1 downto 0);
-		nbstarvrndxyshuf : std_logic_vector(15 downto 0);
 	end record;
 
 	type reg_type is record
@@ -417,7 +416,8 @@ begin
 	               nndyn_nnp1, dopop, popid, ar0zo, ar1zo,
 	               swrst, first2pz, xmxz, ymyz, torsion2, kap, kapp,
 	               phimsb, kb0end, small_k_sz_en, small_k_sz_en_en, small_k_sz,
-	               gentoken, tokenact, zremaskact, zremaskbits)
+	               gentoken, tokenact, zremaskact, zremaskbits,
+	               dbgtrngcompletebypass)
 		variable v : reg_type;
 		variable v_simkb : integer;
 		variable v01z : std_logic_vector(1 downto 0);
@@ -551,7 +551,6 @@ begin
 				v.sim.simbit := 1;
 				-- pragma translate_on
 				v.dbg.joyebit := std_nat(1, log2(2*nn - 1));
-				v.dbg.nbstarvrndxyshuf := (others => '0');
 				v.ctrl.r1z_init := ar1zo; -- state of R1 before starting [k]P saved here
 				v.ctrl.r1z := ar1zo; -- as opposed to .r1z_init, this one now may evolve
 				v.ctrl.r0z := '0';
@@ -1211,8 +1210,6 @@ begin
 							-- rather than a zaddu-to-prezaddc one.
 							v.kp.substate := wait_xyr01_permute;
 							v.kp.nextsubstate := joyecoz; -- (s14)
-							v.dbg.nbstarvrndxyshuf := std_logic_vector(
-								unsigned(r.dbg.nbstarvrndxyshuf) + 1);
 						end if;
 					elsif r.kp.joye.state = prezaddu then
 						-- -------------------------------------------
@@ -1268,8 +1265,6 @@ begin
 							-- Joye-state transition
 							v.kp.substate := wait_xyr01_permute;
 							v.kp.nextsubstate := joyecoz; -- (s16)
-							v.dbg.nbstarvrndxyshuf := std_logic_vector(
-								unsigned(r.dbg.nbstarvrndxyshuf) + 1);
 						end if;
 						-- compute new nullity flags for R0 & R1.
 						-- Independently of whether we're entering immediately prezaddc
@@ -1349,8 +1344,6 @@ begin
 							-- Joye-state transition
 							v.kp.substate := wait_xyr01_permute;
 							v.kp.nextsubstate := joyecoz; -- (s38)
-							v.dbg.nbstarvrndxyshuf := std_logic_vector(
-								unsigned(r.dbg.nbstarvrndxyshuf) + 1);
 						end if;
 						-- compute new nullity flags for R0 & R1
 						-- independently of whether we're entering immediately prezaddc
@@ -1628,7 +1621,9 @@ begin
 						else
 							-- Double-&-Add loop is not over, loop back to 'itoh'
 							-- (or to 'permutation' if shuffle is active)
-							if doshuffle = '1' then -- (s21)
+							if doshuffle = '1' and
+								((not debug) or dbgtrngcompletebypass = '0')
+							then -- (s21)
 								v.kp.joye.state := permutation;
 								v.int.permute := '1'; -- stays asserted 1 cycle thx to (s4)
 								if debug and -- statically resolved by synthesizer
@@ -1636,7 +1631,7 @@ begin
 								then
 									v.int.permuteundo := '1';
 								end if;
-							else
+							else -- if doshuffle = '0' or (debug and dbgtrngcompletebypass=1)
 								v.kp.joye.state := itoh; -- (s116), bypassed by (s117)
 								v.int.faddr := EXEC_ADDR(ITOH_ROUTINE); -- (s118) byp. by (s119)
 								-- If needed, decrement the Z-remasking counter, and possibly
@@ -2136,7 +2131,6 @@ begin
 	-- pragma translate_on
 	-- debug features
 	dbgjoyebit <= r.dbg.joyebit;
-	dbgnbstarvrndxyshuf <= r.dbg.nbstarvrndxyshuf;
 	-- TODO: many multicycles can be set on paths r.ctrl.state -> dbg*
 	-- TODO: many multicycles can be set on paths r.kp.substate -> dbg*
 	-- (on the other hand these are debug only paths, so it does not

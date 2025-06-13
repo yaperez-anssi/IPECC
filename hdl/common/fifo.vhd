@@ -43,9 +43,9 @@ entity fifo is
 		-- read address to the memory array is sampled from 'dbgraddr'
 		-- (output data remains driven onto 'dataout' port, same as in
 		-- non-debug mode).
-		-- Thus using 'dbgwaddr' and 'count' output ports, user debug logic
-		-- can read the whole content of the FIFO without interfering with
-		-- its content.
+		-- Thus, having knowledge of the 'dbgwaddr' and 'count' output ports,
+		-- user debug logic can read the whole content of the FIFO without
+		-- interfering with its content.
 		-- Once 'dbgdeact' becomes low again, the read address to the memory
 		-- array takes back the value it was holding at the time 'dbgdeact'
 		-- was asserted, and the read interface into the FIFO becomes available

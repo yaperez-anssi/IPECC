@@ -19,8 +19,12 @@
 #include "ecc_addr.h"
 #include "ecc_vars.h"
 #include "ecc_states.h"
+#include "ecc_regs.h"
 #include <string.h>
 #include <stdarg.h>
+#include <stdio.h>
+#include <time.h>
+#include <unistd.h>
 
 #if defined(WITH_EC_HW_ACCELERATOR) && !defined(WITH_EC_HW_SOCKET_EMUL)
 /**************************************************************************/
@@ -59,6 +63,8 @@ typedef volatile uint64_t ip_ecc_word;
  */
 #define DIV(i, s) \
 	( ((i) % (s)) ? ((i) / (s)) + 1 : (i) / (s))
+
+#define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
 
 /*
  * ge_pow_of_2(i) returns the power-of-2 which is either equal to
@@ -118,75 +124,10 @@ static volatile uint64_t *ipecc_baddr = NULL;
 /* NOTE: addresses in the IP are 64-bit aligned */
 #define IPECC_ALIGNED(a) ((a) / sizeof(uint64_t))
 
-/* Write-only registers */
-#define IPECC_W_CTRL			(ipecc_baddr + IPECC_ALIGNED(0x000))
-#define IPECC_W_WRITE_DATA		(ipecc_baddr + IPECC_ALIGNED(0x008))
-#define IPECC_W_R0_NULL 		(ipecc_baddr + IPECC_ALIGNED(0x010))
-#define IPECC_W_R1_NULL 		(ipecc_baddr + IPECC_ALIGNED(0x018))
-#define IPECC_W_PRIME_SIZE 		(ipecc_baddr + IPECC_ALIGNED(0x020))
-#define IPECC_W_BLINDING 		(ipecc_baddr + IPECC_ALIGNED(0x028))
-#define IPECC_W_SHUFFLE     (ipecc_baddr + IPECC_ALIGNED(0x030))
-#define IPECC_W_ZREMASK     (ipecc_baddr + IPECC_ALIGNED(0x038))
-#define IPECC_W_TOKEN       (ipecc_baddr + IPECC_ALIGNED(0x040))
-#define IPECC_W_IRQ     		(ipecc_baddr + IPECC_ALIGNED(0x048))
-#define IPECC_W_ERR_ACK			(ipecc_baddr + IPECC_ALIGNED(0x050))
-#define IPECC_W_SMALL_SCALAR		(ipecc_baddr + IPECC_ALIGNED(0x058))
-#define IPECC_W_SOFT_RESET  	(ipecc_baddr + IPECC_ALIGNED(0x060))
-/*	-- Reserved                                                           0x068...0x0f8  */
-#define IPECC_W_DBG_HALT    (ipecc_baddr + IPECC_ALIGNED(0x100))
-#define IPECC_W_DBG_BKPT 		(ipecc_baddr + IPECC_ALIGNED(0x108))
-#define IPECC_W_DBG_STEPS 		(ipecc_baddr + IPECC_ALIGNED(0x110))
-#define IPECC_W_DBG_TRIG_ACT 		(ipecc_baddr + IPECC_ALIGNED(0x118))
-#define IPECC_W_DBG_TRIG_UP		(ipecc_baddr + IPECC_ALIGNED(0x120))
-#define IPECC_W_DBG_TRIG_DOWN 		(ipecc_baddr + IPECC_ALIGNED(0x128))
-#define IPECC_W_DBG_OP_WADDR   		(ipecc_baddr + IPECC_ALIGNED(0x130))
-#define IPECC_W_DBG_OPCODE 		(ipecc_baddr + IPECC_ALIGNED(0x138))
-#define IPECC_W_DBG_TRNG_CTRL 		(ipecc_baddr + IPECC_ALIGNED(0x140))
-#define IPECC_W_DBG_TRNG_CFG 		(ipecc_baddr + IPECC_ALIGNED(0x148))
-#define IPECC_W_DBG_FP_WADDR  		(ipecc_baddr + IPECC_ALIGNED(0x150))
-#define IPECC_W_DBG_FP_WDATA 		(ipecc_baddr + IPECC_ALIGNED(0x158))
-#define IPECC_W_DBG_FP_RADDR  		(ipecc_baddr + IPECC_ALIGNED(0x160))
-#define IPECC_W_DBG_CFG_XYSHUF  		(ipecc_baddr + IPECC_ALIGNED(0x168))
-#define IPECC_W_DBG_CFG_AXIMSK  		(ipecc_baddr + IPECC_ALIGNED(0x170))
-#define IPECC_W_DBG_CFG_TOKEN  		(ipecc_baddr + IPECC_ALIGNED(0x178))
-#define IPECC_W_DBG_RESET_TRNG_CNT    (ipecc_baddr + IPECC_ALIGNED(0x180))
-/*	-- Reserved                                                           0x188...0x1f8  */
-
-/* Read-only registers */
-#define IPECC_R_STATUS  		(ipecc_baddr + IPECC_ALIGNED(0x000))
-#define IPECC_R_READ_DATA  		(ipecc_baddr + IPECC_ALIGNED(0x008))
-#define IPECC_R_CAPABILITIES  		(ipecc_baddr + IPECC_ALIGNED(0x010))
-#define IPECC_R_HW_VERSION      (ipecc_baddr + IPECC_ALIGNED(0x018))
-#define IPECC_R_PRIME_SIZE  		(ipecc_baddr + IPECC_ALIGNED(0x020))
-/*	-- Reserved                               0x028...0x0f8 */
-#define IPECC_R_DBG_CAPABILITIES_0	(ipecc_baddr + IPECC_ALIGNED(0x100))
-#define IPECC_R_DBG_CAPABILITIES_1	(ipecc_baddr + IPECC_ALIGNED(0x108))
-#define IPECC_R_DBG_CAPABILITIES_2	(ipecc_baddr + IPECC_ALIGNED(0x110))
-#define IPECC_R_DBG_STATUS  		(ipecc_baddr + IPECC_ALIGNED(0x118))
-#define IPECC_R_DBG_TIME       (ipecc_baddr + IPECC_ALIGNED(0x120))
-/* Time to fill the RNG raw FIFO in cycles */
-#define IPECC_R_DBG_RAWDUR      (ipecc_baddr + IPECC_ALIGNED(0x128))
-#define IPECC_R_DBG_FLAGS      (ipecc_baddr + IPECC_ALIGNED(0x130))  /* Obsolete, will be removed */
-#define IPECC_R_DBG_TRNG_STATUS     (ipecc_baddr + IPECC_ALIGNED(0x138))
-/* Read TRNG data */
-#define IPECC_R_DBG_TRNG_RAW_DATA   (ipecc_baddr + IPECC_ALIGNED(0x140))
-#define IPECC_R_DBG_FP_RDATA  		 (ipecc_baddr + IPECC_ALIGNED(0x148))
-#define IPECC_R_DBG_IRN_CNT_AXI  		(ipecc_baddr + IPECC_ALIGNED(0x150))
-#define IPECC_R_DBG_IRN_CNT_EFP  		(ipecc_baddr + IPECC_ALIGNED(0x158))
-#define IPECC_R_DBG_IRN_CNT_CRV  		(ipecc_baddr + IPECC_ALIGNED(0x160))
-#define IPECC_R_DBG_IRN_CNT_SHF  		(ipecc_baddr + IPECC_ALIGNED(0x168))
-#define IPECC_R_DBG_FP_RDATA_RDY    (ipecc_baddr + IPECC_ALIGNED(0x170))
-#define IPECC_R_DBG_EXP_FLAGS       (ipecc_baddr + IPECC_ALIGNED(0x178))
-#define IPECC_R_DBG_TRNG_DIAG_0  		(ipecc_baddr + IPECC_ALIGNED(0x180))
-#define IPECC_R_DBG_TRNG_DIAG_1  		(ipecc_baddr + IPECC_ALIGNED(0x188))
-#define IPECC_R_DBG_TRNG_DIAG_2  		(ipecc_baddr + IPECC_ALIGNED(0x190))
-#define IPECC_R_DBG_TRNG_DIAG_3  		(ipecc_baddr + IPECC_ALIGNED(0x198))
-#define IPECC_R_DBG_TRNG_DIAG_4  		(ipecc_baddr + IPECC_ALIGNED(0x1a0))
-#define IPECC_R_DBG_TRNG_DIAG_5  		(ipecc_baddr + IPECC_ALIGNED(0x1a8))
-#define IPECC_R_DBG_TRNG_DIAG_6  		(ipecc_baddr + IPECC_ALIGNED(0x1b0))
-#define IPECC_R_DBG_TRNG_DIAG_7  		(ipecc_baddr + IPECC_ALIGNED(0x1b8))
-#define IPECC_R_DBG_TRNG_DIAG_8  		(ipecc_baddr + IPECC_ALIGNED(0x1c0))
-/*	-- Reserved                               0x1c8...0x1f8 */
+/* *****************************************************************
+ *   Address mapping of registers have been removed as they are    *
+ *  now automatically imported from hardware through <ecc_regs.h>. *
+ *******************************************************************/
 
 /* Optional device acting as "pseudo TRNG" device, which software can push
  * some byte stream/file to.
@@ -294,6 +235,7 @@ static volatile uint64_t *ipecc_baddr = NULL;
 /* Fields for W_DBG_TRIG_ACT */
 /* enable trig (1) or disable it (0) */
 #define IPECC_W_DBG_TRIG_ACT_EN     (((uint32_t)0x1) << 0)
+#define IPECC_W_DBG_TRIG_ACT_DIS    (((uint32_t)0x0) << 0)
 
 /* Fields for W_DBG_TRIG_UP & W_DBG_TRIG_DOWN */
 #define IPECC_W_DBG_TRIG_POS    (0)
@@ -307,29 +249,6 @@ static volatile uint64_t *ipecc_baddr = NULL;
 #define IPECC_W_DBG_OPCODE_POS   (0)
 #define IPECC_W_DBG_OPCODE_MSK   (0xffffffff)
 
-/* Fields for W_DBG_TRNG_CTRL */
-/* Disable the TRNG post processing logic that pulls bytes
- * from the raw random source */
-#define IPECC_W_DBG_TRNG_CTRL_POSTPROC_DISABLE  (0)
-/* Reset the raw FIFO */
-#define IPECC_W_DBG_TRNG_CTRL_RESET_FIFO_RAW		(((uint32_t)0x1) << 1)
-/* Reset the internal random numbers FIFOs */
-#define IPECC_W_DBG_TRNG_CTRL_RESET_FIFO_IRN		(((uint32_t)0x1) << 2)
-/* Read one bit from raw FIFO */
-#define IPECC_W_DBG_TRNG_CTRL_READ_FIFO_RAW		(((uint32_t)0x1) << 4)
-/* Reading offset in bits inside the FIFO on 20 bits */
-#define IPECC_W_DBG_TRNG_CTRL_FIFO_ADDR_MSK		(0xfffff)
-#define IPECC_W_DBG_TRNG_CTRL_FIFO_ADDR_POS		(8)
-/* Disable the read function of the raw random FIFO
- * (to allow debug software to read & statistically analyze
- * the raw random bits). */
-#define IPECC_W_DBG_TRNG_CTRL_RAW_DISABLE_FIFO_READ_PORT_POS   (28)
-/* Complete bypass of the TRNG (1) or not (0) */
-#define IPECC_W_DBG_TRNG_CTRL_TRNG_BYPASS			(((uint32_t)0x1) << 29)
-/* Deterministic bit value produced when complete bypass is on */
-#define IPECC_W_DBG_TRNG_CTRL_TRNG_BYPASS_VAL_POS		(30)
-#define IPECC_W_DBG_TRNG_CTRL_NNRND_DETERMINISTIC   (31)
-
 /* Fields for W_DBG_TRNG_CFG */
 /* Von Neumann debiaser activate */
 #define IPECC_W_DBG_TRNG_CFG_ACTIVE_DEBIAS		(((uint32_t)0x1) << 0)
@@ -340,7 +259,47 @@ static volatile uint64_t *ipecc_baddr = NULL;
    one-bit generation in the TRNG */
 #define IPECC_W_DBG_TRNG_CFG_TRNG_IDLE_POS		(20)
 #define IPECC_W_DBG_TRNG_CFG_TRNG_IDLE_MSK		(0xf)
-#define IPECC_W_DBG_TRNG_CFG_USE_PSEUDO   (((uint32_t)0x1) << 31)
+#define IPECC_W_DBG_TRNG_CFG_USE_PSEUDO   (((uint32_t)0x1) << 24)
+
+/* Fields for W_DBG_TRNG_RESET */
+/* Reset the raw FIFO */
+#define IPECC_W_DBG_TRNG_RESET_FIFO_RAW		(((uint32_t)0x1) << 0)
+/* Reset the internal random numbers FIFOs */
+#define IPECC_W_DBG_TRNG_RESET_FIFO_IRN		(((uint32_t)0x1) << 4)
+
+/* Fields for W_DBG_TRNG_CTRL_POSTP */
+/* Disable the TRNG post processing logic that pulls bytes
+ * from the raw random source */
+#define IPECC_W_DBG_TRNG_CTRL_POSTPROC_DISABLE_POS  (0)
+/* Disable the read function of the raw random FIFO
+ * (to allow debug software to read & statistically analyze
+ * the raw random bits). */
+#define IPECC_W_DBG_TRNG_CTRL_RAW_DISABLE_FIFO_READ_PORT_POS   (4)
+
+/* Fields for W_DBG_TRNG_CTRL_BYPASS */
+/* Complete bypass of the TRNG (1) or not (0) */
+#define IPECC_W_DBG_TRNG_CTRL_TRNG_BYPASS			(((uint32_t)0x1) << 0)
+/* Deterministic bit value produced when complete bypass is on */
+#define IPECC_W_DBG_TRNG_CTRL_TRNG_BYPASS_VAL_POS		(4)
+
+/* Fields for W_DBG_TRNG_CTRL_NNRND */
+#define IPECC_W_DBG_TRNG_CTRL_NNRND_DETERMINISTIC   (((uint32_t)0x1) << 0)
+
+/* Fields for W_DBG_TRNG_CTRL_DIAG */
+#define IPECC_W_DBG_TRNG_CTRL_DIAG_POS   (0)
+#define IPECC_W_DBG_TRNG_CTRL_DIAG_MSK   (0x7)
+#define IPECC_W_DBG_TRNG_CTRL_DIAG_AXI   (0)
+#define IPECC_W_DBG_TRNG_CTRL_DIAG_EFP   (1)
+#define IPECC_W_DBG_TRNG_CTRL_DIAG_CRV   (2)
+#define IPECC_W_DBG_TRNG_CTRL_DIAG_SHF   (3)
+#define IPECC_W_DBG_TRNG_CTRL_DIAG_RAW   (4)
+
+/* Fields for W_DBG_TRNG_RAW_READ */
+/* Read one bit from raw FIFO */
+#define IPECC_W_DBG_TRNG_CTRL_RAWFIFO_READ		(((uint32_t)0x1) << 0)
+/* Reading offset in bits inside the FIFO on 20 bits */
+#define IPECC_W_DBG_TRNG_CTRL_RAWFIFO_RADDR_MSK		(0xfffff)
+#define IPECC_W_DBG_TRNG_CTRL_RAWFIFO_RADDR_POS		(4)
 
 /* Fields for IPECC_W_DBG_FP_WADDR */
 #define IPECC_W_DBG_FP_WADDR_POS     (0)
@@ -365,10 +324,6 @@ static volatile uint64_t *ipecc_baddr = NULL;
 /* Fields for IPECC_W_DBG_CFG_TOKEN */
 #define IPECC_W_DBG_CFG_TOKEN_EN    (((uint32_t)0x1) << 0)
 #define IPECC_W_DBG_CFG_TOKEN_DIS    (((uint32_t)0x0) << 0)
-
-/* Fields for IPECC_W_DBG_RESET_TRNG_CNT */
-/* no field here: action is performed simply by writing to the
-   register address, whatever the value written */
 
 /* Fields for R_STATUS */
 #define IPECC_R_STATUS_BUSY	   (((uint32_t)0x1) << 0)
@@ -436,16 +391,6 @@ static volatile uint64_t *ipecc_baddr = NULL;
 #define IPECC_R_DBG_RAWDUR_POS     (0)
 #define IPECC_R_DBG_RAWDUR_MSK     (0xffffffff)
 
-/* Fields for R_DBG_FLAGS */  /* Obsolete, will be removed */
-#define IPECC_R_DBG_FLAGS_P_NOT_SET		(((uint32_t)0x1) << 0)
-#define IPECC_R_DBG_FLAGS_P_NOT_SET_MTY	(((uint32_t)0x1) << 1)
-#define IPECC_R_DBG_FLAGS_A_NOT_SET		(((uint32_t)0x1) << 2)
-#define IPECC_R_DBG_FLAGS_A_NOT_SET_MTY	(((uint32_t)0x1) << 3)
-#define IPECC_R_DBG_FLAGS_B_NOT_SET		(((uint32_t)0x1) << 4)
-#define IPECC_R_DBG_FLAGS_K_NOT_SET		(((uint32_t)0x1) << 5)
-#define IPECC_R_DBG_FLAGS_NNDYN_NOERR		(((uint32_t)0x1) << 6)
-#define IPECC_R_DBG_FLAGS_NOT_BLN_OR_Q_NOT_SET	(((uint32_t)0x1) << 7)
-
 /* Fields for R_DBG_TRNG_STATUS */
 #define IPECC_R_DBG_TRNG_STATUS_RAW_FIFO_FULL		(((uint32_t)0x1) << 0)
 #define IPECC_R_DBG_TRNG_STATUS_RAW_FIFO_OFFSET_MSK	(0xffffff)
@@ -455,10 +400,21 @@ static volatile uint64_t *ipecc_baddr = NULL;
 #define  IPECC_R_DBG_TRNG_RAW_DATA_POS    (0)
 #define  IPECC_R_DBG_TRNG_RAW_DATA_MSK    (0x1)
 
-/* Fields for R_DBG_IRN_CNT_AXI, R_DBG_IRN_CNT_EFP,
- * R_DBG_IRN_CNTV_CRV & R_DBG_IRN_CNT_SHF */
-#define  IPECC_R_DBG_IRN_CNT_COUNT_POS    (0)
-#define  IPECC_R_DBG_IRN_CNT_COUNT_MSK    (0xffffffff)
+/* Fields for R_DBG_TRNG_DIAG_MIN */
+#define IPECC_R_DBG_TRNG_DIAG_MIN_POS   (0)
+#define IPECC_R_DBG_TRNG_DIAG_MIN_MSK   (0xffffffff)
+
+/* Fields for R_DBG_TRNG_DIAG_MAX */
+#define IPECC_R_DBG_TRNG_DIAG_MAX_POS   (0)
+#define IPECC_R_DBG_TRNG_DIAG_MAX_MSK   (0xffffffff)
+
+/* Fields for R_DBG_TRNG_DIAG_OK */
+#define IPECC_R_DBG_TRNG_DIAG_OK_POS   (0)
+#define IPECC_R_DBG_TRNG_DIAG_OK_MSK   (0xffffffff)
+
+/* Fields for R_DBG_TRNG_DIAG_STARV */
+#define IPECC_R_DBG_TRNG_DIAG_STARV_POS   (0)
+#define IPECC_R_DBG_TRNG_DIAG_STARV_MSK   (0xffffffff)
 
 /* Fields for R_DBG_FP_RDATA_RDY */
 #define IPECC_R_DBG_FP_RDATA_RDY_IS_READY     (((uint32_t)0x1) << 0)
@@ -483,19 +439,56 @@ static volatile uint64_t *ipecc_baddr = NULL;
 #define IPECC_R_DBG_EXP_FLAGS_JNBBIT_POS   16
 #define IPECC_R_DBG_EXP_FLAGS_JNBBIT_MSK   (0xffff)
 
-/* Fields for R_DBG_TRNG_DIAG_0 */
-#define IPECC_R_DBG_TRNG_DIAG_0_STARV_POS     (0)
-#define IPECC_R_DBG_TRNG_DIAG_0_STARV_MSK     (0xffffffff)
+/* Fields for R_DBG_CLK_MHZ */
+#define IPECC_R_DBG_CLK_CNT_POS     (0)
+#define IPECC_R_DBG_CLK_CNT_MSK     (0xffffffff)
+#define IPECC_R_DBG_CLK_PRECNT      (16)
 
-/* Fields for R_DBG_TRNG_DIAG_[1|3|5|7] */
-#define IPECC_R_DBG_TRNG_DIAG_CNT_OK_POS     (0)
-#define IPECC_R_DBG_TRNG_DIAG_CNT_OK_MSK     (0xffffffff)
+/* Fields for R_DBG_CLKMM_MHZ */
+#define IPECC_R_DBG_CLKMM_CNT_POS     (0)
+#define IPECC_R_DBG_CLKMM_CNT_MSK     (0xffffffff)
+#define IPECC_R_DBG_CLKMM_PRECNT      (16)
 
-/* Fields for R_DBG_TRNG_DIAG_[2|4|6|8] */
-#define IPECC_R_DBG_TRNG_DIAG_CNT_STARV_POS     (0)
-#define IPECC_R_DBG_TRNG_DIAG_CNT_STARV_MSK     (0xffffffff)
+/* Fields for R_DBG_HW_CONFIG_0 */
+#define IPECC_R_DBG_HW_CFG0_NBDSP_POS    (0)
+#define IPECC_R_DBG_HW_CFG0_NBDSP_MSK    (0x7f)
+#define IPECC_R_DBG_HW_CFG0_NBMULT       (((uint32_t)0x1) << 7)
+#define IPECC_R_DBG_HW_CFG0_SRAMLAT      (((uint32_t)0x1) << 8)
+#define IPECC_R_DBG_HW_CFG0_ASYNC        (((uint32_t)0x1) << 9)
+#define IPECC_R_DBG_HW_CFG0_SHUFFLE_POS    (10)
+#define IPECC_R_DBG_HW_CFG0_SHUFFLE_MSK    (0x3)
+#define IPECC_R_DBG_HW_CFG0_ZREMASK_POS    (12)
+#define IPECC_R_DBG_HW_CFG0_ZREMASK_MSK    (0x3ff)
+#define IPECC_R_DBG_HW_CFG0_BLINDING_POS    (22)
+#define IPECC_R_DBG_HW_CFG0_BLINDING_MSK    (0x3ff)
 
+/* Fields for R_DBG_HW_CONFIG_1 */
+#define IPECC_R_DBG_HW_CFG1_NBTRNG_POS    (0)
+#define IPECC_R_DBG_HW_CFG1_NBTRNG_MSK    (0xf)
+#define IPECC_R_DBG_HW_CFG1_TRNGTA_POS    (4)
+#define IPECC_R_DBG_HW_CFG1_TRNGTA_MSK    (0x3ff)
+#define IPECC_R_DBG_HW_CFG1_SZ_RAW_POS    (16)
+#define IPECC_R_DBG_HW_CFG1_SZ_RAW_MSK    (0xff)
+#define IPECC_R_DBG_HW_CFG1_SZ_AXI_POS    (24)
+#define IPECC_R_DBG_HW_CFG1_SZ_AXI_MSK    (0xff)
 
+/* Fields for R_DBG_HW_CONFIG_2 */
+#define IPECC_R_DBG_HW_CFG2_SZ_FPR_POS    (0)
+#define IPECC_R_DBG_HW_CFG2_SZ_FPR_MSK    (0xff)
+#define IPECC_R_DBG_HW_CFG2_SZ_CRV_POS    (8)
+#define IPECC_R_DBG_HW_CFG2_SZ_CRV_MSK    (0xff)
+#define IPECC_R_DBG_HW_CFG2_SZ_SHF_POS    (16)
+#define IPECC_R_DBG_HW_CFG2_SZ_SHF_MSK    (0xff)
+
+/* Fields for R_DBG_HW_TEST_NB */
+#define IPECC_R_DBG_HW_TEST_NB_BOARD_POS  (24)
+#define IPECC_R_DBG_HW_TEST_NB_BOARD_MSK  (0xff)
+#define IPECC_R_DBG_HW_TEST_NB_TEST_POS   (0)
+#define IPECC_R_DBG_HW_TEST_NB_TEST_MSK   (0xffffff)
+
+/* Fields for R_DBG_HW_RANDOM */
+#define IPECC_R_DBG_HW_RANDOM_POS   (0)
+#define IPECC_R_DBG_HW_RANDOM_MSK   (0xffffffff)
 
 /*************************************************************
  * Low-level macros: actions involving a direct write or read
@@ -503,6 +496,10 @@ static volatile uint64_t *ipecc_baddr = NULL;
  *
  * Hereafter sorted by their target register.
  *************************************************************/
+
+/*         A c t i o n s   i n v o l v i n g
+ *  N  O  M  I  N  A  L     R  E  G  I  S  T  E  R  S  */
+
 /*
  * Actions involving registers R_STATUS & W_CTRL
  * *********************************************
@@ -928,8 +925,11 @@ static volatile uint64_t *ipecc_baddr = NULL;
 /* To know if the IP was synthesized in debug (unsecure) mode
  * or in production (secure) mode.
  */
-#define IPECC_IS_DEBUG_OR_PROD() \
+#define IPECC_IS_DEBUG() \
 	(!!(IPECC_GET_REG(IPECC_R_CAPABILITIES) & IPECC_R_CAPABILITIES_DBG_N_PROD))
+
+#define IPECC_IS_PROD() \
+	(!(IPECC_GET_REG(IPECC_R_CAPABILITIES) & IPECC_R_CAPABILITIES_DBG_N_PROD))
 
 /* Actions using register R_HW_VERSION
  * ***********************************
@@ -947,6 +947,9 @@ static volatile uint64_t *ipecc_baddr = NULL;
 #define IPECC_GET_PATCH_VERSION() \
 	((IPECC_GET_REG(IPECC_R_HW_VERSION) >> IPECC_R_HW_VERSION_PATCH_POS) \
 	 & IPECC_R_HW_VERSION_PATCH_MSK)
+
+/*       A c t i o n s   i n v o l v i n g
+ *  D  E  B  U  G     R  E  G  I  S  T  E  R  S  */
 
 /* Actions involving register W_DBG_HALT
  * *************************************
@@ -1043,6 +1046,10 @@ static volatile uint64_t *ipecc_baddr = NULL;
 	IPECC_SET_REG(IPECC_W_DBG_TRIG_ACT, IPECC_W_DBG_TRIG_ACT_EN); \
 } while (0)
 
+#define IPECC_DISARM_TRIGGER() do { \
+	IPECC_SET_REG(IPECC_W_DBG_TRIG_ACT, IPECC_W_DBG_TRIG_ACT_DIS); \
+} while (0)
+
 /* Actions involving register W_DBG_TRIG_UP & W_DBG_TRIG_DOWN
  * **********************************************************
  */
@@ -1061,7 +1068,7 @@ static volatile uint64_t *ipecc_baddr = NULL;
  * To set the time at which the trigger output signal must be lowered back.
  * (same remark as for IPECC_SET_TRIGGER_UP).
  */
-#define IPECC_SET_TRIGGER_DOWN() do { \
+#define IPECC_SET_TRIGGER_DOWN(time) do { \
 	IPECC_SET_REG(IPECC_W_DBG_TRIG_DOWN, ((time) & IPECC_W_DBG_TRIG_MSK) \
 			<< IPECC_W_DBG_TRIG_POS); \
 } while (0)
@@ -1082,9 +1089,42 @@ static volatile uint64_t *ipecc_baddr = NULL;
 			<< IPECC_W_DBG_OPCODE_POS); \
 } while (0)
 
-/* Actions involving register W_DBG_TRNG_CTRL
- * (controlling TRNG behaviour)
- * ******************************************
+/* Actions involving register W_DBG_TRNG_CFG
+ * (configuration of TRNG)
+ * *****************************************
+ */
+#define IPECC_TRNG_CONFIG(debias, ta, idlenb) do { \
+	uint32_t val = 0; \
+	/* Configure Von Neumann debias logic */ \
+	if (debias) { \
+		val |= IPECC_W_DBG_TRNG_CFG_ACTIVE_DEBIAS ; \
+	} \
+	val |= ((ta) & IPECC_W_DBG_TRNG_CFG_TA_MSK) \
+	  << IPECC_W_DBG_TRNG_CFG_TA_POS; \
+	val |= ((idlenb) & IPECC_W_DBG_TRNG_CFG_TRNG_IDLE_MSK) \
+	  << IPECC_W_DBG_TRNG_CFG_TRNG_IDLE_POS; \
+	IPECC_SET_REG(IPECC_W_DBG_TRNG_CFG, val); \
+} while (0)
+
+/* Actions involving register W_DBG_TRNG_RESET
+ * *******************************************
+ */
+/* Empty the FIFO buffering raw random bits of the TRNG
+ * and reset associated logic.
+ */
+#define IPECC_TRNG_RESET_RAW_FIFO() do { \
+	IPECC_SET_REG(IPECC_W_DBG_TRNG_RESET, IPECC_W_DBG_TRNG_RESET_FIFO_RAW); \
+} while (0)
+
+/* Empty the FIFOs buffering internal random bits of the TRNG
+ * (all channels) and reset associated logic.
+ */
+#define IPECC_TRNG_RESET_IRN_FIFOS() do { \
+	IPECC_SET_REG(IPECC_W_DBG_TRNG_RESET, IPECC_W_DBG_TRNG_RESET_FIFO_IRN); \
+} while (0)
+
+/* Actions involving register W_DBG_TRNG_CTRL_POSTP
+ * ************************************************
  */
 /* Disable the TRNG post-processing logic that pulls bytes from the
  * raw random source.
@@ -1095,14 +1135,11 @@ static volatile uint64_t *ipecc_baddr = NULL;
  * after a while, to starving all downstream production of internal random
  * numbers.
  *
- * See also macros IPECC_TRNG_RAW_FIFO_READ_PORT_[EN|DIS]ABLE().
- *
- * Watchout: implicitly remove a possibly pending complete bypass of the TRNG
- * by deasserting the 'complete bypass' bit in the same register.
+ * See also macros IPECC_TRNG_[EN|DIS]ABLE_RAW_FIFO_READ_PORT).
  */
 #define IPECC_TRNG_DISABLE_POSTPROC() do { \
-	IPECC_SET_REG(IPECC_W_DBG_TRNG_CTRL, \
-			((uint32_t)0x1 << IPECC_W_DBG_TRNG_CTRL_POSTPROC_DISABLE)); \
+	IPECC_SET_REG(IPECC_W_DBG_TRNG_CTRL_POSTP, \
+			((uint32_t)0x1 << IPECC_W_DBG_TRNG_CTRL_POSTPROC_DISABLE_POS)); \
 } while (0)
 
 /* (Re-)enable the TRNG post-processing logic that pulls bytes from the
@@ -1113,8 +1150,8 @@ static volatile uint64_t *ipecc_baddr = NULL;
  * by deasserting the 'complete bypass' bit in the same register.
  */
 #define IPECC_TRNG_ENABLE_POSTPROC() do { \
-	IPECC_SET_REG(IPECC_W_DBG_TRNG_CTRL, \
-			((uint32_t)0x0 << IPECC_W_DBG_TRNG_CTRL_POSTPROC_DISABLE)); \
+	IPECC_SET_REG(IPECC_W_DBG_TRNG_CTRL_POSTP, \
+			((uint32_t)0x0 << IPECC_W_DBG_TRNG_CTRL_POSTPROC_DISABLE_POS)); \
 } while (0)
 
 /* Disable the read port of the TRNG raw random FIFO.
@@ -1132,8 +1169,8 @@ static volatile uint64_t *ipecc_baddr = NULL;
  * Watchout: implicitly remove a possibly pending complet bypass of the TRNG
  * by deasserting the 'complete bypass' bit in the same register.
  */
-#define IPECC_TRNG_RAW_FIFO_READ_PORT_DISABLE() do { \
-	IPECC_SET_REG(IPECC_W_DBG_TRNG_CTRL, \
+#define IPECC_TRNG_DISABLE_RAW_FIFO_READ_PORT() do { \
+	IPECC_SET_REG(IPECC_W_DBG_TRNG_CTRL_POSTP, \
 			((uint32_t)0x1 << IPECC_W_DBG_TRNG_CTRL_RAW_DISABLE_FIFO_READ_PORT_POS)); \
 } while (0)
 
@@ -1141,48 +1178,14 @@ static volatile uint64_t *ipecc_baddr = NULL;
  * Watchout: implicitly remove a possibly pending complet bypass of the TRNG
  * by deasserting the 'complete bypass' bit in the same register.
  */
-#define IPECC_TRNG_RAW_FIFO_READ_PORT_ENABLE() do { \
-	IPECC_SET_REG(IPECC_W_DBG_TRNG_CTRL, \
+#define IPECC_TRNG_ENABLE_RAW_FIFO_READ_PORT() do { \
+	IPECC_SET_REG(IPECC_W_DBG_TRNG_CTRL_POSTP, \
 			((uint32_t)0x0 << IPECC_W_DBG_TRNG_CTRL_RAW_DISABLE_FIFO_READ_PORT_POS)); \
 } while (0)
 
-/* Empty the FIFO buffering raw random bits of the TRNG
- * and reset associated logic.
+/* Actions involving register W_DBG_TRNG_CTRL_BYPASS
+ * *************************************************
  */
-#define IPECC_TRNG_RESET_EMPTY_RAW_FIFO() do { \
-	IPECC_SET_REG(IPECC_W_DBG_TRNG_CTRL, IPECC_W_DBG_TRNG_CTRL_RESET_FIFO_RAW); \
-} while (0)
-
-/* Empty the FIFOs buffering internal random bits of the TRNG
- * (all channels) and reset associated logic.
- */
-#define IPECC_TRNG_RESET_EMPTY_IRN_FIFOS() do { \
-	IPECC_SET_REG(IPECC_W_DBG_TRNG_CTRL, IPECC_W_DBG_TRNG_CTRL_RESET_FIFO_IRN); \
-} while (0)
-
-/* Set address in the TRNG raw FIFO memory array where to read
- * a raw random bit from, and fetch the corresponding bit.
- * (see also IPECC_TRNG_GET_RAW_BIT).
- */
-#define IPECC_TRNG_SET_RAW_BIT_ADDR(addr) do { \
-	ip_ecc_word val = 0; \
-	val |= IPECC_W_DBG_TRNG_CTRL_READ_FIFO_RAW; \
-	val |= (((addr) & IPECC_W_DBG_TRNG_CTRL_FIFO_ADDR_MSK) \
-			<< IPECC_W_DBG_TRNG_CTRL_FIFO_ADDR_POS); \
-	IPECC_SET_REG(IPECC_W_DBG_TRNG_CTRL, val); \
-} while (0)
-
-/* Get the raw random bit fetched by IPECC_TRNG_SET_RAW_BIT_READ_ADDR
- * (c.f that macro just above).
- * Note that for each read, first setting the address w/ IPECC_TRNG_SET_RAW_BIT_ADDR()
- * is mandatory, even if the read targets the same address, otherwise error 'ERR_RREG_FBD'
- * is raised in R_STATUS register.
- */
-#define IPECC_TRNG_GET_RAW_BIT() do { \
-	(((IPECC_GET_REG(IPECC_W_DBG_TRNG_CTRL)) >> IPECC_R_DBG_TRNG_RAW_DATA_POS) \
-	 & IPECC_R_DBG_TRNG_RAW_DATA_MSK) \
-} while (0)
-
 /* Completely bypass the TRNG physical source.
  *
  * It does not mean that the physical TRNG stops working and producing random
@@ -1197,38 +1200,125 @@ static volatile uint64_t *ipecc_baddr = NULL;
  * that should bet set to 0 or 1).
  */
 #define IPECC_TRNG_COMPLETE_BYPASS(bit) do { \
-	IPECC_SET_REG(IPECC_W_DBG_TRNG_CTRL, IPECC_W_DBG_TRNG_CTRL_TRNG_BYPASS \
+	IPECC_SET_REG(IPECC_W_DBG_TRNG_CTRL_BYPASS, IPECC_W_DBG_TRNG_CTRL_TRNG_BYPASS \
 			| (((bit) & 0x1) << IPECC_W_DBG_TRNG_CTRL_TRNG_BYPASS_VAL_POS)); \
 } while (0)
 
 /* Undo the action of IPECC_TRNG_COMPLETE_BYPASS(), restoring the
- * unpredictable behaviour of internal random numbers.
- *
- * Implicitly (re)enable the TRNG read port of the FIFO by deasserting
- * its 'RAW_FIFO_READ_DISABLE_POS' bit, and also implicitly (re)enable the
- * consumption of data from the raw random FIFO by the TRNG post-processing
- * logic, by deasserting its 'RAW_PULL_PP_DISABLE_POS' bit.
+ * (nominal) unpredictable behaviour of internal random numbers.
  */
 #define IPECC_TRNG_UNDO_COMPLETE_BYPASS() do { \
-	IPECC_SET_REG(IPECC_W_DBG_TRNG_CTRL, 0); \
+	IPECC_SET_REG(IPECC_W_DBG_TRNG_CTRL_BYPASS, 0); \
 } while (0)
 
-/* Actions involving register W_DBG_TRNG_CFG
- * (configuration of TRNG).
- * *****************************************
+/* Actions involving register W_DBG_TRNG_CTRL_NNRND
+ * ************************************************
  */
-#define IPECC_TRNG_CONFIG(debias, ta, idlenb) do { \
-	uint32_t val = 0; \
-	/* Configure Von Neumann debias logic */ \
-	if (debias) { \
-		val |= IPECC_W_DBG_TRNG_CFG_ACTIVE_DEBIAS ; \
-	} \
-	val |= ((ta) & IPECC_W_DBG_TRNG_CFG_TA_MSK) \
-	  << IPECC_W_DBG_TRNG_CFG_TA_POS; \
-	val |= ((idlenb) & IPECC_W_DBG_TRNG_CFG_TRNG_IDLE_MSK) \
-	  << IPECC_W_DBG_TRNG_CFG_TRNG_IDLE_POS; \
-	IPECC_SET_REG(IPECC_W_DBG_TRNG_CFG, val); \
+/* Force a deterministic effect (all 1's) of the NNRND instruction
+ */
+#define IPECC_TRNG_NNRND_DETERMINISTIC() do { \
+	IPECC_SET_REG(IPECC_W_DBG_TRNG_CTRL_NNRND, IPECC_W_DBG_TRNG_CTRL_NNRND_DETERMINISTIC); \
+} while (0);
+
+/* Undo the action of IPECC_TRNG_NNRND_DETERMINISTIC(), restoring the
+ * unpredictable behaviour of random large numbers generated by NNRND
+ * instruction.
+ */
+#define IPECC_TRNG_NNRND_NOT_DETERMINISTIC() do { \
+	IPECC_SET_REG(IPECC_W_DBG_TRNG_CTRL_NNRND, 0); \
+} while (0);
+
+/* Actions involving register W_DBG_TRNG_CTRL_DIAG
+ * ***********************************************
+ *
+ * In debug mode, for each of the 4 internal random number source in the IP, as well
+ * as for the RAW random source itself, the IP maintains a counter that is incremented
+ * at each clock cycle where the client is requiring a fresh internal random number
+ * and the TRNG actually satisfies it, providing a fresh random.
+ * These are called the "OK" counters.
+ *
+ * Similarly, a second counter is incremented in each clock cycle where the client
+ * is requiring a fresh IRN without the TRNG being able to provide it.
+ * These are called the "STARV" counters.
+ *
+ * Hence there are 5 sources : - source of raw random bits
+ *                                      (served to the post-proc unit, if any)
+ *                                      The ID of that source is "RAW".
+ *                             - source of internal random numbers served to ecc_axi
+ *                                      (used to on-the-fly mask the scalar as it is
+ *                                       transmitted by software to ecc_axi component).
+ *                                      The ID of that source is "AXI".
+ *                             - source of internal random numbers served to ecc_fp
+ *                                      (used to implement the NNRND family of opcodes)
+ *                                      The ID of that source is "EFP".
+ *                             - source of internal random numbers served to ecc_curve
+ *                                      (used to implement the [XY]R[01]-shuffling counter-
+ *                                      measure).
+ *                                      The ID of that source is "CRV".
+ *                             - source of internal random numbers served to ecc_fp_dram_sh
+ *                                      (used to implement the shuffling of the memory of
+ *                                      large numbers).
+ *                                      The ID of that source is "SHF".
+ *
+ * Macro IPECC_TRNG_SELECT_DIAG_ID() here below allows software to select which of the
+ * different random sources the macros reading the source diagnostics will further access
+ * (meaning access is multiplexed, to reduce register usage). The macros to read the
+ * diagnostics (look below) are named "IPECC_R_DBG_TRNG_DIAG_[MIN|MAX|OK|STARV]".
+ *
+ * By computing for instance the ratio:
+ *
+ *                (R_DBG_TRNG_DIAG_OK / R_DBG_TRNG_DIAG_OK + R_DBG_TRNG_DIAG_STARV )
+ *
+ * for one of the 5 sources, the software driver can evaluate the percentage of
+ * clock cycles where the random client was requesting a fresh random without the
+ * TRNG actually having one at disposal to serve to it.
+ *
+ * Similarly, counter "MIN" (resp. "MAX") yields the value of the FIFO minimal
+ * (resp. maximal) count for the random source currently selected using macro
+ * IPECC_TRNG_SELECT_DIAG_ID(). This means the smallest (resp. largest) qty of
+ * internal random nbs the FIFO count showed during last [k]P computation.
+ *
+ * The 4 different types of counter should allow the hardware designer/user of IPECC
+ * to tune the TRNG parameters and FIFO sizes (which are parameterizable in
+ * ecc_customize.vhd).
+ *
+ * Note that the different counters (MIN, MAX, OK, STARV) are automatically reset
+ * at each start of a new [k]P computation.
+ */
+#define IPECC_TRNG_SELECT_DIAG_ID(id) do { \
+	IPECC_SET_REG(IPECC_W_DBG_TRNG_CTRL_DIAG, \
+			((id) & IPECC_W_DBG_TRNG_CTRL_DIAG_MSK) << IPECC_W_DBG_TRNG_CTRL_DIAG_POS); \
+} while (0);
+
+/* Actions involving register W_DBG_TRNG_RAW_READ & R_DBG_TRNG_RAW_DATA
+ * ********************************************************************
+ */
+
+/* Set address in the TRNG raw FIFO memory array where to read
+ * a raw random bit from, and fetch the corresponding bit.
+ */
+#define IPECC_TRNG_SET_RAW_BIT_ADDR(addr) do { \
+	ip_ecc_word val = 0; \
+	val |= IPECC_W_DBG_TRNG_CTRL_RAWFIFO_READ; \
+	val |= (((addr) & IPECC_W_DBG_TRNG_CTRL_RAWFIFO_RADDR_MSK) \
+			<< IPECC_W_DBG_TRNG_CTRL_RAWFIFO_RADDR_POS); \
+	IPECC_SET_REG(IPECC_W_DBG_TRNG_RAW_READ, val); \
 } while (0)
+
+/* Get the raw random bit fetched by IPECC_TRNG_SET_RAW_BIT_READ_ADDR
+ * (c.f that macro above).
+ * Note that for each read, first setting the address w/ IPECC_TRNG_SET_RAW_BIT_ADDR()
+ * is mandatory, even if the read targets the same address, otherwise error 'ERR_RREG_FBD'
+ * is raised in R_STATUS register.
+ */
+#define IPECC_TRNG_GET_RAW_BIT() \
+	(((IPECC_GET_REG(IPECC_R_DBG_TRNG_RAW_DATA)) >> IPECC_R_DBG_TRNG_RAW_DATA_POS) \
+	 & IPECC_R_DBG_TRNG_RAW_DATA_MSK)
+
+#define IPECC_TRNG_READ_FIFO_RAW(addr, pd) do { \
+	IPECC_TRNG_SET_RAW_BIT_ADDR(addr); \
+	(*(pd)) = IPECC_TRNG_GET_RAW_BIT(); \
+} while(0)
 
 /* Actions involving registers W_DBG_FP_WADDR & W_DBG_FP_WDATA
  * ***********************************************************
@@ -1251,9 +1341,8 @@ static volatile uint64_t *ipecc_baddr = NULL;
 			<< IPECC_W_DBG_FP_DATA_POS); \
 } while (0)
 
-/* Actions involving register W_DBG_FP_RADDR, IPECC_R_DBG_FP_RDATA &
- * IPECC_R_DBG_FP_RDATA_RDY
- * *****************************************************************
+/* Actions involving register W_DBG_FP_RADDR, R_DBG_FP_RDATA & R_DBG_FP_RDATA_RDY
+ * ******************************************************************************
  */
 
 /* Set the address in the memory of large numbers at which a data word is to be read.
@@ -1270,6 +1359,10 @@ static volatile uint64_t *ipecc_baddr = NULL;
  * see below. */
 #define IPECC_DBG_IS_FP_READ_DATA_AVAIL()  (!!(IPECC_GET_REG(IPECC_R_DBG_FP_RDATA_RDY) \
 			& IPECC_R_DBG_FP_RDATA_RDY_IS_READY))
+
+#define IPECC_DBG_POLL_UNTIL_FP_READ_DATA_AVAIL() do { \
+	while (!(IPECC_DBG_IS_FP_READ_DATA_AVAIL())) {}; \
+} while(0)
 
 /* Obtain the data word from memory of large numbers whose address
  * was previously set using IPECC_DBG_SET_FP_READ_ADDR().
@@ -1332,22 +1425,6 @@ static volatile uint64_t *ipecc_baddr = NULL;
 	IPECC_SET_REG(IPECC_W_DBG_CFG_TOKEN, IPECC_W_DBG_CFG_TOKEN_DIS); \
 } while (0)
 
-/* Actions involving register W_DBG_RESET_TRNG_CNT
- * ***********************************************
- */
-
-/* Reset the diagnostic counters that software driver can access through
- * registers R_DBG_TRNG_DIAG_1 to R_DBG_TRNG_DIAG_8.
- *
- * It is advised to reset the counters before any new [k]P computation
- * to avoid their overflow.
- *
- * Note: register R_DBG_TRNG_DIAG_0 is not impacted.
- */
-#define IPECC_RESET_TRNG_DIAGNOSTIC_COUNTERS() do { \
-	IPECC_SET_REG(IPECC_W_DBG_RESET_TRNG_CNT, 1); /* written value actually is indifferent */ \
-} while (0)
-
 /* Actions involving register R_DBG_CAPABILITIES_0
  * ***********************************************
  */
@@ -1362,15 +1439,14 @@ static volatile uint64_t *ipecc_baddr = NULL;
  * & IPECC_DBG_GET_FP_READ_DATA.
  * (see these macros).
  */
-#define IPECC_GET_WW() \
-	(((IPECC_GET_REG(IPECC_R_DBG_CAPABILITIES_0)) \
-		>> IPECC_R_DBG_CAPABILITIES_0_WW_POS) \
+#define IPECC_DBG_GET_WW() \
+	(((IPECC_GET_REG(IPECC_R_DBG_CAPABILITIES_0)) >> IPECC_R_DBG_CAPABILITIES_0_WW_POS) \
 		& IPECC_R_DBG_CAPABILITIES_0_WW_MSK)
 
 /* Dynamic value of parameter 'w' can be obtained using those of
  * 'nn' and 'ww' as we simply have: w = ceil( (nn + 4) /ww ).
  */
-#define IPECC_GET_W()    DIV( ((uint32_t)((IPECC_GET_NN()) + 4)) , (uint32_t)(IPECC_GET_WW()))
+#define IPECC_DBG_GET_W()    DIV( ((uint32_t)((IPECC_GET_NN()) + 4)) , (uint32_t)(IPECC_DBG_GET_WW()))
 
 /* Actions involving register R_DBG_CAPABILITIES_1
  * ***********************************************
@@ -1477,11 +1553,11 @@ static volatile uint64_t *ipecc_baddr = NULL;
 /* To get the duration it took to fill-up the TRNG raw random FIFO.
  *
  * In debug mode, after each hard/soft/debug reset, an internal
- * counter is started and incrememted at each cycle of the main
+ * counter is started and incremented at each cycle of the main
  * clock. It is then stopped as soon as the TRNG raw random FIFO
  * becomes FULL.
  *
- * This allows any debug software driver to know the time it took
+ * This allows any debug software driver to know the time it takes
  * to completely fill up the FIFO, and hence to estimate the random
  * production throughput of the TRNG main entropy source.
  *
@@ -1491,12 +1567,7 @@ static volatile uint64_t *ipecc_baddr = NULL;
  * that macro).
  */
 #define IPECC_GET_TRNG_RAW_FIFO_FILLUP_TIME() \
-	(((IPECC_GET_REG(IPECC_R_DBG_RAWDUR)) >> IPECC_R_DBG_RAWDUR_POS) & IPECC_R_DBG_RAWDUR_MSK)
-
-/* Actions involving register R_DBG_FLAGS
- * ***************************************/
-/* Obsolete, will be removed */
-
+	(((IPECC_GET_REG(IPECC_R_DBG_TRNG_RAWDUR)) >> IPECC_R_DBG_RAWDUR_POS) & IPECC_R_DBG_RAWDUR_MSK)
 
 /* Actions involving register R_DBG_TRNG_STATUS
  * ********************************************
@@ -1516,132 +1587,156 @@ static volatile uint64_t *ipecc_baddr = NULL;
 #define IPECC_IS_TRNG_RAW_FIFO_FULL() \
 	(!!(IPECC_GET_REG(IPECC_R_DBG_TRNG_STATUS) & IPECC_R_DBG_TRNG_STATUS_RAW_FIFO_FULL))
 
-/* Actions involving register R_DBG_IRN_CNT_AXI
+/* Poll until the TRNG raw random FIFO is full */
+#define IPECC_TRNG_RAW_FIFO_FULL_BUSY_WAIT() do { \
+        while(!IPECC_IS_TRNG_RAW_FIFO_FULL()){}; \
+} while(0)
+
+/* Note about following macros IPECC_R_DBG_TRNG_DIAG_[MIN|MAX|OK|STARV]
+ *
+ *     These macros acess diagnostic counters and allow detecting possible
+ *     starvations of TRNG internal numbers during [k]P computations,
+ *     so as to allow hardware designer to determine the smallest appropriate
+ *     size of IRN fifos inside the IP (these sizes are customizable in
+ *     ecc_customize.vhd).
+ *
+ *   See also macro  IPECC_TRNG_SELECT_DIAG_ID().
+ */
+
+/* Actions involving register R_DBG_TRNG_DIAG_MIN
+ * **********************************************
+ *
+ * Note: random source should be prior selected using IPECC_TRNG_SELECT_DIAG_ID()
+ * (see above).
+ */
+#define IPECC_GET_TRNG_DIAG_MIN() \
+	((IPECC_GET_REG(IPECC_R_DBG_TRNG_DIAG_MIN) >> IPECC_R_DBG_TRNG_DIAG_MIN_POS) \
+	 & IPECC_R_DBG_TRNG_DIAG_MIN_MSK)
+
+/* Actions involving register R_DBG_TRNG_DIAG_MAX
+ * **********************************************
+ *
+ * Note: random source should be prior selected using IPECC_TRNG_SELECT_DIAG_ID()
+ * (see above).
+ */
+#define IPECC_GET_TRNG_DIAG_MAX() \
+	((IPECC_GET_REG(IPECC_R_DBG_TRNG_DIAG_MAX) >> IPECC_R_DBG_TRNG_DIAG_MAX_POS) \
+	 & IPECC_R_DBG_TRNG_DIAG_MAX_MSK)
+
+/* Actions involving register R_DBG_TRNG_DIAG_OK
+ * *********************************************
+ *
+ * Note: random source should be prior selected using IPECC_TRNG_SELECT_DIAG_ID()
+ * (see above).
+ */
+#define IPECC_GET_TRNG_DIAG_OK() \
+	((IPECC_GET_REG(IPECC_R_DBG_TRNG_DIAG_OK) >> IPECC_R_DBG_TRNG_DIAG_OK_POS) \
+	 & IPECC_R_DBG_TRNG_DIAG_OK_MSK)
+
+/* Actions involving register R_DBG_TRNG_DIAG_STARV
+ * ************************************************
+ *
+ * Note: random source should be prior selected using IPECC_TRNG_SELECT_DIAG_ID()
+ * (see above).
+ */
+#define IPECC_GET_TRNG_DIAG_STARV() \
+	((IPECC_GET_REG(IPECC_R_DBG_TRNG_DIAG_STARV) >> IPECC_R_DBG_TRNG_DIAG_STARV_POS) \
+	 & IPECC_R_DBG_TRNG_DIAG_STARV_MSK)
+
+/* Actions involving register R_DBG_CLK_MHZ
+ * ****************************************
+ */
+#define IPECC_GET_CLK_MHZ() \
+	((IPECC_GET_REG(IPECC_R_DBG_CLK_MHZ) >> IPECC_R_DBG_CLK_CNT_POS) \
+	 & IPECC_R_DBG_CLK_CNT_MSK)
+
+/* Actions involving register R_DBG_CLKMM_MHZ
+ * ******************************************
+ */
+#define IPECC_GET_CLKMM_MHZ() \
+	((IPECC_GET_REG(IPECC_R_DBG_CLKMM_MHZ) >> IPECC_R_DBG_CLKMM_CNT_POS) \
+	 & IPECC_R_DBG_CLKMM_CNT_MSK)
+
+/* Actions involving register R_DBG_HW_CONFIG_0
  * ********************************************
  */
+#define IPECC_GET_HW_CFG_NBDSP() \
+	((IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_0) >> IPECC_R_DBG_HW_CFG0_NBDSP_POS) \
+	 & IPECC_R_DBG_HW_CFG0_NBDSP_MSK)
 
-/* Returns the quantity of internal random numbers currently buffered
- * in the TRNG FIFO that serves randomness to the AXI interface.
- *
- * Internal random numbers served to the AXI interface are 'ww'-bit long.
- *
- * Value of 'ww' can be obtained using macro IPECC_GET_WW (c.f). */
-#define IPECC_GET_TRNG_NB_IRN_AXI() \
-	((IPECC_GET_REG(IPECC_R_DBG_IRN_CNT_AXI) >> IPECC_R_DBG_IRN_CNT_COUNT_POS) \
-	 & IPECC_R_DBG_IRN_CNT_COUNT_MSK)
+#define IPECC_GET_HW_CFG_NBMULT() \
+	(!!(IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_0) & IPECC_R_DBG_HW_CFG0_NBMULT))
 
-/* Actions involving register R_DBG_IRN_CNT_EFP
+#define IPECC_GET_HW_CFG_SRAMLAT() \
+	(!!(IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_0) & IPECC_R_DBG_HW_CFG0_SRAMLAT))
+
+#define IPECC_GET_HW_CFG_ASYNC() \
+	(!!(IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_0) & IPECC_R_DBG_HW_CFG0_ASYNC))
+
+#define IPECC_GET_HW_CFG_SHUFFLE() \
+	((IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_0) >> IPECC_R_DBG_HW_CFG0_SHUFFLE_POS) \
+	 & IPECC_R_DBG_HW_CFG0_SHUFFLE_MSK)
+
+#define IPECC_GET_HW_CFG_ZREMASK() \
+	((IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_0) >> IPECC_R_DBG_HW_CFG0_ZREMASK_POS) \
+	 & IPECC_R_DBG_HW_CFG0_ZREMASK_MSK)
+
+#define IPECC_GET_HW_CFG_BLINDING() \
+	((IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_0) >> IPECC_R_DBG_HW_CFG0_BLINDING_POS) \
+	 & IPECC_R_DBG_HW_CFG0_BLINDING_MSK)
+
+/* Actions involving register R_DBG_HW_CONFIG_1
  * ********************************************
  */
+#define IPECC_GET_HW_CFG_NBTRNG() \
+	((IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_1) >> IPECC_R_DBG_HW_CFG1_NBTRNG_POS) \
+	 & IPECC_R_DBG_HW_CFG1_NBTRNG_MSK)
 
-/* Returns the quantity of internal random numbers currently buffered
- * in the TRNG FIFO that serves randomness to the ALU for field large
- * numbers (these random are used to implement instruction NNRND (c.f
- * IP documentation).
- *
- * Internal random numbers served to the F_p ALU are 'ww'-bit long.
- *
- * Value of 'ww' can be obtained using macro IPECC_GET_WW (c.f).
- */
-#define IPECC_GET_TRNG_NB_IRN_EFP()  ((IPECC_GET_REG(IPECC_R_DBG_IRN_CNT_EFP) \
-			>> IPECC_R_DBG_IRN_CNT_COUNT_POS) & IPECC_R_DBG_IRN_CNT_COUNT_MSK)
+#define IPECC_GET_HW_CFG_TRNGTA() \
+	((IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_1) >> IPECC_R_DBG_HW_CFG1_TRNGTA_POS) \
+	 & IPECC_R_DBG_HW_CFG1_TRNGTA_MSK)
 
-/* Actions involving register R_DBG_IRN_CNT_CRV
+#define IPECC_GET_HW_CFG_SZ_RAW() \
+	((IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_1) >> IPECC_R_DBG_HW_CFG1_SZ_RAW_POS) \
+	 & IPECC_R_DBG_HW_CFG1_SZ_RAW_MSK)
+
+#define IPECC_GET_HW_CFG_SZ_AXI() \
+	((IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_1) >> IPECC_R_DBG_HW_CFG1_SZ_AXI_POS) \
+	 & IPECC_R_DBG_HW_CFG1_SZ_AXI_MSK)
+
+/* Actions involving register R_DBG_HW_CONFIG_2
  * ********************************************
  */
+#define IPECC_GET_HW_CFG_SZ_FPR() \
+	((IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_2) >> IPECC_R_DBG_HW_CFG2_SZ_FPR_POS) \
+	 & IPECC_R_DBG_HW_CFG2_SZ_FPR_MSK)
 
-/* Returns the quantity of internal random numbers currently buffered
- * in the TRNG FIFO that serves randomness used to implement the XY-shuffling
- * of the coordinates of R0 & R1 sensitive points.
- *
- * Internal random numbers used for the XY-shuffling countermeasure are made
- * of 2-bits.
- */
-#define IPECC_GET_TRNG_NB_IRN_CRV()  ((IPECC_GET_REG(IPECC_R_DBG_IRN_CNT_CRV) \
-			>> IPECC_R_DBG_IRN_CNT_COUNT_POS) & IPECC_R_DBG_IRN_CNT_COUNT_MSK)
+#define IPECC_GET_HW_CFG_SZ_CRV() \
+	((IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_2) >> IPECC_R_DBG_HW_CFG2_SZ_CRV_POS) \
+	 & IPECC_R_DBG_HW_CFG2_SZ_CRV_MSK)
 
-/* Actions involving register R_DBG_IRN_CNT_SHF
- * ********************************************
- */
+#define IPECC_GET_HW_CFG_SZ_SHF() \
+	((IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_2) >> IPECC_R_DBG_HW_CFG2_SZ_SHF_POS) \
+	 & IPECC_R_DBG_HW_CFG2_SZ_SHF_MSK)
 
-/* Returns the quantity of internal random numbers currently buffered
- * in the TRNG FIFO that serves randomness to logic implementing the
- * shuffling of the memory of large numbers.
- *
- * Internal random numbers used for the memory shuffling countermeasure
- * have a bitwidth which depends on the type of algorithm used to randomly
- * permutate the memory. Three methods are available in the IP HDL source
- * code but one at most (and possible none) has been synthesized in the IP.
- *
- * The bitwidth of the internal random numbers here can be obtained using
- * macro IPECC_GET_TRNG_IRN_SHF_BITWIDTH (c.f).
+/* Actions involving register R_DBG_HW_TEST_NB
+ * *******************************************
  */
-#define IPECC_GET_TRNG_NB_IRN_SHF()  ((IPECC_GET_REG(IPECC_R_DBG_IRN_CNT_SHF) \
-			>> IPECC_R_DBG_IRN_CNT_COUNT_POS) & IPECC_R_DBG_IRN_CNT_COUNT_MSK)
+#define IPECC_GET_HW_TEST_BOARD() \
+	((IPECC_GET_REG(IPECC_R_DBG_HW_TEST_NB) >> IPECC_R_DBG_HW_TEST_NB_BOARD_POS) \
+	 & IPECC_R_DBG_HW_TEST_NB_BOARD_MSK)
 
-/* Actions involving register R_DBG_TRNG_DIAG_0
- * ********************************************
- */
+#define IPECC_GET_HW_TEST_TEST() \
+	((IPECC_GET_REG(IPECC_R_DBG_HW_TEST_NB) >> IPECC_R_DBG_HW_TEST_NB_TEST_POS) \
+	 & IPECC_R_DBG_HW_TEST_NB_TEST_MSK)
 
-/* Actions involving registers R_DBG_TRNG_DIAG_1 - R_DBG_TRNG_DIAG_8
- * *****************************************************************
+/* Actions involving register R_DBG_HW_RANDOM
+ * ******************************************
  */
-/* In debug mode, for each of the 4 entropy clients in the IP, the TRNG maintains
- * a counter that is incremented at each clock cycle where the client is requiring
- * a fresh internal random number and the TRNG actually satisfies it, providing a
- * fresh random.
- *
- * Similarly, a second counter is incremented in each clock cycle where the client
- * is requiring a fresh IRN without the TRNG being able to provide it.
- *
- * Macro R_DBG_TRNG_DIAG_1 (resp. 3, 5 and 7) yields the value of the first counter
- * (satisfied requests) for the TRNG channel "AXI interface" (resp. for "NNRND instruction",
- * "XY-shuffling countermeasure" & "memory of large nb shuffling" countermeasure).
- *
- * Macro R_DBG_TRNG_DIAG_2 (resp. 4, 6 and 8) yeilds the value of the second counter
- * (starvation cycles) for the TRNG channel "AXI interface" (resp. for "NNRND instruction",
- * "XY-shuffling countermeasure" & "memory of large nb shuffling" countermeasure).
- *
- * Thus by computing for instance of ratio (R_DBG_TRNG_DIAG_2 / R_DBG_TRNG_DIAG_1 + R_DBG_TRNG_DIAG_2)
- * the software driver can evaluate the percentage of clock cycles where the AXI interface client
- * was requesting a fresh random without the TRNG actually having one at disposal to serve to it.
- */
+#define IPECC_GET_HW_RANDOM() \
+	((IPECC_GET_REG(IPECC_R_DBG_HW_RANDOM) >> IPECC_R_DBG_HW_RANDOM_POS) \
+	 & IPECC_R_DBG_HW_RANDOM_MSK)
 
-/* TRNG channel "AXI interface"
- */
-#define IPECC_GET_TRNG_AXI_OK() \
-	((IPECC_GET_REG(IPECC_R_DBG_TRNG_DIAG_1) >> IPECC_R_DBG_TRNG_DIAG_CNT_OK_POS) \
-	& IPECC_R_DBG_TRNG_DIAG_CNT_OK_MSK)
-#define IPECC_GET_TRNG_AXI_STARV() \
-	((IPECC_GET_REG(IPECC_R_DBG_TRNG_DIAG_2) >> IPECC_R_DBG_TRNG_DIAG_CNT_STARV_POS) \
-	 & IPECC_R_DBG_TRNG_DIAG_CNT_STARV_MSK)
-
-/* TRNG channel "NNRND instruction"
- */
-#define IPECC_GET_TRNG_EFP_OK() \
-	((IPECC_GET_REG(IPECC_R_DBG_TRNG_DIAG_3) >> IPECC_R_DBG_TRNG_DIAG_CNT_OK_POS) \
-	 & IPECC_R_DBG_TRNG_DIAG_CNT_OK_MSK)
-#define IPECC_GET_TRNG_EFP_STARV() \
-	((IPECC_GET_REG(IPECC_R_DBG_TRNG_DIAG_4) >> IPECC_R_DBG_TRNG_DIAG_CNT_STARV_POS) \
-	 & IPECC_R_DBG_TRNG_DIAG_CNT_STARV_MSK)
-
-/* TRNG channel "XY-shuffle countermeasure"
- */
-#define IPECC_GET_TRNG_CRV_OK() \
-	((IPECC_GET_REG(IPECC_R_DBG_TRNG_DIAG_5) >> IPECC_R_DBG_TRNG_DIAG_CNT_OK_POS) \
-	 & IPECC_R_DBG_TRNG_DIAG_CNT_OK_MSK)
-#define IPECC_GET_TRNG_CRV_STARV() \
-	((IPECC_GET_REG(IPECC_R_DBG_TRNG_DIAG_6) >> IPECC_R_DBG_TRNG_DIAG_CNT_STARV_POS) \
-	 & IPECC_R_DBG_TRNG_DIAG_CNT_STARV_MSK)
-
-/* TRNG channel "Shuffling of memory of large numbers countermeasure"
- */
-#define IPECC_GET_TRNG_SHF_OK() \
-	((IPECC_GET_REG(IPECC_R_DBG_TRNG_DIAG_7) >> IPECC_R_DBG_TRNG_DIAG_CNT_OK_POS) \
-	 & IPECC_R_DBG_TRNG_DIAG_CNT_OK_MSK)
-#define IPECC_GET_TRNG_SHF_STARV() \
-	((IPECC_GET_REG(IPECC_R_DBG_TRNG_DIAG_8) >> IPECC_R_DBG_TRNG_DIAG_CNT_STARV_POS) \
-	 & IPECC_R_DBG_TRNG_DIAG_CNT_STARV_MSK)
 
 /*
  * The pseudo TRNG device (debug mode only)
@@ -1666,18 +1761,6 @@ static volatile uint64_t *ipecc_baddr = NULL;
  *
  * Hereafter sorted by category/function.
  ************************************************/
-
-/* TRNG handling */
-/* Read the FIFOs at an offset */
-#define IPECC_TRNG_READ_FIFO_RAW(addr, a) do { \
-	IPECC_TRNG_SET_RAW_BIT_ADDR(addr); \
-	(*(a)) = IPECC_TRNG_GET_RAW_BIT(); \
-} while(0)
-
-/* Poll until the TRNG ran random FIFO is full */
-#define IPECC_TRNG_RAW_FIFO_FULL_BUSY_WAIT() do { \
-        while(!IPECC_IS_TRNG_RAW_FIFO_FULL()){}; \
-} while(0)
 
 typedef enum {
 	EC_HW_REG_A      = 0,
@@ -1929,33 +2012,6 @@ err:
 	return -1;
 }
 
-/* Activate the shuffling */
-static inline int ip_ecc_activate_shuffling(void)
-{
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-	/* We activate the shuffling only if it is supported */
-	if(IPECC_IS_SHUFFLING_SUPPORTED()){
-		IPECC_ENABLE_SHUFFLE();
-
-		/* Wait until the IP is not busy */
-		IPECC_BUSY_WAIT();
-
-		/* Check for error */
-		if(ip_ecc_check_error(NULL)){
-			goto err;
-		}
-	}
-	else{
-		goto err;
-	}
-
-	return 0;
-err:
-	return -1;
-}
-
 /* Set the NN size provided in bits */
 static inline int ip_ecc_set_nn_bit_size(uint32_t bit_sz)
 {
@@ -2067,7 +2123,7 @@ static inline int ip_ecc_enable_shuffling(void)
 	/* Wait until the IP is not busy */
 	IPECC_BUSY_WAIT();
 
-	/* Enable shuffling but only if it's supported (otherwise reaise an error) */
+	/* Enable shuffling but only if it's supported (otherwise raise an error) */
 	if(IPECC_IS_SHUFFLING_SUPPORTED()){
 		IPECC_ENABLE_SHUFFLE();
 
@@ -2079,8 +2135,6 @@ static inline int ip_ecc_enable_shuffling(void)
 			goto err;
 		}
 	} else {
-		log_print("ip_ecc_enable_shuffling(): could not enable shuffling - "
-				"(feature's not present in hardware)\n\r");
 		goto err;
 	}
 
@@ -2168,88 +2222,6 @@ static inline int ip_ecc_disable_zremask(void)
 	return 0;
 err:
 	return -1;
-}
-
-/* Debug feature: disable the XY-shuffling countermeasure */
-static inline int ip_ecc_disable_xyshuf(void)
-{
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-	/* Disable the countermeasure */
-	IPECC_DBG_DISABLE_XYSHUF();
-
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-#if 0
-	/* Check for error */
-	if(ip_ecc_check_error(NULL)){
-		goto err;
-	}
-#endif
-
-	return 0;
-#if 0
-err:
-	return -1;
-#endif
-}
-
-/* Debug feature: enable the XY-shuffling countermeasure */
-static inline int ip_ecc_enable_xyshuf(void)
-{
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-	/* Disable the countermeasure */
-	IPECC_DBG_ENABLE_XYSHUF();
-
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-#if 0
-	/* Check for error */
-	if(ip_ecc_check_error(NULL)){
-		goto err;
-	}
-#endif
-
-	return 0;
-#if 0
-err:
-	return -1;
-#endif
-}
-
-/* Debug feature: disable 'on-the-fly masking of the scalar by AXI interface' countermeasure */
-static inline int ip_ecc_disable_aximsk(void)
-{
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-	/* Disable the countermeasure */
-	IPECC_DBG_DISABLE_AXIMSK();
-
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-	return 0;
-}
-
-/* Debug feature: enable 'on-the-fly masking of the scalar by AXI interface' countermeasure */
-static inline int ip_ecc_enable_aximsk(void)
-{
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-	/* Disable the countermeasure */
-	IPECC_DBG_ENABLE_AXIMSK();
-
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-	return 0;
 }
 
 /* Write a big number to the IP
@@ -2623,30 +2595,304 @@ err:
 	return -1;
 }
 
-/* Set a breakpoint in the microcode. */
-int ip_ecc_set_breakpoint_DBG(uint32_t addr, uint32_t id)
+/* Halt the IP - This freezes execution of microcode
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_debug_halt(void)
 {
-	/* we DON'T busy wait as we assume the IP might be debug stopped
+	/* we DON'T busy-wait as we assume the IP might alredy be stopped
 	 * in the course of a computation (hence with the busy BIT on,
-	 * in which case it would create dead lock.
+	 * in which case it would create a dead-lock situation).
 	 */
 
-	/* Transmit action to low-level routine */
+	/* Memory-mapped register access */
+	IPECC_HALT_NOW();
+
+	return 0;
+}
+
+/* Set a breakpoint in the microcode.
+ *
+ *   Note: the breakpoint is enabled for whatever the state
+ *         the IP FSM is in when the microcode hits the address.
+ *         If you wish to create a breakpoint associated with
+ *         a specific  state, use the macro IPECC_SET_BKPT()
+ *         instead of IPECC_SET_BREAKPOINT().
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_set_breakpoint(uint32_t addr, uint32_t id)
+{
+	/* we DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 */
+
+	/* Memory-mapped register access */
 	IPECC_SET_BREAKPOINT(id, addr);
 
 	return 0;
 }
 
-/* Patch microcode memory.
+/* Remove a breakpoint in the microcode
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_remove_breakpoint(uint32_t id)
+{
+	/* we DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 */
+
+	/* Memory-mapped register access */
+	IPECC_REMOVE_BREAKPOINT(id);
+
+	return 0;
+}
+
+/* Have IP to execute a certain nb of opcodes in microcode
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_run_opcodes(uint32_t nbops)
+{
+	/* we DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * INSTEAD we test that the IP is halted.
+	 */
+	if (!IPECC_IS_IP_DEBUG_HALTED()) {
+		goto err;
+	}
+
+	/* Memory-mapped register access */
+	IPECC_RUN_OPCODES(nbops);
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Same as ip_ecc_run_opcodes() but single step
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_single_step()
+{
+	/* we DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * INSTEAD we test that the IP is halted.
+	 */
+	if (!IPECC_IS_IP_DEBUG_HALTED()) {
+		goto err;
+	}
+
+	/* Memory-mapped register access */
+	IPECC_SINGLE_STEP();
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Resume execution of microcode
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_resume()
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. If it's not, the call
+	 * will simply have no effect.
+	 */
+
+	/* Memory-mapped register access */
+	IPECC_RESUME();
+
+	return 0;
+}
+
+/* Arm trigger function
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_arm_trigger()
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for the trigger to be armed.
+	 */
+
+	/* Memory-mapped register access */
+	IPECC_ARM_TRIGGER();
+
+	return 0;
+}
+
+/* Disarm (disable) trigger function
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_disarm_trigger()
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for the trigger to be disabled.
+	 */
+
+	/* Memory-mapped register access */
+	IPECC_DISARM_TRIGGER();
+
+	return 0;
+}
+
+/* Set configuration of UP trigger detection
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_set_trigger_up(uint32_t time)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for the trigger to be configured.
+	 */
+
+	/* Memory-mapped register access */
+	IPECC_SET_TRIGGER_UP(time);
+
+	return 0;
+}
+
+/* Set configuration of DOWN trigger detection
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_set_trigger_down(uint32_t time)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for the trigger to be configured.
+	 */
+
+	/* Memory-mapped register access */
+	IPECC_SET_TRIGGER_DOWN(time);
+
+	return 0;
+}
+
+/* Patch a single opcode in the microcode.
+ * 
+ *   'opcode_msb' must contain the upper 32-bit part of the opcode in case
+ *   size of opcodes is larger than 32-bit (and in this case 'opsz' must = 2).
+ *
+ *   'opcode_lsb' must contain the lower 32-bit part of the opcode in case
+ *   size of the opcode is larger than 32-bit, OR the opcode word in case
+ *   the size is 32-bit or less (and in this case 'opsz' must = 1).
+ *
+ * (should be called only in debug mode)
+ */
+static int ip_ecc_patch_one_opcode(uint32_t address, uint32_t opcode_msb, uint32_t opcode_lsb, uint32_t opsz)
+{
+	uint32_t nbopcodes_max;
+
+	/* we DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * BUT we test that the IP is halted!
+	 */
+	if (!IPECC_IS_IP_DEBUG_HALTED()) {
+		goto err;
+	}
+
+	/*
+	 * Sanity check
+	 */
+	if ((opsz != 1) && (opsz != 2)) {
+		goto err;
+	}
+
+	if (ge_pow_of_2(IPECC_GET_NBOPCODES(), &nbopcodes_max)) {
+		goto err;
+	}
+
+	if (address > nbopcodes_max) {
+		goto err;
+	}
+
+	/*
+	 * Set opcode address in register W_DBG_OP_WADDR.
+	 */
+	IPECC_SET_OPCODE_WRITE_ADDRESS(address);
+
+	/*
+	 * Set opcode word in register W_DBG_OPCODE.
+	 */
+	if (opsz == 2) {
+
+		/* If opcodes are larger than 32 bits, the least
+		 * significant 32-bit half must be transmitted first.
+		 */
+		IPECC_SET_OPCODE_TO_WRITE(opcode_lsb);
+
+		/* Wait until the IP is not busy */
+		IPECC_BUSY_WAIT();
+
+		IPECC_SET_OPCODE_TO_WRITE(opcode_msb);
+
+	} else {
+
+		IPECC_SET_OPCODE_TO_WRITE(opcode_lsb);
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Patch a portion or the whole of microcode image.
+ * 
  *   'buf' should point to the buffer, 'nbops' is the nb of opcodes
  *   in the buffer, 'opsz' is a flag to tell if the size of opcode
  *   words is larger than 32 bit (given that the max supported is
  *   64 bits).
+ *
+ * (in debug mode only)
  */
-int ip_ecc_patch_microcode(uint32_t* buf, uint32_t nbops, uint32_t opsz)
+static int ip_ecc_patch_microcode(uint32_t* buf, uint32_t nbops, uint32_t opsz)
 {
 	uint32_t i;
 	uint32_t nbopcodes_max;
+
+	/* we DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * BUT we test that the IP is halted!
+	 */
+	if (!IPECC_IS_IP_DEBUG_HALTED()) {
+		goto err;
+	}
 
 	/* Sanity checks.
 	 *
@@ -2702,34 +2948,23 @@ int ip_ecc_patch_microcode(uint32_t* buf, uint32_t nbops, uint32_t opsz)
 	 * instruction opcodes.
 	 */
 	if ((opsz != 1) && (opsz != 2)) {
-		printf("Error: Illegal opcode size (%d) in ip_ecc_patch_microcode "
-				"(should be 1 or 2)\n\r", opsz);
 		goto err;
 	}
 
 	if (ge_pow_of_2(IPECC_GET_NBOPCODES(), &nbopcodes_max)) {
-		printf("Error: ge_pow_of_2() returned exception\n\r");
 		goto err;
 	}
 
 	if (nbops > nbopcodes_max) {
-		printf("Error: Illegal microcode size (%d) in call to ip_ecc_patch_microcode "
-				"(max allowed: %d). \n\r", nbops, nbopcodes_max);
 		goto err;
 	}
 
 	for (i=0; i<nbops; i++)
 	{
-		/* Wait until the IP is not busy */
-		IPECC_BUSY_WAIT();
-
 		/*
 		 * Set opcode address in register W_DBG_OP_WADDR.
 		 */
 		IPECC_SET_OPCODE_WRITE_ADDRESS(i);
-
-		/* Wait until the IP is not busy */
-		IPECC_BUSY_WAIT();
 
 		/*
 		 * Set opcode word in register W_DBG_OPCODE.
@@ -2739,19 +2974,11 @@ int ip_ecc_patch_microcode(uint32_t* buf, uint32_t nbops, uint32_t opsz)
 			 * significant 32-bit half must be transmitted first.
 			 */
 			IPECC_SET_OPCODE_TO_WRITE(buf[(2*i) + 1]);
-
-			/* Wait until the IP is not busy */
-			IPECC_BUSY_WAIT();
-
 			IPECC_SET_OPCODE_TO_WRITE(buf[2*i]);
 
-			/* Wait until the IP is not busy */
-			IPECC_BUSY_WAIT();
 		} else {
 			IPECC_SET_OPCODE_TO_WRITE(buf[i]);
 
-			/* Wait until the IP is not busy */
-			IPECC_BUSY_WAIT();
 		}
 	}
 
@@ -2760,68 +2987,397 @@ err:
 	return -1;
 }
 
-/* Patch a single opcode in the microcode.
- * 
- *   'opcode' should point to the buffer containing only one opcode 32-bit
- *   word (if the hardware opcode size is less than 32-bit) or two opcode
- *   32-bit words (if the hardware opcode size is larger than 32-bit).
- *   Flag 'opsz' and the order in which the opcode is given are as with
- *   function ip_ecc_patch_microcode() above - c.f)
+/* Set configuration of TRNG
+ *
+ * (should be called only in debug mode)
  */
-int ip_ecc_patch_one_opcode(uint32_t address, uint32_t opcode_msb, uint32_t opcode_lsb, uint32_t opsz)
+static inline int ip_ecc_configure_trng(int debias, uint32_t ta, uint32_t cycles)
 {
-	uint32_t nbopcodes_max;
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for the TRNG to be configured.
+	 */
 
-	/* Sanity check */
-	if ((opsz != 1) && (opsz != 2)) {
-		printf("Error: Illegal opcode size (%d) in ip_ecc_patch_one_opcode() "
-				"(should be 1 or 2)\n\r", opsz);
-		goto err;
-	}
+	/* Memory-mapped register access */
+	/*   (TRNG configuration register) */
+	IPECC_TRNG_CONFIG(debias, ta, cycles);
 
-	if (ge_pow_of_2(IPECC_GET_NBOPCODES(), &nbopcodes_max)) {
-		printf("Error: ge_pow_of_2() returned exception\n\r");
-		goto err;
-	}
+	return 0;
+}
 
-	if (address > nbopcodes_max) {
-		printf("Error: Illegal microcode address (%d) in call to ip_ecc_patch_one_opcode"
-				"(top-address allowed: %d). \n\r", address, nbopcodes_max);
-		goto err;
-	}
+/* Reset the raw random bits FIFO
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_reset_trng_raw_fifo(void)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for the raw random FIFO of TRNG to be emptied/reset.
+	 */
 
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
+	/* Memory-mapped register access */
+	IPECC_TRNG_RESET_RAW_FIFO();
+
+	return 0;
+}
+
+/* Reset all the internal random number FIFOs
+ *
+ * (should be called only in debug mode)
+ */
+int ip_ecc_reset_trng_irn_fifos(void)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for the internal random nb FIFOs of TRNG to be emptied/reset.
+	 */
+
+	/* Memory-mapped register access */
+	IPECC_TRNG_RESET_IRN_FIFOS();
+
+	return 0;
+}
+
+/* Disable the TRNG post-processing logic that pulls bytes from the
+ * raw random source.
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_trng_postproc_disable(void)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for this action to take place.
+	 */
+
+	/* Memory-mapped register access */
+	IPECC_TRNG_DISABLE_POSTPROC();
+
+	return 0;
+}
+
+/* (Re-)enable the TRNG post-processing logic that pulls bytes from the
+ * raw random source - in the debug mode of the IP, that logic is DISABLED
+ * UPON RESET and needs to be explicitly enabled by sofware by calling
+ * this macro. This particular task is enforced by driver_setup() function
+ * (confer).
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_trng_postproc_enable()
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for this action to take place.
+	 */
+
+	/* Memory-mapped register access */
+	IPECC_TRNG_ENABLE_POSTPROC();
+
+	return 0;
+}
+
+/* Enable the read port of the TRNG raw random FIFO.
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_enable_read_port_of_raw_fifo()
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for this action to take place.
+	 */
+
+	/* Enable the read port of the FIFO used by the post-processing. */
+	IPECC_TRNG_ENABLE_RAW_FIFO_READ_PORT();
+
+	return 0;
+}
+
+/* Disable the read port of the TRNG raw random FIFO,
+ * allowing complete and exclusive access by software to the raw
+ * random bits.
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_disable_read_port_of_raw_fifo(void)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for this action to take place.
+	 */
+
+	/* Disable the read port of the FIFO used by the post-processing. */
+	IPECC_TRNG_DISABLE_RAW_FIFO_READ_PORT();
+
+	return 0;
+}
+
+/* TRNG complete bypass, also specifying deterministic bit value
+ * to use instead of random bits.
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_bypass_full_trng(uint32_t instead_bit)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for the TRNG to be bypassed.
+	 */
 
 	/*
-	 * Set opcode address in register W_DBG_OP_WADDR.
+	 * Sanity check
 	 */
-	IPECC_SET_OPCODE_WRITE_ADDRESS(address);
+	if ((instead_bit != 0) && (instead_bit != 1)){
+		goto err;
+	}
 
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
+	/* Memory-mapped register access */
+	IPECC_TRNG_COMPLETE_BYPASS(instead_bit);
 
-	/*
-	 * Set opcode word in register W_DBG_OPCODE.
+	return 0;
+err:
+	return -1;
+}
+
+/* Have TRNG leave bypass state and return to normal generation
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_dont_bypass_trng(void)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for this action to take place.
 	 */
-	if (opsz == 2) {
-		/* If opcodes are larger than 32 bits, the least
-		 * significant 32-bit half must be transmitted first.
-		 */
-		IPECC_SET_OPCODE_TO_WRITE(opcode_lsb);
 
-		/* Wait until the IP is not busy */
-		IPECC_BUSY_WAIT();
+	/* Memory mapped register access */
+	IPECC_TRNG_UNDO_COMPLETE_BYPASS();
 
-		IPECC_SET_OPCODE_TO_WRITE(opcode_msb);
+	return 0;
+}
 
-		/* Wait until the IP is not busy */
-		IPECC_BUSY_WAIT();
-	} else {
-		IPECC_SET_OPCODE_TO_WRITE(opcode_lsb);
+/* Force a deterministic effect (all 1's) of the NNRND instruction
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_trng_nnrnd_deterministic(void)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for this action to take place.
+	 */
 
-		/* Wait until the IP is not busy */
-		IPECC_BUSY_WAIT();
+	/* Memory mapped register access */
+	IPECC_TRNG_NNRND_DETERMINISTIC();
+
+	return 0;
+}
+
+/* Restore nominal action of NNRND instruction, undoing action
+ * of ip_ecc_trng_nnrnd_deterministic().
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_trng_nnrnd_not_deterministic(void)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for the TRNG to be bypassed.
+	 */
+
+	/* Memory mapped register access */
+	IPECC_TRNG_NNRND_NOT_DETERMINISTIC();
+
+	return 0;
+}
+
+/* To select the random source of which to read the diagnostics
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_select_trng_diag_source(uint32_t id)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for TRNG diagnostics to be read back.
+	 */
+
+	/* Memory-mapped register access */
+	IPECC_TRNG_SELECT_DIAG_ID(id);
+
+	return 0;
+}
+
+/* Get one bit from the raw random FIFO
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_read_one_raw_random_bit(uint32_t addr, uint32_t* rawbit)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for this action to take place.
+	 *
+	 * HOWEVER it is strongy RECOMMENDED, before read-access the raw
+	 * random FIFO, to first deactivate the pull of raw random bits
+	 * by the post-processing funtion. See ip_ecc_trng_postproc_disable().
+	 */
+
+	/* Memory-mapped register access (two are required here,
+	 *   1 write to set the address, 1 read to get the bit -
+	 *   IPECC_TRNG_READ_FIFO_RAW perform the two at one). */
+	IPECC_TRNG_READ_FIFO_RAW(addr, rawbit);
+
+	return 0;
+}
+
+/* Write one word in the IP memory of large nbs.
+ *
+ *   CONFER TO hw_driver_write_word_in_lgnbmem_DBG: SAME INTERFACE APPLIES.
+ *                                                  SAME LIMITATIONS APPLY.
+ *
+ * This function should only be used when IP was synthesized in
+ * debug mode. Nominal functions to access large numbers are
+ * ip_ecc_write_bignum() and ip_ecc_read_bignum().
+ */
+static inline int ip_ecc_write_word_in_lgnbmem(uint32_t addr, uint32_t limb)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * BUT we test that the IP is halted!
+	 *
+	 *     It it isn't, the access to the memory of large numbers inside
+	 *     the IP can't be completed as its write data path is hold by ecc_fp
+	 *     (the ALU for large numbers) as long as the microcode is running
+	 *     (= as long as the IP is not debug-halted).
+	 */
+	if (!IPECC_IS_IP_DEBUG_HALTED()) {
+		goto err;
+	}
+
+	/* Get the value of 'ww' from R_DBG_CAPABILITIES_0 */
+	if (IPECC_DBG_GET_WW() > 32) {
+		goto err;
+	}
+
+	/* Memory-mapped register access: to set the address */
+	IPECC_DBG_SET_FP_WRITE_ADDR(addr);
+
+	/* Memory-mapped register access: to write data. */
+	IPECC_DBG_SET_FP_WRITE_DATA(limb);
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Write one limb of one large nb in the IP memory of large numbers.
+ *
+ *   CONFER TO hw_driver_write_limb_DBG: SAME INTERFACE APPLIES.
+ *                                       SAME LIMITATIONS APPLY.
+ *
+ * This function should only be used when IP was synthesized in
+ * debug mode. Nominal functions to access large numbers are
+ * ip_ecc_write_bignum() and ip_ecc_read_bignum().
+ */
+static inline int ip_ecc_write_limb(int32_t i, uint32_t j, uint32_t limb)
+{
+	uint32_t w, n;
+
+	/* Get the value of 'w' from capabilities */
+	w = IPECC_DBG_GET_W();
+
+	/* Compute n */
+	if (ge_pow_of_2(w, &n)) {
+		return -1;
+	}
+
+	return ip_ecc_write_word_in_lgnbmem( (i * n) + j, limb );
+}
+
+/* Write one large number in the IP memory of large numbers.
+ *
+ *   CONFER TO hw_driver_write_largenb_DBG: SAME INTERFACE APPLIES.
+ *                                          SAME LIMITATIONS APPLY.
+ *
+ * This function should only be used when IP was synthesized in
+ * debug mode. Nominal functions to access large numbers are
+ * ip_ecc_write_bignum() and ip_ecc_read_bignum().
+ */
+static inline int ip_ecc_write_largenb(uint32_t i, uint32_t* limbs)
+{
+	uint32_t w, j;
+
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * BUT we test that the IP is halted!
+	 *
+	 *     It it isn't, the access to the memory of large numbers inside
+	 *     the IP can't be completed as its write data path is hold by ecc_fp
+	 *     (the ALU for large numbers) as long as the microcode is running
+	 *     (= as long as the IP is not debug-halted).
+	 */
+	if (!IPECC_IS_IP_DEBUG_HALTED()) {
+		goto err;
+	}
+
+	/* Get the value of 'ww' from R_DBG_CAPABILITIES_0 */
+	if (IPECC_DBG_GET_WW() > 32) {
+		goto err;
+	}
+
+	/* Get the value of 'w' from capabilities */
+	w = IPECC_DBG_GET_W();
+
+	for (j=0; j<w; j++) {
+		if (ip_ecc_write_limb(i, j, limbs[j])){
+			goto err;
+		}
 	}
 
 	return 0;
@@ -2829,39 +3385,818 @@ err:
 	return -1;
 }
 
-
-#ifdef KP_TRACE
-
-/* An implicit (hence dirty) limitation of ip_debug_read_one_limb()
- * is that limbs are assumed to be of size 32-bit at most.
+/* Read one word from from the IP memory of large numbers.
+ *
+ *   CONFER TO hw_driver_read_word_from_lgnbmem_DBG: SAME INTERFACE APPLIES.
+ *                                                   SAME LIMITATIONS APPLY.
+ *
+ * This function should only be used when IP was synthesized in
+ * debug mode. Nominal functions to access large numbers are
+ * ip_ecc_write_bignum() and ip_ecc_read_bignum().
  */
-uint32_t ip_debug_read_one_limb(uint32_t lgnb, uint32_t limb)
+static inline int ip_ecc_read_word_from_lgnbmem(uint32_t addr, uint32_t* limb)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * BUT we test that the IP is halted!
+	 *
+	 *     It it isn't, the access to the memory of large numbers inside
+	 *     the IP can't be completed as its read data path is hold by ecc_fp
+	 *     (the ALU for large numbers) as long as the microcode is running
+	 *     (= as long as the IP is not debug-halted).
+	 */
+	if (!IPECC_IS_IP_DEBUG_HALTED()) {
+		goto err;
+	}
+
+	/* Get the value of 'ww' from R_DBG_CAPABILITIES_0 */
+	if (IPECC_DBG_GET_WW() > 32) {
+		goto err;
+	}
+
+	/* Memory-mapped register access: to set the address */
+	IPECC_DBG_SET_FP_READ_ADDR(addr);
+
+	/* Poll until the IP says the data is ready */
+	IPECC_DBG_POLL_UNTIL_FP_READ_DATA_AVAIL();
+
+	/* Memory-mapped register access: to read data. */
+	*limb = IPECC_DBG_GET_FP_READ_DATA();
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Read one word from from the IP memory of large numbers.
+ *
+ *   CONFER TO hw_driver_read_limb_DBG: SAME INTERFACE APPLIES.
+ *                                      SAME LIMITATIONS APPLY.
+ *
+ * This function should only be used when IP was synthesized in
+ * debug mode. Nominal functions to access large numbers are
+ * ip_ecc_write_bignum() and ip_ecc_read_bignum().
+ */
+static inline int ip_ecc_read_limb(int32_t i, uint32_t j, uint32_t* limb)
 {
 	uint32_t w, n;
 
-	w = DIV(IPECC_GET_NN_MAX() + 4, IPECC_GET_WW());
+	/* Get the value of 'w' from capabilities */
+	w = IPECC_DBG_GET_W();
 
-	/* Ignore possible error return case for ge_pow_of_2 here. */
-	ge_pow_of_2(w, &n);
-	/*
-	 * Write large nb address into register W_DBG_FP_RADDR.
-	 */
-	IPECC_SET_REG(IPECC_W_DBG_FP_RADDR, (lgnb * n) + limb);
-	/*
-	 * Poll register R_DBG_FP_RDATA_RDY until it shows data ready.
-	 */
-	while (!(IPECC_DBG_IS_FP_READ_DATA_AVAIL())) {}
-	/*
-	 * Read back value from register R_DBG_FP_RDATA.
-	 */
-	return IPECC_DBG_GET_FP_READ_DATA();
+	/* Compute n */
+	if (ge_pow_of_2(w, &n)) {
+		return -1;
+	}
+
+	return ip_ecc_read_word_from_lgnbmem( (i * n) + j, limb );
 }
 
+/* Read one large number from the IP memory of large numbers.
+ *
+ *   CONFER TO hw_driver_read_largenb_DBG: SAME INTERFACE APPLIES.
+ *                                         SAME LIMITATIONS APPLY.
+ *
+ * This function should only be used when IP was synthesized in
+ * debug mode. Nominal functions to access large numbers are
+ * ip_ecc_write_bignum() and ip_ecc_read_bignum().
+ */
+static inline int ip_ecc_read_largenb(uint32_t i, uint32_t *limbs)
+{
+	uint32_t w, j;
+
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * BUT we test that the IP is halted!
+	 *
+	 *     It it isn't, the access to the memory of large numbers inside
+	 *     the IP can't be completed as its write data path is hold by ecc_fp
+	 *     (the ALU for large numbers) as long as the microcode is running
+	 *     (= as long as the IP is not debug-halted).
+	 */
+	if (!IPECC_IS_IP_DEBUG_HALTED()) {
+		goto err;
+	}
+
+	/* Get the value of 'ww' from R_DBG_CAPABILITIES_0 */
+	if (IPECC_DBG_GET_WW() > 32) {
+		goto err;
+	}
+
+	/* Get the value of 'w' from capabilities */
+	w = IPECC_DBG_GET_W();
+
+	for (j=0; j<w; j++) {
+		if (ip_ecc_read_limb(i, j, &limbs[j])){
+			goto err;
+		}
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Enable the XY-shuffling countermeasure.
+ */
+static inline int ip_ecc_enable_xyshuf(void)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 */
+
+	/* Memory-mapped register access
+	 * to enable the countermeasure. */
+	IPECC_DBG_ENABLE_XYSHUF();
+
+#if 0
+	/* Check for error */
+	if(ip_ecc_check_error(NULL)){
+		goto err;
+	}
+#endif
+
+	return 0;
+#if 0
+err:
+	return -1;
+#endif
+}
+
+/* Disable the XY-shuffling countermeasure
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_disable_xyshuf(void)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 */
+
+	/* Memory-mapped register access
+	 * to disable the countermeasure. */
+	IPECC_DBG_DISABLE_XYSHUF();
+
+#if 0
+	/* Check for error */
+	if(ip_ecc_check_error(NULL)){
+		goto err;
+	}
+#endif
+
+	return 0;
+#if 0
+err:
+	return -1;
+#endif
+}
+
+/* Enable 'on-the-fly masking of the scalar by AXI interface'
+ * countermeasure.
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_enable_aximsk(void)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 */
+
+	/* Memory-mapped register access
+	 * to enable the countermeasure. */
+	IPECC_DBG_ENABLE_AXIMSK();
+
+	return 0;
+}
+
+/* Disable 'on-the-fly masking of the scalar by AXI interface'
+ * countermeasure.
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_disable_aximsk(void)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 */
+
+	/* Memory-mapped register access
+	 * to disable the countermeasure. */
+	IPECC_DBG_DISABLE_AXIMSK();
+
+	return 0;
+}
+
+/* Enable token feature
+ * (this is a feature that is on by default).
+ *
+ * (should be called only in debug mode)
+ */
+int ip_ecc_enable_token(void)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 */
+
+	/* Memory-mapped register access */
+	IPECC_DBG_ENABLE_TOKEN();
+
+	return 0;
+}
+
+/* Disable token feature.
+ *
+ * (should be called only in debug mode)
+ */
+int ip_ecc_disable_token(void)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 */
+
+	/* Memory mapped register access */
+	IPECC_DBG_DISABLE_TOKEN();
+
+	return 0;
+}
+
+/* To get some more capabilties than offered by ip_ecc_get_capabilities().
+ *
+ *     These infos are:
+ *
+ *         ww        the width in bits of the limbs which large nbs
+ *                   are made of (in the IP memory of marge nbs).
+ *
+ *         nbop      the total number of instructions in the
+ *                   microcode.
+ *
+ *         opsz      the width in bits of the opcodes of microcode.
+ *
+ *         rawramsz  the size in bits of the TRNG FIFO of raw
+ *                   random bits.
+ *
+ *         irnshw    the bitwidth of the internal random numbers
+ *                   which are used to implement the shuffling
+ *                   countermeasure (of the IP memory of large nbs).
+ *
+ * (should only be called in debug mode, as some of the infos delivered here
+ * might give inside knowledge of the internal features of the IP, which are
+ * not at all required for its nominal (secure) usage.
+ */
+static inline int ip_ecc_get_more_capabilities(uint32_t* ww, uint32_t* nbop,
+		uint32_t* opsz, uint32_t* rawramsz, uint32_t* irnshw)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 */
+
+	/* Several memory-mapped register accesses */
+	*ww = IPECC_DBG_GET_WW();
+	*nbop = IPECC_GET_NBOPCODES();
+	*opsz = IPECC_GET_OPCODE_SIZE();
+	*rawramsz = IPECC_GET_TRNG_RAW_SZ();
+	*irnshw = IPECC_GET_TRNG_IRN_SHF_BITWIDTH();
+
+	return 0;
+}
+
+/* Is the IP currently debug-halted?
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_is_debug_halted(bool* halted)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 */
+
+	/* Memory-mapped register access */
+	if (IPECC_IS_IP_DEBUG_HALTED()){
+		*halted = true;
+	} else {
+		*halted = false;
+	}
+
+	return 0;
+}
+
+/* Is the IP currently halted on a breakpoint hit?
+ * (and if it is, return the breakpoint ID).
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_halted_breakpoint_hit(bool* hit, uint32_t* id)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 */
+
+	/* Memory-mapped register access */
+	if (IPECC_IS_IP_DEBUG_HALTED_ON_BKPT_HIT()){
+		*hit = true;
+		/* get the breakpoint ID */
+		*id = IPECC_GET_BKPT_ID_IP_IS_HALTED_ON();
+
+	} else {
+		*hit = false;
+	}
+
+	return 0;
+}
+
+/* Get the value of Program Counter.
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_get_pc(uint32_t* pc)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * BUT we test that the IP is halted!
+	 *
+	 *     (the PC info doesn't really have a meaning otherwise).
+	 */
+	if (!IPECC_IS_IP_DEBUG_HALTED()) {
+		goto err;
+	}
+
+	/* Memory-mapped register access */
+	*pc = IPECC_GET_PC();
+
+	return 0;
+err:
+	return -1;
+}
+
+/* To get the FSM state the IP is currently in.
+ *
+ *   CONFER TO hw_driver_get_fsm_state: SAME INTERFACE APPLIES.
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_get_fsm_state(char* state, uint32_t sz)
+{
+	uint32_t st_id;
+
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * BUT we test that the IP is halted!
+	 *
+	 *     (the FSM state info doesn't really have a meaning otherwise).
+	 */
+	if (!IPECC_IS_IP_DEBUG_HALTED()) {
+		goto err;
+	}
+
+	/* Memory-mapped register access */
+	st_id = IPECC_GET_FSM_STATE();
+
+	/* Copy the string identifier, using its length to enforce
+	 * a minimum. */
+	strncpy(state, str_ipecc_state(st_id), MIN(sz, strlen(str_ipecc_state(st_id))));
+	//state[ strlen(str_ipecc_state(st_id)) ] = '\0';
+
+	return 0;
+err:
+	return -1;
+}
+
+/* To get value of point-operation time counter.
+ *
+ *     Each time a point-based operation is started (including [k]P
+ *     computation) an internal counter is started and incremented at
+ *     each cycle of the main clock. Reading this counter allows to
+ *     measure computation duration of point operations.
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_get_time(uint32_t* clk_cycles)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * BUT we test that the IP is halted!
+	 *
+	 *     (the time-counter info doesn't really have a meaning
+	 *     otherwise).
+	 */
+	if (!IPECC_IS_IP_DEBUG_HALTED()) {
+		goto err;
+	}
+
+	/* Memory-mapped register access */
+	*clk_cycles = IPECC_GET_PT_OP_TIME();
+
+	return 0;
+err:
+	return -1;
+}
+
+/* To assess the production throughput of TRNG raw random bits.
+ *
+ *     This function measures the time it takes to fill-up
+ *     the RAW random FIFO of the TRNG. It first disables
+ *     the post-processing function of the TRNG (so that not to
+ *     have any read empyting the FIFO), then reset (empty) it,
+ *     then poll debug status until it shows that the FIFO is
+ *     full. When it is, the value in register R_DBG_RAWDUR
+ *     yiels the nb of cycles (of the main clock) the filling-up
+ *     process took.
+ *
+ * It is strongly recommended to first debug-halt the IP or to wait
+ * until it is in an idle state.
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_get_trng_raw_fifo_filling_time(uint32_t* duration)
+{
+	uint32_t watchdog = 0;
+	bool timeout = true;
+
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 */
+
+	/* Step 1/5: disable the post-processing pull of raw random bits */
+	IPECC_TRNG_DISABLE_POSTPROC();
+
+	/* Step 2/5: reset the TRNG raw FIFO */
+	IPECC_TRNG_RESET_RAW_FIFO();
+
+	/* Step 3/5: Poll until the IP shows raw FIFO is full */
+	//IPECC_TRNG_RAW_FIFO_FULL_BUSY_WAIT();
+	while (watchdog < 0x1000000U) /* quite arbitrary */
+	{
+		if (IPECC_IS_TRNG_RAW_FIFO_FULL()) {
+			timeout = false;
+			break;
+		}
+		watchdog++;
+	}
+	if (timeout) {
+		goto err;
+	}
+
+	/* Step 4/5: Read-back duration value from register */
+	*duration = IPECC_GET_TRNG_RAW_FIFO_FILLUP_TIME();
+
+	/* Step 5/5: re-enable post-processing function */
+	IPECC_TRNG_ENABLE_POSTPROC();
+
+	return 0;
+
+err:
+	return -1;
+}
+
+/* Returns the state of the TRNG FIFO of raw random bits.
+ *
+ *   *full   = true is the FIFO is full
+ *   *nbbits = nb of raw random bits currently
+ *             buffered in the FIFO.
+ *
+ * It is recommended to wait for the IP to be in idle state
+ * (no running computation) or to be debug-halted before
+ * calling the function.
+ *
+ * (should be called only in debug mode)
+ */
+int ip_ecc_get_trng_raw_fifo_state(bool* full, uint32_t* nbbits)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for the TRNG FIFO state to have meaning. But see header
+	 * above: better to wait for IP to be idle or debug-halted.
+	 */
+
+	/* Memory-mapped register access */
+	if (IPECC_IS_TRNG_RAW_FIFO_FULL()){
+		*full = true;
+	} else {
+		*full = false;
+	}
+
+	/* Memory-mapped register access */
+	*nbbits = IPECC_GET_TRNG_RAW_FIFO_WRITE_POINTER();
+
+	return 0;
+}
+
+/* Read the whole content of the TRNG FIFO of raw random bits
+ *
+ *   'buf' must point to a buffer whose allocated size must
+ *   be sufficient to store the whole content of the FIFO,
+ *   the size of which shall be obtained through a call to
+ *   function hw_driver_get_more_capabilities_DBG()
+ *   (see that function).
+ *
+ *   Bits are regrouped into bytes before being written
+ *   into 'buf' hence the minimal size of the 'buf' is 1/8th
+ *   of the size of the FIFO as returned by function
+ *   hw_driver_get_more_capabilities_DBG().
+ *
+ *   The function starts by clearing (zeroing) 'buf',
+ *   assuming an allocated size as described just above.
+ *
+ *   Upon completion, the nb of bits actually read from the
+ *   FIFO is returned in *nbbits.
+ *
+ * The function temporarily disables the read port of the FIFO.
+ * Hence it is strongly advised to wait for the IP to be in idle
+ * state (no computation) or debug-halted before calling the
+ * funtion.
+ *
+ * (should be called only in debug mode)
+ */
+int ip_ecc_get_content_of_trng_raw_random_fifo(char* buf, uint32_t* nbbits)
+{
+	uint32_t i, qty, ffsz, nb;
+	uint8_t bit;
+
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for the TRNG FIFO state to have meaning. But see header
+	 * above: better to wait for IP to be idle or debug-halted.
+	 */
+
+	/* Step 1/ : disable the post-processing unit
+	 */
+	IPECC_TRNG_DISABLE_RAW_FIFO_READ_PORT();
+
+	/* Step 2/ : Get the current size of the FIFO (nb of written bits)
+	 *           This is always a power-of-2.
+	 */
+	ffsz = IPECC_GET_TRNG_RAW_SZ();
+
+	/* Step 3/ : Clear the buffer */
+	memset(buf, 0, ffsz/8);
+
+	/* Step 4/ : Get the current size of the FIFO (nb of written bits)
+	 */
+	qty = IPECC_GET_TRNG_RAW_FIFO_WRITE_POINTER();
+
+	/* Step 5/ : loop on the nb of bits
+	 */
+	for (i=0, nb=0 ; i<qty ; i++) {
+		/* set debug read address */
+		IPECC_TRNG_SET_RAW_BIT_ADDR(i);
+
+		/* read bit */
+		bit = (uint8_t)(IPECC_TRNG_GET_RAW_BIT());
+		buf[i / 8] |= ( bit << (i % 8) );
+		nb++;
+	}
+	*nbbits = nb;
+
+	/* Step / : enable back the read port of the FIFO.
+	 */
+	IPECC_TRNG_ENABLE_RAW_FIFO_READ_PORT();
+
+	return 0;
+}
+
+/* To get the diagnostic counters for random source "AXI"
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_get_trng_diag_axi(uint32_t* min, uint32_t* max, uint32_t* ok, uint32_t* starv)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for TRNG diagnostics to be read back.
+	 */
+
+	/* First select the random source */
+	IPECC_TRNG_SELECT_DIAG_ID(IPECC_W_DBG_TRNG_CTRL_DIAG_AXI);
+
+	/* Memory-mapped register accesses */
+	*min = IPECC_GET_TRNG_DIAG_MIN();
+	*max = IPECC_GET_TRNG_DIAG_MAX();
+	*ok = IPECC_GET_TRNG_DIAG_OK();
+	*starv = IPECC_GET_TRNG_DIAG_STARV();
+
+	return 0;
+}
+
+/* To get the diagnostic counters for random source "EFP"
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_get_trng_diag_efp(uint32_t* min, uint32_t* max, uint32_t* ok, uint32_t* starv)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for TRNG diagnostics to be read back.
+	 */
+
+	/* First select the random source */
+	IPECC_TRNG_SELECT_DIAG_ID(IPECC_W_DBG_TRNG_CTRL_DIAG_EFP);
+
+	/* Memory-mapped register accesses */
+	*min = IPECC_GET_TRNG_DIAG_MIN();
+	*max = IPECC_GET_TRNG_DIAG_MAX();
+	*ok = IPECC_GET_TRNG_DIAG_OK();
+	*starv = IPECC_GET_TRNG_DIAG_STARV();
+
+	return 0;
+}
+
+/* To get the diagnostic counters for random source "CRV"
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_get_trng_diag_crv(uint32_t* min, uint32_t* max, uint32_t* ok, uint32_t* starv)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for TRNG diagnostics to be read back.
+	 */
+
+	/* First select the random source */
+	IPECC_TRNG_SELECT_DIAG_ID(IPECC_W_DBG_TRNG_CTRL_DIAG_CRV);
+
+	/* Memory-mapped register accesses */
+	*min = IPECC_GET_TRNG_DIAG_MIN();
+	*max = IPECC_GET_TRNG_DIAG_MAX();
+	*ok = IPECC_GET_TRNG_DIAG_OK();
+	*starv = IPECC_GET_TRNG_DIAG_STARV();
+
+	return 0;
+}
+
+/* To get the diagnostic counters for random source "SHF"
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_get_trng_diag_shf(uint32_t* min, uint32_t* max, uint32_t* ok, uint32_t* starv)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for TRNG diagnostics to be read back.
+	 */
+
+	/* First select the random source */
+	IPECC_TRNG_SELECT_DIAG_ID(IPECC_W_DBG_TRNG_CTRL_DIAG_SHF);
+
+	/* Memory-mapped register accesses */
+	*min = IPECC_GET_TRNG_DIAG_MIN();
+	*max = IPECC_GET_TRNG_DIAG_MAX();
+	*ok = IPECC_GET_TRNG_DIAG_OK();
+	*starv = IPECC_GET_TRNG_DIAG_STARV();
+
+	return 0;
+}
+
+/* To get the diagnostic counters for random source "RAW"
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_get_trng_diag_raw(uint32_t* min, uint32_t* max, uint32_t* ok, uint32_t* starv)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for TRNG diagnostics to be read back.
+	 */
+
+	/* First select the random source */
+	IPECC_TRNG_SELECT_DIAG_ID(IPECC_W_DBG_TRNG_CTRL_DIAG_RAW);
+
+	/* Memory-mapped register accesses */
+	*min = IPECC_GET_TRNG_DIAG_MIN();
+	*max = IPECC_GET_TRNG_DIAG_MAX();
+	*ok = IPECC_GET_TRNG_DIAG_OK();
+	*starv = IPECC_GET_TRNG_DIAG_STARV();
+
+	return 0;
+}
+
+/* To get the diagnostic counters of all random sources at once
+ *
+ * Note : diag. counters for the "SHF" source are only read if in
+ *        shuffle mode (as per capabilities displayed by the IP
+ *        at runtime).
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_get_trng_diagnostics(trng_diagcnt_t* tdg)
+{
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for TRNG diagnostics to be read back.
+	 */
+
+	/* Call to low level routines */
+	/*   random source "AXI" */
+	ip_ecc_get_trng_diag_axi(&tdg->aximin, &tdg->aximax, &tdg->axiok, &tdg->axistarv);
+	/*   random source "EFP" */
+	ip_ecc_get_trng_diag_efp(&tdg->efpmin, &tdg->efpmax, &tdg->efpok, &tdg->efpstarv);
+	/*   random source "CRV" */
+	ip_ecc_get_trng_diag_crv(&tdg->crvmin, &tdg->crvmax, &tdg->crvok, &tdg->crvstarv);
+	/*   random source "SHF" */
+	if(IPECC_IS_SHUFFLING_SUPPORTED()){
+		ip_ecc_get_trng_diag_shf(&tdg->shfmin, &tdg->shfmax, &tdg->shfok, &tdg->shfstarv);
+	}
+	/*   random source "RAW" */
+	ip_ecc_get_trng_diag_raw(&tdg->rawmin, &tdg->rawmax, &tdg->rawok, &tdg->rawstarv);
+
+	return 0;
+}
+
+/* To evaluate the frequency of 'clk' & 'clkmm' clocks
+ *
+ * (should be called only in debug mode)
+ */
+static inline int ip_ecc_get_clocks_freq(uint32_t* mhz, uint32_t* mhz_mm, uint32_t sec)
+{
+	uint32_t c0, c0_mm;
+	uint32_t c1, c1_mm;
+
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * We don't test if the IP is halted. it doesn't need to be
+	 * for clock freqs to be estimated.
+	 */
+
+	/* Get counters */
+	c0 = IPECC_GET_CLK_MHZ();
+	c0_mm = IPECC_GET_CLKMM_MHZ();
+
+	sleep(sec);
+
+	/* Get counters again */
+	c1 = IPECC_GET_CLK_MHZ();
+	c1_mm = IPECC_GET_CLKMM_MHZ();
+
+	*mhz = (((uint32_t)(c1 - c0)) * (0x1u << IPECC_R_DBG_CLK_PRECNT)) / ((sec)*1000000);
+	*mhz_mm = (((uint32_t)(c1_mm - c0_mm)) * (0x1u << IPECC_R_DBG_CLK_PRECNT)) / ((sec)*1000000);
+
+	return 0;
+}
+
+
+struct timespec now() {
+  struct timespec now;
+  clock_gettime(CLOCK_MONOTONIC, &now);
+  return now;
+}
+
+long interval_ns(struct timespec tick, struct timespec tock) {
+  return (tock.tv_sec - tick.tv_sec) * 1000000000L
+      + (tock.tv_nsec - tick.tv_nsec);
+}
+
+#ifdef KP_TRACE
 void ip_debug_read_all_limbs(uint32_t lgnb, uint32_t* nbbuf)
 {
 	uint32_t i;
-	for (i = 0; i < IPECC_GET_W(); i++) {
-		nbbuf[i] = ip_debug_read_one_limb(lgnb, i);
+	for (i = 0; i < IPECC_DBG_GET_W(); i++) {
+		ip_ecc_read_limb(lgnb, i, &nbbuf[i]);
 	}
 }
 
@@ -2926,8 +4261,8 @@ void print_all_limbs_of_number(kp_trace_info_t* ktrc, const char* msg, uint32_t 
 {
   int32_t i;
   kp_trace_msg_append(ktrc, "%s", msg);
-  for (i = IPECC_GET_W() - 1; i >= 0; i--) {
-    kp_trace_msg_append(ktrc, "%0*x", DIV(IPECC_GET_WW(), 4), nb[i]);
+  for (i = IPECC_DBG_GET_W() - 1; i >= 0; i--) {
+    kp_trace_msg_append(ktrc, "%0*x", DIV(IPECC_DBG_GET_WW(), 4), nb[i]);
   }
 }
 
@@ -2971,8 +4306,8 @@ static int kp_debug_trace(kp_trace_info_t* ktrc)
 	/* Set first breakpoint on the first instruction
 	 * of routine .checkoncurveL of the microcode.
 	 */
-	kp_trace_msg_append(ktrc, "Setting breakpoint\n\r");
-	ip_ecc_set_breakpoint_DBG(DEBUG_ECC_IRAM_CHKCURVE_OP1_ADDR, 0);
+	kp_trace_msg_append(ktrc, "Setting first breakpoint (on .checkoncurveL)\n\r");
+	ip_ecc_set_breakpoint(DEBUG_ECC_IRAM_CHKCURVE_OP1_ADDR, 0);
 
 	/* Transmit the [k]P run command to the IP. */
 	kp_trace_msg_append(ktrc, "Running [k]P\n\r");
@@ -3239,6 +4574,7 @@ err:
 }
 #endif /* KP_TRACE */
 
+
 /*
  * Commands execution (point operation)
  *
@@ -3247,8 +4583,13 @@ err:
  * by the hardware). When in debug mode setting 'blocking' to 0 allowsa to
  * debug monitor the operation, using e.g breakpoints.
  */
-static inline int ip_ecc_exec_command(ip_ecc_command cmd, int *flag, kp_trace_info_t* ktrc)
+static inline int ip_ecc_exec_command(ip_ecc_command cmd, int *flag, kp_trace_info_t* ktrc,
+		long* kp_time)
 {
+#ifndef KP_TRACE
+	struct timespec tick, tock;
+#endif
+
 	/* Wait until the IP is not busy */
 	IPECC_BUSY_WAIT();
 
@@ -3279,6 +4620,7 @@ static inline int ip_ecc_exec_command(ip_ecc_command cmd, int *flag, kp_trace_in
 				};
 			}
 #else
+			tick = now();
 			IPECC_EXEC_PT_KP();
 			(void)ktrc; /* To avoid unused parameter warning from gcc */
 #endif
@@ -3307,6 +4649,14 @@ static inline int ip_ecc_exec_command(ip_ecc_command cmd, int *flag, kp_trace_in
 
 	/* Wait until the IP is not busy */
 	IPECC_BUSY_WAIT();
+
+#ifndef KP_TRACE
+	tock = now();
+	if (kp_time)
+	{
+		*kp_time = interval_ns(tick, tock);
+	}
+#endif
 
 	/* Check for error */
 	if(ip_ecc_check_error(NULL)){
@@ -3340,13 +4690,18 @@ err:
 }
 
 /* Is the IP in 'debug' or 'production' mode? */
-static inline int ip_ecc_is_debug(uint32_t* answer)
+static inline int ip_ecc_is_debug(bool* debug)
 {
 	/* Wait until the IP is not busy */
 	IPECC_BUSY_WAIT();
 
 	/* Ask the IP register. */
-	*answer = IPECC_IS_DEBUG_OR_PROD();
+	if (IPECC_IS_DEBUG())
+	{
+		*debug = true;
+	} else {
+		*debug = false;
+	}
 
 	/* Wait until the IP is not busy */
 	IPECC_BUSY_WAIT();
@@ -3354,7 +4709,58 @@ static inline int ip_ecc_is_debug(uint32_t* answer)
 	return 0;
 }
 
-/* Get the major version number of the IP */
+static inline int ip_ecc_is_prod(bool* prod)
+{
+	/* Wait until the IP is not busy */
+	IPECC_BUSY_WAIT();
+
+	/* Ask the IP register. */
+	if (IPECC_IS_PROD())
+	{
+		*prod = true;
+	} else {
+		*prod = false;
+	}
+
+	/* Wait until the IP is not busy */
+	IPECC_BUSY_WAIT();
+
+	return 0;
+}
+
+/* To get hardware capabilities from the IP */
+static inline int ip_ecc_get_capabilities(bool* debug, bool* shuffle, bool* nndyn, bool* axi64, uint32_t* nnmax)
+{
+	if (IPECC_IS_DEBUG())
+	{
+		*debug = true;
+	} else {
+		*debug = false;
+	}
+	if (IPECC_IS_SHUFFLING_SUPPORTED())
+	{
+		*shuffle = true;
+	} else {
+		*shuffle = false;
+	}
+	if (IPECC_IS_DYNAMIC_NN_SUPPORTED())
+	{
+		*nndyn = true;
+	} else {
+		*nndyn = false;
+	}
+	if (IPECC_IS_W64())
+	{
+		*axi64 = true;
+	} else {
+		*axi64 = false;
+	}
+	*nnmax = IPECC_GET_NN_MAX();
+
+	return 0;
+}
+
+/* Get the three version nb of the IP */
 static inline int ip_ecc_get_version_tags(uint32_t* maj, uint32_t* min, uint32_t* ptc)
 {
 	/* Wait until the IP is not busy */
@@ -3364,169 +4770,6 @@ static inline int ip_ecc_get_version_tags(uint32_t* maj, uint32_t* min, uint32_t
 	*maj = IPECC_GET_MAJOR_VERSION();
 	*min = IPECC_GET_MINOR_VERSION();
 	*ptc = IPECC_GET_PATCH_VERSION();
-
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-	return 0;
-}
-
-/*
- * *** TRNG debug ***
- */
-/* The following function configures the TRNG */
-static inline int ip_ecc_configure_trng(int debias, uint32_t ta, uint32_t cycles)
-{
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-	/* Write the TRNG configuration register */
-	IPECC_TRNG_CONFIG(debias, ta, cycles);
-
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-	return 0;
-}
-
-/* TRNG complete bypass */
-static inline int ip_ecc_bypass_full_trng(uint32_t instead_bit)
-{
-	if ((instead_bit != 0) && (instead_bit != 1))
-		goto err;
-
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-	/* Activate the TRNG complete bypass, specifying deterministic
-	 * value to use instead of random bits. */
-	IPECC_TRNG_COMPLETE_BYPASS(instead_bit);
-
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-	return 0;
-
-err:
-	return -1;
-}
-
-/* TRNG leave bypass state and return to normal generation
- * (also implicitly re-enable the post-processing function) */
-static inline int ip_ecc_dont_bypass_trng(void)
-{
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-	/* Transmit action to low-level routine */
-	IPECC_TRNG_UNDO_COMPLETE_BYPASS();
-
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-	return 0;
-}
-
-/* Disable the TRNG post-processing logic that pulls bytes from the
- * raw random source.
- *
- * Watchout: implicitly remove a possibly pending complete bypass of the TRNG
- * by deasserting the 'complete bypass' bit in the same register.
- */
-static inline int ip_ecc_trng_postproc_disable(void)
-{
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-	/* Deactivate the Post-Processing */
-	IPECC_TRNG_DISABLE_POSTPROC();
-
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-	return 0;
-}
-
-/* (Re-)enable the TRNG post-processing logic that pulls bytes from the
- * raw random source - in the debug mode of the IP, that logic is disabled
- * upon reset and needs to be explicitly enabled by sofware by calling
- * this macro.
- *
- * Watchout: implicitly remove a possibly pending complete bypass of the TRNG
- * by deasserting the 'complete bypass' bit in the same register.
- */
-static inline int ip_ecc_trng_postproc_enable()
-{
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-	/* Deactivate the Post-Processing */
-	IPECC_TRNG_ENABLE_POSTPROC();
-
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-	return 0;
-}
-
-/* Disable the read port of the TRNG raw random FIFO,
- * allowing complete and exclusive access by software to the raw
- * random bits.
- */
-static inline int ip_ecc_disable_read_port_of_raw_fifo(void)
-{
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-	/* Disable the read port of the FIFO used by the post-processing. */
-	IPECC_TRNG_RAW_FIFO_READ_PORT_DISABLE();
-
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-	return 0;
-}
-
-/* (Re-)enable the read port of the TRNG raw random FIFO.
- */
-static inline int ip_ecc_enable_read_port_of_raw_fifo()
-{
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-	/* Enable the read port of the FIFO used by the post-processing. */
-	IPECC_TRNG_RAW_FIFO_READ_PORT_ENABLE();
-
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-	return 0;
-}
-
-/* Disable token feature. */
-int ip_ecc_disable_token(void)
-{
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-	/* Transmit action to low-level routine */
-	IPECC_DBG_DISABLE_TOKEN();
-
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-	return 0;
-}
-
-/* (Re-)enable token feature
- * (this is a feature that is on by default).*/
-int ip_ecc_enable_token(void)
-{
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
-	/* Transmit action to low-level routine */
-	IPECC_DBG_ENABLE_TOKEN();
 
 	/* Wait until the IP is not busy */
 	IPECC_BUSY_WAIT();
@@ -3576,7 +4819,7 @@ static volatile uint8_t hw_driver_setup_state = 0;
 
 static inline int driver_setup(void)
 {
-	uint32_t debug;
+	bool debug;
 
 	if(!hw_driver_setup_state){
 		/* Ask the lower layer for a setup */
@@ -3624,18 +4867,30 @@ err:
 int hw_driver_reset(void)
 {
 	/* Reset the IP for a clean state */
-        IPECC_SOFT_RESET();
+	IPECC_SOFT_RESET();
 
 	return 0;
 }
 
 /* To know if the IP is in 'debug' or 'production' mode */
-int hw_driver_is_debug(uint32_t* answer)
+int hw_driver_is_debug(bool* debug)
 {
 	if(driver_setup()){
 		goto err;
 	}
-	if (ip_ecc_is_debug(answer)){
+	if (ip_ecc_is_debug(debug)){
+		goto err;
+	}
+	return 0;
+err:
+	return -1;
+}
+int hw_driver_is_prod(bool* prod)
+{
+	if(driver_setup()){
+		goto err;
+	}
+	if (ip_ecc_is_prod(prod)){
 		goto err;
 	}
 	return 0;
@@ -3643,7 +4898,22 @@ err:
 	return -1;
 }
 
-/* Get major version of the IP */
+/* To get hardware capabilities from the IP
+ */
+int hw_driver_get_capabilities(bool* debug, bool* shuffle, bool* nndyn, bool* axi64, uint32_t* nnmax)
+{
+	if(driver_setup()){
+		goto err;
+	}
+	if (ip_ecc_get_capabilities(debug, shuffle, nndyn, axi64, nnmax)){
+		goto err;
+	}
+	return 0;
+err:
+	return -1;
+}
+
+	/* Get major version of the IP */
 int hw_driver_get_version_tags(uint32_t* maj, uint32_t* min, uint32_t* patch)
 {
 	if(driver_setup()){
@@ -3657,84 +4927,335 @@ err:
 	return -1;
 }
 
-/* Enable TRNG post-processing logic */
-int hw_driver_trng_post_proc_enable()
+/* To halt the IP - This freezes execution of microcode
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken).
+ */
+int hw_driver_halt_DBG(void)
 {
 	if(driver_setup()){
 		goto err;
 	}
-	if (ip_ecc_trng_postproc_enable()){
+
+	/* Test debug capabilities */
+	if (IPECC_IS_PROD())
+	{
 		goto err;
 	}
+
+	/* call to low-level routine */
+	if (ip_ecc_debug_halt()){
+		goto err;
+	}
+
 	return 0;
 err:
 	return -1;
 }
 
-/* Disable TRNG post-processing logic */
-int hw_driver_trng_post_proc_disable()
+/* To set and activate a new breakpoint
+ *
+ *   Note: the breakpoint is enabled for whatever the state
+ *         the IP FSM is in when the microcode hits the address.
+ *         Please c.f comment help of ip_ecc_set_breakpoint().
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken).
+ */
+int hw_driver_set_breakpoint_DBG(uint32_t addr, uint32_t id)
 {
 	if(driver_setup()){
 		goto err;
 	}
-	if (ip_ecc_trng_postproc_disable()){
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
 		goto err;
 	}
+
+	/* call to low-level routine */
+	if (ip_ecc_set_breakpoint(addr, id)){
+		goto err;
+	}
+
 	return 0;
 err:
 	return -1;
 }
 
-/* Complete bypass the TRNG function (both entropy source,
- * post-processing, and server) */
-int hw_driver_bypass_full_trng_DBG(uint32_t instead_bit)
+/* To remove/disable a breakpoint
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken).
+ */
+int hw_driver_remove_breakpoint_DBG(uint32_t id)
 {
 	if(driver_setup()){
 		goto err;
 	}
-	if (ip_ecc_bypass_full_trng(instead_bit)){
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
 		goto err;
 	}
+
+	/* call to low-level routine */
+	if (ip_ecc_remove_breakpoint(id)){
+		goto err;
+	}
+
 	return 0;
 err:
 	return -1;
 }
 
-/* Disable token feature */
-int hw_driver_disable_token_DBG()
+/* Have IP to execute a certain nb of opcodes in microcode
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken)..
+ */
+int hw_driver_run_opcodes_DBG(uint32_t nbops)
 {
 	if(driver_setup()){
 		goto err;
 	}
-	if (ip_ecc_disable_token()){
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
 		goto err;
 	}
+
+	/* call to low-level routine */
+	if (ip_ecc_run_opcodes(nbops)) {
+		goto err;
+	}
+
+	/* Note: it is the caller's responsability to further test that the IP
+	 * is again halted, hence meaning that the 'nbops' opcodes have been
+	 * run - use API function hw_driver_is_debug_halted_DBG()
+	 */
+
 	return 0;
 err:
 	return -1;
 }
 
-/* (Re-)enable token feature */
-int hw_driver_enable_token_DBG()
+/* Same as hw_driver_run_opcodes_DBG() but single step
+ */
+int hw_driver_single_step_DBG()
 {
 	if(driver_setup()){
 		goto err;
 	}
-	if (ip_ecc_enable_token()){
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
 		goto err;
 	}
+
+	/* call to low-level routine */
+	if (ip_ecc_single_step()) {
+		goto err;
+	}
+
+	/* Note: it is the caller's responsability to further test that the IP
+	 * is again halted, hence meaning that the one opcode have been
+	 * run - use API function hw_driver_is_debug_halted_DBG()
+	 */
+
 	return 0;
 err:
 	return -1;
 }
 
-/* Patching microcode in the IP */
+/* Resume execution of microcode
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken)..
+ */
+int hw_driver_resume_DBG()
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_resume()){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Arm trigger function
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken).
+ */
+int hw_driver_arm_trigger_DBG()
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_arm_trigger()){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Disarm/disable trigger function
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken).
+ */
+int hw_driver_disarm_trigger_DBG()
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_disarm_trigger()){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Set configuration of UP trigger detection
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken).
+ */
+int hw_driver_set_trigger_up_DBG(uint32_t time)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_set_trigger_up(time)){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Set configuration of DOWN trigger detection
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken).
+ */
+int hw_driver_set_trigger_down_DBG(uint32_t time)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_set_trigger_down(time)){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Patch a single opcode in the microcode.
+ * 
+ *   'opcode_msb' must contain the upper 32-bit part of the opcode in case
+ *   size of opcodes is larger than 32-bit (and in this case 'opsz' must = 2).
+ *
+ *   'opcode_lsb' must contain the lower 32-bit part of the opcode in case
+ *   size of the opcode is larger than 32-bit, OR the opcode word in case
+ *   the size is 32-bit or less (and in this case 'opsz' must = 1).
+ *
+ * (in debug mode only).
+ */
+int hw_driver_patch_one_opcode_DBG(uint32_t address, uint32_t opcode_msb, uint32_t opcode_lsb, uint32_t opsz)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	ip_ecc_patch_one_opcode(address, opcode_msb, opcode_lsb, opsz);
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Patch a portion or the whole of microcode image
+ *
+ * (in debug mode only).
+ */
 int hw_driver_patch_microcode_DBG(uint32_t* buf, uint32_t nbops, uint32_t opsz)
 {
 	if(driver_setup()){
 		goto err;
 	}
 	
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
 	if (ip_ecc_patch_microcode(buf, nbops, opsz)) {
 		goto err;
 	}
@@ -3744,6 +5265,1127 @@ err:
 	return -1;
 }
 
+/* Set configuration of TRNG
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken).
+ */
+int hw_driver_configure_trng_DBG(int debias, uint32_t ta, uint32_t cycles)
+{
+	if(driver_setup()){
+		goto err;
+	}
+	
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_configure_trng(debias, ta, cycles)) {
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Reset the raw random bits FIFO
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken).
+ */
+int hw_driver_reset_trng_raw_fifo_DBG(void)
+{
+	if(driver_setup()){
+		goto err;
+	}
+	
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_reset_trng_raw_fifo()) {
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Reset all the internal random number FIFOs
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken).
+ */
+int hw_driver_reset_trng_irn_fifos_DBG(void)
+{
+	if(driver_setup()){
+		goto err;
+	}
+	
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_reset_trng_irn_fifos()) {
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Disable the TRNG post-processing logic that pulls bytes from the
+ * raw random source.
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken).
+ */
+int hw_driver_trng_post_proc_disable_DBG(void)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_trng_postproc_disable()){
+		goto err;
+	}
+	return 0;
+err:
+	return -1;
+}
+
+/* Enable TRNG post-processing logic
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken).
+ */
+int hw_driver_trng_post_proc_enable_DBG(void)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_trng_postproc_enable()){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* TRNG complete bypass, also specifying deterministic bit value
+ * to use instead of random bits.
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken).
+ */
+int hw_driver_bypass_full_trng_DBG(uint32_t instead_bit)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_bypass_full_trng(instead_bit)){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Remove TRNG complete bypass, restoring nominal behaviour
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken)..
+ */
+int hw_driver_dont_bypass_trng_DBG(void)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_dont_bypass_trng()){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Force a deterministic effect (all 1's) of the NNRND instruction
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken).
+ */
+int hw_driver_nnrnd_deterministic_DBG(void)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_trng_nnrnd_deterministic()){
+		goto err;
+	}
+	return 0;
+err:
+	return -1;
+}
+
+/* Restore nominal action of NNRND instruction, undoing action
+ * of previous hw_driver_nnrnd_deterministic_DBG().
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken).
+ */
+int hw_driver_nnrnd_not_deterministic_DBG(void)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_trng_nnrnd_not_deterministic()){
+		goto err;
+	}
+	return 0;
+err:
+	return -1;
+}
+
+/* To select the random source of which to read the diagnostics
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken)..
+ */
+int hw_driver_select_trng_diag_source_DBG(uint32_t id)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_select_trng_diag_source(id)){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Get one bit from the raw random FIFO
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken)..
+ */
+int hw_driver_read_one_raw_random_bit_DBG(uint32_t addr, uint32_t* rawbit)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_read_one_raw_random_bit(addr, rawbit)){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Write one word in the IP memory of large numbers.
+ *
+ *       LIMITATION : words (limbs of large nbs) must be of size
+ *                    less than 32 bits (ww < 32 or equal) other-
+ *                    wise an error is raised.
+ *       *******************************************************
+ *
+ * This function writes one limb (of size ww-bit) of one large number
+ * (which are made of 'w' limbs) in the IP memory of large numbers.
+ *
+ *   'addr' is the address in the memory (not the index of the large
+ *   number) in other words it is the address of the limb/word itself.
+ *
+ *   'limb' is the data value to write.
+ *
+ * If ww > 32, then one limb cannot fit into a single machine word
+ * (assuming a 32-bit host). An error is returned (and no action is
+ * taken) in this case.
+ *
+ * The value of 'ww' is obtained inside the function by reading
+ * the IP debug capabilities registers.
+ *
+ * Can only be called when in debug mode.
+ */
+int hw_driver_write_word_in_lgnbmem_DBG(uint32_t addr, uint32_t limb)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_write_word_in_lgnbmem(addr, limb)){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Write one limb of one large nb in the IP memory of large numbers.
+ *
+ *   This function is much like hw_driver_write_word_in_lgnbmem_DBG().
+ *   The difference is simply that it takes as parameter, instead
+ *   of the address in memory, the index of the large nb and the
+ *   index of the limb, to automatically compute the address where
+ *   to write.
+ *
+ *       LIMITATION : words (limbs of large nbs) must be of size
+ *                    less than 32 bits (ww < 32 or equal) other-
+ *                    wise an  error is raised.
+ *       *******************************************************
+ *
+ * This function writes one limb (of size ww-bit) of one large number
+ * (which are made of 'w' limbs) in the memory of large numbers in the IP.
+ *
+ *   'i' is the index of the large number (there are typically 32 of them)
+ *   so typically 'i' should be in the range 0 - 31.
+ *   
+ *   'j' is the index of the ww-bit limb in the large nb.
+ *
+ *       The address accessed in the IP memory of large nbs therefore is
+ *       (i * n) + j. The value of 'n' is obtained inside the function
+ *       from the IP capabilities registers.
+ *
+ *   'limb' is the data value to write.
+ *
+ * If ww > 32, then one limb cannot fit into a single machine word
+ * (assuming a 32-bit host). An error is returned (and nothing done)
+ * in this case.
+ *
+ * The value of 'ww' is obtained inside the function by reading
+ * the IP debug capabilities registers.
+ *
+ * Can only be called when in debug mode.
+ */
+int hw_driver_write_limb_DBG(int32_t i, uint32_t j, uint32_t limb)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_write_limb(i, j, limb)){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Write one large number in the IP memory of large numbers.
+ *
+ *       LIMITATION : words (limbs of large nbs) must be of size
+ *                    less than 32 bits (ww < 32or  equal), other-
+ *                    wise an error is raised.
+ *       *******************************************************
+ *
+ * This function writes a complete large nb (made of 'w' words,
+ * each of size 'ww'-bit) in the memory of large numbers in the IP.
+ *
+ *   'i' is the index of the large nb in memory. There are typically
+ *   32 large nbs that the IP can store in its memory (see parameter
+ *   'nblargenb' in source file ecc_customize.vhd) hence 'addr'
+ *   typically should be in range 0 - 31.
+ *
+ *   'limbs' is a pointer to a buffer containing the large nb to write.
+ *   Therefore it must store 'w' valid limbs, with limb[0] being the
+ *   least significant value of the larne nb and limb[ww - 1] the most
+ *   significant one.
+ *
+ *   Ex.: Assume the following large number X:
+ *
+ *            X = 0x_DEAD_0000_0000_0000_0000_0000_0000_BEEF (nn = 128 bits).
+ *
+ *        Assume ww = 16, then w = 9 (remember that w = ceil( (nn + 4) / ww))
+ *        In this case, X must be passed to the function using:
+ *
+ *           limb[0] = 0xBEEF
+ *           ...
+ *           limb[7] = 0xDEAD
+ *           limb[8] = 0.
+ *
+ * If ww > 32, then one limb cannot fit into a single machine word
+ * (assuming a 32-bit host). An error is returned (and no action
+ * taken) in this case.
+ *
+ * The values of 'w' & 'ww' are obtained inside the function by reading
+ * the IP debug capabilities registers.
+ *
+ * Can only be called when in debug mode.
+ */
+int hw_driver_write_largenb_DBG(uint32_t i, uint32_t* limbs)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_write_largenb(i, limbs)){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Read one word from the IP memory of large numbers.
+ *
+ *       LIMITATION : words (limbs of large nbs) must be of size
+ *                    less than 32 bits (ww < 32 or equal) other-
+ *                    wise an error is raised.
+ *       ********************************************************
+ *
+ * This function reads one limb (of size ww-bit) of one large number
+ * (which are made of 'w' limbs) from the IP memory of large numbers.
+ *
+ *   'addr' is the address in the memory (not the index of the large
+ *   number) in other words it is the address of the limb/word itself.
+ *
+ *   'limb' is a pointer where to transfer the value read.
+ *
+ * If ww > 32, then one limb cannot fit into a single machine word
+ * (assuming a 32-bit host). An error is returned (and no action done)
+ * in this case.
+ *
+ * The value of 'ww' is obtained inside the function by reading
+ * the IP debug capabilities registers.
+ *
+ * Can only be called when in debug mode.
+ */
+int hw_driver_read_word_from_lgnbmem_DBG(uint32_t addr, uint32_t* limb)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_read_word_from_lgnbmem(addr, limb)){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Read one limb of one large nb from the IP memory of large numbers.
+ *
+ *   This function is much like hw_driver_read_word_from_lgnbmem_DBG().
+ *   The difference is simply that it takes as parameter, instead
+ *   of the address in memory, the index of the large nb and the
+ *   index of the limb, to automatically compute the address where
+ *   to read from.
+ *
+ *       LIMITATION : words (limbs of large nbs) must be of size
+ *                    less than 32 bits (ww < 32 or equal) other-
+ *                    wise an error is raised.
+ *       *******************************************************
+ *
+ * This function reads one limb (of size ww-bit) of one large number
+ * (which are made of 'w' limbs) from the IP memory of large numbers.
+ *
+ *   'i' is the index of the large number (there are typically 32 of them)
+ *   so typically 'i' should be in the range 0 - 31.
+ *   
+ *   'j' is the index of the ww-bit limb in the large nb.
+ *
+ *       The address accessed in the IP memory of large nbs therefore is
+ *       (i * n) + j. The value of 'n' is obtained inside the function
+ *       from the IP capabilities registers.
+ *
+ *   'limb' is a pointer where to transfer the value read.
+ *
+ * If ww > 32, then one limb cannot fit into a single machine word
+ * (assuming a 32-bit host). An error is returned (and nothing done)
+ * in this case.
+ *
+ * The value of 'ww' is obtained inside the function by reading
+ * the IP debug capabilities registers.
+ *
+ * Can only be called when in debug mode.
+ */
+int hw_driver_read_limb_DBG(int32_t i, uint32_t j, uint32_t* limb)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_read_limb(i, j, limb)){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Read one large number from the IP memory of large numbers.
+ *
+ *       LIMITATION : words (limbs of large nbs) must be of size
+ *                    less than 32 bits (ww < 32 or equal) other-
+ *                    wise an error is raised.
+ *       *******************************************************
+ *
+ * This function reads a complete large nb (made of 'w' words,
+ * each of size 'ww'-bit) from the IP memory of large numbers.
+ *
+ *   'i' is the index of the large nb in memory. There are typically
+ *   32 large nbs that the IP can store in its memory (see parameter
+ *   'nblargenb' in source file ecc_customize.vhd) hence 'addr'
+ *   typically should be in range 0 - 31.
+ *
+ *   'limbs' is a pointer to a buffer where to transfer the large nb
+ *   to read. Therefore it must have an allocated size of at least
+ *   'w' limbs. Function will transfer into limb[0] the least signi-
+ *   ficant value of the larne nb, and into limb[ww - 1] the most
+ *   significant one.
+ *
+ *   Ex.: Assume the following large number to read from memory is X:
+ *
+ *            X = 0x_DEAD_0000_0000_0000_0000_0000_0000_BEEF (nn = 128 bits).
+ *
+ *        Assume ww = 16, then w = 9 (remember that w = ceil( (nn + 4) / ww))
+ *        In this case, upon completion ot the function, the caller
+ *        will get:
+ *
+ *           limb[0] = 0xBEEF
+ *           ...
+ *           limb[7] = 0xDEAD
+ *           limb[8] = 0.
+ *
+ * If ww > 32, then one limb cannot fit into a single machine word
+ * (assuming a 32-bit host). An error is returned (and no action
+ * taken) in this case.
+ *
+ * The values of 'w' & 'ww' are obtained inside the function by reading
+ * the IP debug capabilities registers.
+ *
+ * Can only be called when in debug mode.
+ */
+int hw_driver_read_largenb_DBG(uint32_t i, uint32_t *limbs)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_read_largenb(i, limbs)){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Enable XY-shuffling
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken).
+ */
+int hw_driver_enable_xyshuf(void)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Call to low-level routine */
+	if(ip_ecc_enable_xyshuf()){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Disable XY-shuffling
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken).
+ */
+int hw_driver_disable_xyshuf_DBG(void)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	if(ip_ecc_disable_xyshuf()){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Enable 'on-the-fly masking of the scalar by AXI interface'
+ * countermeasure.
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken)..
+ */
+int hw_driver_enable_aximsk(void)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Call to low-level routine */
+	if(ip_ecc_enable_aximsk()){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Disable 'on-the-fly masking of the scalar by AXI interface'
+ * countermeasure.
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken)..
+ */
+int hw_driver_disable_aximsk_DBG(void)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Call to low-level routine */
+	if(ip_ecc_disable_aximsk()){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Enable token feature
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken).
+ */
+int hw_driver_enable_token_DBG()
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_enable_token()){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Disable token feature
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken).
+ */
+int hw_driver_disable_token_DBG()
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_disable_token()){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* To get some more capabilties than offered by hw_driver_get_capabilities()
+ *
+ * (only in debug mode, as some of the infos might give inside to the internal
+ * features of the IP which are not at all required for its nominal (secure)
+ * use.
+ */
+int hw_driver_get_more_capabilities_DBG(uint32_t* ww, uint32_t* nbop,
+		uint32_t* opsz, uint32_t* rawramsz, uint32_t* irnshw)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_get_more_capabilities(ww, nbop, opsz, rawramsz, irnshw)){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* To determine if the IP is currently debug-halted
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken).
+ */
+int hw_driver_is_debug_halted_DBG(bool* halted)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_is_debug_halted(halted)){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Is the IP currently halted on a breakpoint hit?
+ * (and if it is, return the breakpoint ID).
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken).
+ */
+int hw_driver_halted_breakpoint_hit_DBG(bool* hit, uint32_t* id)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_halted_breakpoint_hit(hit, id)){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Get the value of Program Counter
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken)..
+ */
+int hw_driver_get_pc_DBG(uint32_t* pc)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_get_pc(pc)){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* To get the FSM state the IP is currently in.
+ *
+ *    The state is returned as a relatively short character string
+ *    (copied in 'state') which allocated size must be passed using
+ *    'sz'. No more than 'sz' bytes will be copied by the function.
+ *    However allow sufficient space, e.g 32 bytes to get enough
+ *    info.
+ *
+ *    See file <ecc_states.h> in folder hdl/common/ecc_curve_iram/
+ *    for a list of all state identifiers (this is one of the files
+ *    which are automatically generated when running 'make' in that
+ *    folder).
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken)..
+ */
+int hw_driver_get_fsm_state_DBG(char* state, uint32_t sz)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_get_fsm_state(state, sz)){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* To get value of point-operation time counter.
+ *
+ *     Each time a point-based operation is started (including [k]P
+ *     computation) an internal counter is started and incremented at
+ *     each cycle of the main clock. Reading this counter allows to
+ *     measure computation duration of point operations.
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken)..
+ */
+int hw_driver_get_time_DBG(uint32_t* clk_cycles)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* call to low-level routine */
+	if (ip_ecc_get_time(clk_cycles)){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* To assess the production throughput of TRNG raw random bits.
+ *
+ *     This function measures the time it takes to fill-up
+ *     the RAW random FIFO of the TRNG. It first disables
+ *     the post-processing function of the TRNG (so that not to
+ *     have any read empyting the FIFO), then reset (empty) it,
+ *     then poll debug status until it shows that the FIFO is
+ *     full. When it is, the value in register R_DBG_RAWDUR
+ *     yiels the nb of cycles (of the main clock) the filling-up
+ *     process took.
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken)..
+ */
+int hw_driver_get_trng_raw_fifo_filling_time_DBG(uint32_t* duration)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* Call to low level equivalent function */
+	if (ip_ecc_get_trng_raw_fifo_filling_time(duration)){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Returns the state of the TRNG FIFO of raw random bits.
+ *
+ *   *full   = true is the FIFO is full
+ *   *nbbits = nb of raw random bits currently
+ *             buffered in the FIFO.
+ *
+ * It is recommended to wait for the IP to be in idle state
+ * (no running computation) or to be debug-halted before
+ * calling the function.
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken)..
+ */
+int hw_driver_get_trng_raw_fifo_state_DBG(bool* full, uint32_t* nbbits)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* Call to low level equivalent function */
+	if (ip_ecc_get_trng_raw_fifo_state(full, nbbits)){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* Read the whole content of the TRNG FIFO of raw random bits
+ *
+ *   'buf' must point to a buffer whose allocated size must
+ *   be sufficient to store the whole content of the FIFO,
+ *   the size of which shall be obtained through a call to
+ *   function hw_driver_get_more_capabilities_DBG()
+ *   (see that function)
+ *
+ * The function temporarily disables the post-processing unit
+ * of TRNG from reading bits from the FIFO. Hence it is strongly
+ * advised to wait for the IP to be in idle state (no computation)
+ * or debug-halted before calling this funtion.
+ *
+ * (only allowed in debug mode, otherwise an error
+ * is returned, with no action taken)..
+ */
+int hw_driver_get_content_of_trng_raw_random_fifo_DBG(char* buf, uint32_t* nbbits)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* Call to low level equivalent function */
+	if (ip_ecc_get_content_of_trng_raw_random_fifo(buf, nbbits)){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* To get an estimation of the frequency of clocks in the IP ('clk' & 'clkmm')
+ *
+ *     Parameter 'sec' is the time to wait for estimation (in seconds).
+ *
+ *     The larger the value of 'sec', the better the estimation
+ *     (3 seconds is enough, max allowed is 10 (error otherwise)).
+ */
+int hw_driver_get_clocks_freq_DBG(uint32_t* mhz, uint32_t* mhz_mm, uint32_t sec)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	if (sec > 10) {
+		goto err;
+	}
+
+	/* Sample the start counters */
+	if (ip_ecc_get_clocks_freq(mhz, mhz_mm, sec)) {
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
+/* To get all the TRNG diagnostic infos in one API call
+ */
+int hw_driver_get_trng_diagnostics_DBG(trng_diagcnt_t* tdg)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test debug capability */
+	if (IPECC_IS_PROD())
+	{
+		goto err;
+	}
+
+	/* Call to low level equivalent function */
+	if (ip_ecc_get_trng_diagnostics(tdg)){
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
 
 /* Set the curve parameters a, b, p and q.
  *
@@ -3914,38 +6556,6 @@ err:
 	return -1;
 }
 
-/* Debug feature: disable XY-shuffling  */
-int hw_driver_disable_xyshuf(void)
-{
-	if(driver_setup()){
-		goto err;
-	}
-
-	if(ip_ecc_disable_xyshuf()){
-		goto err;
-	}
-
-	return 0;
-err:
-	return -1;
-}
-
-/* Debug feature: re-enable XY-shuffling  */
-int hw_driver_enable_xyshuf(void)
-{
-	if(driver_setup()){
-		goto err;
-	}
-
-	if(ip_ecc_enable_xyshuf()){
-		goto err;
-	}
-
-	return 0;
-err:
-	return -1;
-}
-
 /* Check if an affine point (x, y) is on the curve currently defined
  * in the IP (this curve was previously set in the hardware using
  * function hw_driver_set_curve() - c.f above).
@@ -3990,7 +6600,7 @@ int hw_driver_is_on_curve(const uint8_t *x, uint32_t x_sz, const uint8_t *y, uin
 	}
 
 	/* Check if it is on curve */
-	if(ip_ecc_exec_command(PT_CHK, on_curve, NULL)){
+	if(ip_ecc_exec_command(PT_CHK, on_curve, NULL, NULL)){
 		goto err;
 	}
 
@@ -4049,7 +6659,7 @@ int hw_driver_eq(const uint8_t *x1, uint32_t x1_sz, const uint8_t *y1, uint32_t 
 	}
 
 	/* Check if it the points are equal */
-	if(ip_ecc_exec_command(PT_EQU, is_eq, NULL)){
+	if(ip_ecc_exec_command(PT_EQU, is_eq, NULL, NULL)){
 		goto err;
 	}
 
@@ -4109,7 +6719,7 @@ int hw_driver_opp(const uint8_t *x1, uint32_t x1_sz, const uint8_t *y1, uint32_t
 
 
 	/* Check if the points are opposite */
-	if(ip_ecc_exec_command(PT_OPP, is_opp, NULL)){
+	if(ip_ecc_exec_command(PT_OPP, is_opp, NULL, NULL)){
 		goto err;
 	}
 
@@ -4291,7 +6901,7 @@ int hw_driver_neg(const uint8_t *x, uint32_t x_sz, const uint8_t *y, uint32_t y_
 	}
 
 	/* Execute our NEG command */
-	if(ip_ecc_exec_command(PT_NEG, NULL, NULL)){
+	if(ip_ecc_exec_command(PT_NEG, NULL, NULL, NULL)){
 		goto err;
 	}
 
@@ -4357,7 +6967,7 @@ int hw_driver_dbl(const uint8_t *x, uint32_t x_sz, const uint8_t *y, uint32_t y_
 	}
 
 	/* Execute our DBL command */
-	if(ip_ecc_exec_command(PT_DBL, NULL, NULL)){
+	if(ip_ecc_exec_command(PT_DBL, NULL, NULL, NULL)){
 		goto err;
 	}
 
@@ -4432,7 +7042,7 @@ int hw_driver_add(const uint8_t *x1, uint32_t x1_sz, const uint8_t *y1, uint32_t
 	}
 
 	/* Execute our ADD command */
-	if(ip_ecc_exec_command(PT_ADD, NULL, NULL)){
+	if(ip_ecc_exec_command(PT_ADD, NULL, NULL, NULL)){
 		goto err;
 	}
 
@@ -4466,7 +7076,9 @@ err:
 int hw_driver_mul(const uint8_t *x, uint32_t x_sz, const uint8_t *y, uint32_t y_sz,
                   const uint8_t *scalar, uint32_t scalar_sz,
                   uint8_t *out_x, uint32_t *out_x_sz, uint8_t *out_y, uint32_t *out_y_sz,
-									kp_trace_info_t* ktrc)
+									kp_trace_info_t* ktrc,
+									/* REMOVE THAT! DON'T KEEP EVEN IN DEBUG MODE! */
+									long* kp_time)
 {
 	int inf_r0, inf_r1;
 	uint32_t nn_sz;
@@ -4535,7 +7147,7 @@ int hw_driver_mul(const uint8_t *x, uint32_t x_sz, const uint8_t *y, uint32_t y_
 	}
 
 	/* Execute our [k]P command */
-	if(ip_ecc_exec_command(PT_KP, NULL, ktrc)){
+	if(ip_ecc_exec_command(PT_KP, NULL, ktrc, kp_time)) {
 		log_print("In hw_driver_mul(): Error in ip_ecc_exec_command()\n\r");
 		goto err;
 	}

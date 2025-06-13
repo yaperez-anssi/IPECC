@@ -22,7 +22,7 @@
 
 extern int cmp_two_pts_coords(point_t*, point_t*, bool*);
 
-int ip_set_pts_and_run_ptadd(ipecc_test_t* t)
+int ip_test_set_pts_and_run_ptadd(ipecc_test_t* t)
 {
 	int is_null;
 	/*
@@ -204,7 +204,7 @@ err:
 	return -1;
 }
 
-int ip_set_pt_and_run_ptdbl(ipecc_test_t* t)
+int ip_test_set_pt_and_run_ptdbl(ipecc_test_t* t)
 {
 	int is_null;
 	/*
@@ -357,7 +357,7 @@ err:
 	return -1;
 }
 
-int ip_set_pt_and_run_ptneg(ipecc_test_t* t)
+int ip_test_set_pt_and_run_ptneg(ipecc_test_t* t)
 {
 	int is_null;
 	/*

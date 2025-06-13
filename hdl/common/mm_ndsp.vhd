@@ -79,7 +79,19 @@ architecture rtl of mm_ndsp is
 		);
 	end component maccx;
 
+	-- In the  Synchronous case, clk0 <= clk
+	-- In the Asynchronous caes, clk0 <= clkmm (see (s126))
 	signal clk0 : std_logic;
+	-- In the async = FALSE ( Synchronous case):
+	--   - All registers in mm_ndsp (present block) are synchronous to clk
+	--     or clk0, wihch designate the same clock.
+	--   - There are no registers rio, riram, rzram.
+	-- In the async = TRUE  (Asynchronous case):
+	--   - All registers in mm_ndsp (present block) are synchronous to clk0
+	--     (which designates clkmm) except rio, riram & rzram.
+	--   - Registers rio, riram & rzram are synchronous to clk. These rsgisters
+	--     are here to support the interface w/ ecc_fp, as it is completely
+	--     synchronous to clk.
 
 	signal rst0, rst1, rst2 : std_logic;
 	signal rst0mm, rst1mm, rst2mm : std_logic;
@@ -172,16 +184,7 @@ architecture rtl of mm_ndsp is
 	-- alpha_i) operand term, and the time by which the first term accumulated
 	-- through the chain of DSP blocks has reached register r.acc.ppacc
 	-- see (s44) below
-	constant NBRP : positive :=
-	    sramlat + 1 -- ORAM read latency, incl. r.prod.rdata latch, see (s1)
-	  + ndsp -- because ndsp x_i terms are first read before first y_j term
-	  + 1 -- latch into r.prod.bb, see (s38)
-	  + 1 -- latch into B register of first DSP block, see (s39)
-	  + 2 -- latch into M & P register of first DSP block
-	  + (ndsp - 1) -- accumulation through the chain of DSP blocks
-	  + 1 -- latch into r.acc.ppend, see (s123) & (s34)
-	  + 1; -- latch into r.acc.ppacc, see (s44)
-		-- = sramlat + (2 * ndsp) + 6
+	constant NBRP : positive := get_nbrp(sramlat, ndsp);
 
 	-- constant NBRA is the same as NBRP except that it extends to the clock
 	-- cycle by which the first term accumulated through the chain of DSP
@@ -618,10 +621,12 @@ begin
 	-- clocks & reset
 	-- --------------
 
+	-- (s126)
 	c00: if async generate
 		clk0 <= clkmm;
 	end generate;
 
+	-- (s126)
 	c01: if not async generate
 		clk0 <= clk;
 	end generate;
@@ -797,6 +802,7 @@ begin
 
 	-- -----------------------------------------------------------------
 	--            'clk' clock-domain RTL logic (I/O interface)
+	-- -----------------------------------------------------------------
 	--        (only in the async = TRUE case, because in this case
 	--        I/O access is made by ecc_fp in its own clock-domain,
 	--      which is the 'clk' domain, hence our logic interfacing w/
@@ -1168,9 +1174,11 @@ begin
 			end if;
 		end if;
 
-		-- deassertion of r.resync.go_ack
-		if r.resync.go_ack = '1' and r.ctrl.go = '0' then
-			v.resync.go_ack := '0';
+		-- Deassertion of r.resync.go_ack
+		if async then -- statically resolved by synthesizer
+			if r.resync.go_ack = '1' and r.ctrl.go = '0' then
+				v.resync.go_ack := '0';
+			end if;
 		end if;
 
 		-- xi & yi operand counters
@@ -1343,8 +1351,9 @@ begin
 					to_unsigned(ndsp - 1, OPAGEW) ); -- (s76)
 				if ndsp > 2 then -- statically resolved by synthesizer
 					v_prod_nextslkcnt := to_unsigned(ndsp - 1, NB_SLK_BITS);
-				else
-					v_prod_nextslkcnt := to_unsigned(2, NB_SLK_BITS);
+				else -- ndsp = 2 (can't be 1)
+					-- line below: this'll make 2 if sramlat = 1, 3 if sramlat = 2
+					v_prod_nextslkcnt := to_unsigned(sramlat + 1, NB_SLK_BITS);
 				end if;
 			end if;
 		elsif v_prod_tobenext = '1' then
@@ -1372,8 +1381,13 @@ begin
 					r.prod.nbx(OPAGEW - 1 downto 0) ); -- (s78)
 				-- r.prod.nbx is on log2(w) bits & NB_SLK_BITS=log2(NBRA + ndsp + w - 1)
 				-- so resize function won't truncate nothing
-				v_prod_nextslkcnt := resize(r.prod.nbx, NB_SLK_BITS) +
-				                     to_unsigned(ndsp - 1, NB_SLK_BITS);
+				if ndsp = 2 and sramlat = 2 then -- statically resolved by synthesizer
+					v_prod_nextslkcnt := resize(r.prod.nbx, NB_SLK_BITS) +
+															 to_unsigned(ndsp, NB_SLK_BITS);
+				else
+					v_prod_nextslkcnt := resize(r.prod.nbx, NB_SLK_BITS) +
+															 to_unsigned(ndsp - 1, NB_SLK_BITS);
+				end if;
 			else
 				-- .nbx > ndsp
 				v_prod_nextxicnt := to_unsigned(ndsp - 1, log2(ndsp - 1));
@@ -1392,8 +1406,9 @@ begin
 					to_unsigned(ndsp, OPAGEW) ); -- (s80)
 				if ndsp > 2 then -- statically resolved by synthesizer
 					v_prod_nextslkcnt := to_unsigned(ndsp - 1, NB_SLK_BITS);
-				else
-					v_prod_nextslkcnt := to_unsigned(2, NB_SLK_BITS);
+				else -- ndsp = 2 (can't be 1)
+					-- line below: this'll make 2 if sramlat = 1, 3 if sramlat = 2
+					v_prod_nextslkcnt := to_unsigned(sramlat + 1, NB_SLK_BITS);
 				end if;
 			end if;
 		end if;
@@ -1487,7 +1502,10 @@ begin
 			-- pragma translate_off
 			v.simcnt := (others => '0');
 			-- pragma translate_on
-			v.resync.go_ack := '1';
+			-- Assertion of r.resync.go_ack
+			if async then -- statically resolved by synthesizer
+				v.resync.go_ack := '1';
+			end if;
 			if async then -- statically resolved by synthesizer
 				v.iram.re := '1'; -- first terms are the x_i ones taken from IRAM
 			else
@@ -2190,8 +2208,10 @@ begin
 		--   - in state 'sp'
 		--   - in state 'ap'
 		if r.acc.state = ap then vap := '1'; else vap := '0'; end if;
+
 		v.pram.re := r.acc.ppaccvalid
 			and ( (r.acc.mustread and not r.acc.rdlock) or vap );
+
 		if r.pram.re = '1' and r.pram.raddrweight = r.acc.lastupperweight
 			and vap = '0'
 		then
@@ -2502,6 +2522,14 @@ begin
 				v.ctrl.irq := '1';
 				v.ctrl.rdy := '1';
 				v.ctrl.active := '0';
+				v.ctrl.state := idle;
+				v.prod.bigslkcnten := '0';
+				v.prod.bigslkcntzero := '0';
+				v.prod.bigslkcnt := (others => '0');
+				v.prod.state := idle;
+				v.prod.slkcnt := (others => '0');
+				v.prod.slkcntzero := '0';
+				v.prod.nextxymsb := '0';
 				v.brl.armed := '0';
 				v.brl.shexcp := (others => '0');
 				v.brl.enright := '0';
@@ -2658,6 +2686,9 @@ begin
 			v.prod.bigslkcnten := '0';
 			v.prod.bigslkcntdone := '0';
 			v.prod.slkcntdone := '0';
+			if async then -- statically resolved by synthesizer
+				v.resync.go_ack := '0';
+			end if;
 		end if;
 
 		-- generate combinational input of registered signals

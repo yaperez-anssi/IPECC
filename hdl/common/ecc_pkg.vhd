@@ -362,9 +362,6 @@ package ecc_pkg is
 		z : std_logic_vector(ww - 1 downto 0);
 		irq : std_logic;
 		go_ack : std_logic;
-		xen_ack : std_logic;
-		yen_ack : std_logic;
-		zren_ack : std_logic;
 	end record;
 
 	type mmi_type is array(0 to nbmult - 1) of mmi_rtype;

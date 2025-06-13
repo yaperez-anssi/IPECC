@@ -47,7 +47,8 @@ entity es_trng is
 		dbgtrngrawfiforeaddis : in std_logic;
 		dbgtrngrawduration : out unsigned(31 downto 0);
 		dbgtrngvonneuman : in std_logic;
-		dbgtrngidletime : in unsigned(3 downto 0)
+		dbgtrngidletime : in unsigned(3 downto 0);
+		dbgtrngrawcount : out std_logic_vector(log2(raw_ram_size) - 1 downto 0)
 	);
 end entity es_trng;
 
@@ -120,6 +121,8 @@ architecture struct of es_trng is
 		shcnt : unsigned(2 downto 0);
 		fifotime : unsigned(31 downto 0);
 		fifodocnt : std_logic;
+		ffdelaycnt : unsigned(3 downto 0);
+		ffdelaydocnt : std_logic;
 	end record;
 
 	signal r, rin : reg_type;
@@ -212,7 +215,7 @@ begin
 
 	r_rawi(0) <= r.rawi;
 
-	-- This is the raw random FIFO.
+	-- This is the raw random FIFO
 	f0: fifo
 		generic map(
 			datawidth => 1, datadepth => raw_ram_size,
@@ -331,8 +334,19 @@ begin
 		-- Of course this requires to first set the FIFO into debug
 		-- deactivation mode (by asserting 'dbgtrngrawfiforeaddis' high) so that the
 		-- FIFO can no longer be accessed (emptied) by ecc_trng_pp component.
-		if full = '1' then
+		if full = '1' and r.ffdelaydocnt = '0' then -- (s0), see (s1)
 			v.fifodocnt := '0';
+		end if;
+
+		-- (s1)
+		-- Allow a full cycles after reset in case our RTL FIFO is replaced
+		-- with a primitive and the full flag takes more than a single cycle
+		-- after reset to be deasserted, see (s0)
+		if r.ffdelaydocnt = '1' then
+			v.ffdelaycnt := r.ffdelaycnt - 1;
+			if r.ffdelaycnt = (r.ffdelaycnt'range => '0') then
+				v.ffdelaydocnt := '0';
+			end if;
 		end if;
 
 		-- Synchronous reset
@@ -348,6 +362,8 @@ begin
 			v.shcnt := (others => '0');
 			v.fifotime := (others => '0');
 			v.fifodocnt := '1';
+			v.ffdelaycnt := (others => '1');
+			v.ffdelaydocnt := '1';
 		end if;
 
 		rin <= v;
@@ -366,5 +382,6 @@ begin
 	dbgtrngrawfull <= full;
 	dbgtrngrawdata <= rawout(0);
 	dbgtrngrawduration <= r.fifotime;
+	dbgtrngrawcount <= count;
 
 end architecture struct;

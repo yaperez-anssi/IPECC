@@ -49,17 +49,11 @@ typedef enum {
 int hw_driver_reset(void);
 
 /* To know if the IP is in 'debug' or 'production' mode */
-int hw_driver_is_debug(uint32_t*);
+int hw_driver_is_debug(bool*);
+int hw_driver_is_prod(bool*);
 
 /* Get all three version nbs of the IP (major, minor & patch) */
 int hw_driver_get_version_tags(uint32_t*, uint32_t*, uint32_t*);
-
-/* Enable TRNG post-processing logic (a call upon is required in Debug mode
- * or the TRNG won't ever provide a single byte). */
-int hw_driver_trng_post_proc_enable(void);
-
-/* Enable TRNG post-processing logic */
-int hw_driver_trng_post_proc_disable(void);
 
 /* Set the curve parameters a, b, p and q */
 int hw_driver_set_curve(const uint8_t *a, uint32_t a_sz, const uint8_t *b, uint32_t b_sz,
@@ -85,7 +79,7 @@ int hw_driver_enable_zremask_and_set_period(uint32_t period);
 int hw_driver_disable_zremask(void);
 
 /* Debug feature: disable the XY-shuffling countermeasure */
-int hw_driver_disable_xyshuf(void);
+int hw_driver_disable_xyshuf_DBG(void);
 
 /* Debug feature: re-enble the XY-shuffling countermeasure */
 int hw_driver_enable_xyshuf(void);
@@ -133,6 +127,7 @@ int hw_driver_add(const uint8_t *x1, uint32_t x1_sz, const uint8_t *y1, uint32_t
 		  const uint8_t *x2, uint32_t x2_sz, const uint8_t *y2, uint32_t y2_sz,
                   uint8_t *out_x, uint32_t *out_x_sz, uint8_t *out_y, uint32_t *out_y_sz);
 
+#ifdef KP_TRACE
 typedef struct {
 	uint32_t r0z;
 	uint32_t r1z;
@@ -142,11 +137,12 @@ typedef struct {
 	uint32_t zc;
 	uint32_t jnbbit;
 } kp_exp_flags_t;
+#endif
 
 /* The following 'kp_trace_info' structure allows any calling program (stat. linked with
  * the driver) to get a certain number of IP internal states/infos collected during a [k]P
  * computation through breakpoints and step-by-step execution (this includes e.g values of
- * a few random numbers/masks, coordinates of intermiediate points, etc).
+ * a few random numbers/masks, coordinates of intermediate points, etc).
  */
 typedef struct {
 	/* Main security parameter nn */
@@ -174,6 +170,34 @@ typedef struct {
 	uint32_t msgsz_max;
 } kp_trace_info_t;
 
+typedef struct {
+	/* "AXI" */
+	uint32_t aximin;
+	uint32_t aximax;
+	uint32_t axiok;
+	uint32_t axistarv;
+	/* "EFP" */
+	uint32_t efpmin;
+	uint32_t efpmax;
+	uint32_t efpok;
+	uint32_t efpstarv;
+	/* "CRV" */
+	uint32_t crvmin;
+	uint32_t crvmax;
+	uint32_t crvok;
+	uint32_t crvstarv;
+	/* "SHF" */
+	uint32_t shfmin;
+	uint32_t shfmax;
+	uint32_t shfok;
+	uint32_t shfstarv;
+	/* "RAW" */
+	uint32_t rawmin;
+	uint32_t rawmax;
+	uint32_t rawok;
+	uint32_t rawstarv;
+} trng_diagcnt_t;
+
 /* The size of the statically allocated buffer that field
  * 'msgsz_max' of struct 'kp_trace_info_t' above should not
  * exceed. */
@@ -183,23 +207,256 @@ typedef struct {
 int hw_driver_mul(const uint8_t *x, uint32_t x_sz, const uint8_t *y, uint32_t y_sz,
 		  const uint8_t *scalar, uint32_t scalar_sz,
 		  uint8_t *out_x, uint32_t *out_x_sz, uint8_t *out_y, uint32_t *out_y_sz,
-			kp_trace_info_t* ktrc);
+			kp_trace_info_t* ktrc, long* kp_time);
 
 /* Set the small scalar size in the hardware */
 int hw_driver_set_small_scalar_size(uint32_t bit_sz);
 
+/* To get hardware capabilities from the IP */
+int hw_driver_get_capabilities(bool* secure, bool* shuffle, bool* nndyn, bool* axi64, uint32_t* nnmax);
+
+/******************
+ *    DEBUG API   *
+ *******************/
+
+/* To halt the IP - This freezes execution of microcode
+ * (only in debug mode) */
+int hw_driver_halt_DBG(void);
+
+/* To set and activate a new breakpoint
+ * (only in debug mode) */
+int hw_driver_set_breakpoint_DBG(uint32_t, uint32_t);
+
+/* To remove/disable a breakpoint
+ * (only in debug mode) */
+int hw_driver_remove_breakpoint_DBG(uint32_t);
+
+/* Have IP to execute a certain nb of opcodes in microcode
+ * (only in debug mode).
+ */
+int hw_driver_run_opcodes_DBG(uint32_t);
+
+/* Same as hw_driver_run_opcodes_DBG() but single step
+ */
+int hw_driver_single_step_DBG(void);
+
+/* Resume execution of microcode
+ * (only in debug mode).
+ */
+int hw_driver_resume_DBG(void);
+
+/* Arm trigger function
+ * (only in debug mode)
+ */
+int hw_driver_arm_trigger_DBG(void);
+
+/* Disarm/disable trigger function
+ * (only in debug mode)
+ */
+int hw_driver_disarm_trigger_DBG(void);
+
+/* Set configuration of UP trigger detection
+ * (only in debug mode)
+ */
+int hw_driver_set_trigger_up_DBG(uint32_t);
+
+/* Set configuration of DOWN trigger detection
+ * (only in debug mode)
+ */
+int hw_driver_set_trigger_down_DBG(uint32_t);
+
+/* Patch a single opcode in the microcode.
+ * (in debug mode only).
+ */
+int hw_driver_patch_one_opcode_DBG(uint32_t, uint32_t, uint32_t, uint32_t);
+
+/* Patch a portion or the whole of microcode image
+ * (in debug mode only).
+ */
+int hw_driver_patch_microcode_DBG(uint32_t*, uint32_t, uint32_t);
+
+/* Set configuration of TRNG
+ * (only in debug mode)
+ */
+int hw_driver_configure_trng_DBG(int, uint32_t, uint32_t);
+
+/* Reset the raw random bits FIFO
+ * (only in debug mode)
+ */
+int hw_driver_reset_trng_raw_fifo_DBG(void);
+
+/* Reset all the internal random number FIFOs
+ * (only in debug mode)
+ */
+int hw_driver_reset_trng_irn_fifos_DBG(void);
+
+/* Enable the TRNG post-processing logic
+ *
+ * Note: a call is required if the IP is in Debug mode, otherwise
+ *       the TRNG won't ever provide a single byte to its post-processing
+ *       function (see driver_setup() function in source file
+ *       hw_accelereator_driver_ipecc.c, which enforces this action).
+ *
+ * (only in debug mode)
+ */
+int hw_driver_trng_post_proc_enable_DBG(void);
+
+/* Disable the TRNG post-processing logic
+ * (only in debug mode)
+ */
+int hw_driver_trng_post_proc_disable_DBG(void);
+
 /* Complete bypass the TRNG function (both entropy source,
- * post-processing, and server) */
+ * post-processing, and server)
+ * (only in debug mode)
+ */
 int hw_driver_bypass_full_trng_DBG(uint32_t bit);
 
-/* Disable token feature */
-int hw_driver_disable_token_DBG(void);
+/* Remove complete bypass the TRNG function & restore normal behaviour
+ *
+ * (only in debug mode)
+ */
+int hw_driver_dont_bypass_trng_DBG();
 
-/* (Re-)enable token feature */
+/* Force a deterministic effect (all 1's) of the NNRND instruction
+ */
+int hw_driver_nnrnd_deterministic_DBG(void);
+
+/* Restore nominal action of NNRND instruction, undoing action of
+ * previous hw_driver_nnrnd_deterministic_DBG().
+ */
+int hw_driver_nnrnd_not_deterministic_DBG(void);
+
+/* To select the random source of which to read the diagnostics
+ * (only in debug mode).
+ */
+int hw_driver_select_trng_diag_source_DBG(uint32_t);
+
+/* Get one bit from the raw random FIFO
+ * (only in debug mode).
+ */
+int hw_driver_read_one_raw_random_bit_DBG(uint32_t, uint32_t*);
+
+/* Write one word in the IP memory of large numbers.
+ */
+int hw_driver_write_word_in_lgnbmem_DBG(uint32_t, uint32_t);
+
+/* Write one limb of one large nb in the IP memory of large numbers.
+ */
+int hw_driver_write_limb_DBG(int32_t, uint32_t, uint32_t);
+
+/* Write one large number in the IP memory of large numbers.
+ */
+int hw_driver_write_largenb_DBG(uint32_t, uint32_t*);
+
+/* Read one word from the IP memory of large numbers.
+ */
+int hw_driver_read_word_from_lgnbmem_DBG(uint32_t, uint32_t*);
+
+/* Read one limb of one large nb from the IP memory of large numbers.
+ */
+int hw_driver_read_limb_DBG(int32_t, uint32_t, uint32_t*);
+
+/* Read one large number from the IP memory of large numbers.
+ */
+int hw_driver_read_largenb_DBG(uint32_t, uint32_t*);
+
+/* Enable XY-shuffling
+ * (only in debug mode)
+ */
+int hw_driver_enable_xyshuf(void);
+
+/* Disable XY-shuffling
+ * (only in debug mode) */
+int hw_driver_disable_xyshuf_DBG(void);
+
+/* Enable 'on-the-fly masking of the scalar by AXI interface'
+ * countermeasure.
+ * (only in debug mode).
+ */
+int hw_driver_enable_aximsk(void);
+
+/* Disable 'on-the-fly masking of the scalar by AXI interface'
+ * countermeasure.
+ * (only in debug mode).
+ */
+int hw_driver_disable_aximsk_DBG(void);
+
+/* Enable token feature
+ * (only in debug mode).
+ */
 int hw_driver_enable_token_DBG(void);
 
-/* Patching microcode in the IP */
-int hw_driver_patch_microcode_DBG(uint32_t*, uint32_t, uint32_t);
+/* Disable token feature
+ * (only in debug mode).
+ */
+int hw_driver_disable_token_DBG(void);
+
+/* To get some more capabilties than offered by hw_driver_get_capabilities()
+ * (only in debug mode).
+ */
+int hw_driver_get_more_capabilities_DBG(uint32_t*, uint32_t*, uint32_t*, uint32_t*, uint32_t*);
+
+/* To determine if the IP is currently debug-halted
+ * (only in debug mode)
+ */
+int hw_driver_is_debug_halted_DBG(bool*);
+
+/* Is the IP currently halted on a breakpoint hit?
+ * (and if it is, return the breakpoint ID).
+ * (only in debug mode)
+ */
+int hw_driver_halted_breakpoint_hit_DBG(bool*, uint32_t*);
+
+/* Get the value of Program Counter.
+ * (only in debug mode).
+ */
+int hw_driver_get_pc_DBG(uint32_t*);
+
+/* To get the FSM state the IP is currently in.
+ * (only in debug mode).
+ */
+int hw_driver_get_fsm_state_DBG(char*, uint32_t);
+
+/* To get value of point-operation time counter.
+ * (only in debug mode).
+ */
+int hw_driver_get_time_DBG(uint32_t*);
+
+/* To assess the production throughput of TRNG raw random bits.
+ * (only in debug mode).
+ */
+int hw_driver_get_trng_raw_fifo_filling_time_DBG(uint32_t*);
+
+/* Returns the state of the TRNG FIFO of raw random bits
+ * (is it full and nb of currently stored bits).
+ * (only in debug mode).
+ */
+int hw_driver_get_trng_raw_fifo_state_DBG(bool*, uint32_t*);
+
+/* Read the whole content of the TRNG FIFO of raw random bits
+ * (only in debug mode).
+ */
+int hw_driver_get_content_of_trng_raw_random_fifo_DBG(char*, uint32_t*);
+
+/* To estimate from (debug) software the IP clock frequenciies
+ * (only in debug mode).
+ */
+int hw_driver_get_clocks_freq_DBG(uint32_t*, uint32_t*, uint32_t);
+
+/* To get all the TRNG diagnostic infos in one API call
+ * (only in debug mode) */
+int hw_driver_get_trng_diagnostics_DBG(trng_diagcnt_t*);
+
+/* To get whole hardware config as it appears in ecc_customize.vhd */
+/* TODO: REMOVE THAT! DON'T KEEP EVEN IN DEBUG MODE! */
+int hw_driver_get_hw_config_DBG(uint32_t* nn, bool* nn_dynamic, uint32_t* nbmult, uint32_t* nbdsp,
+		uint32_t* sramlat, bool* async, bool* debug, uint32_t* blinding, uint32_t* sh_type,
+		uint32_t* zremask, uint32_t* nbtrng, uint32_t* trngta, uint32_t* sz_raw,
+		uint32_t* sz_axi, uint32_t* sz_fpr, uint32_t* sz_crv, uint32_t* sz_shf,
+		uint32_t* board, uint32_t* test, uint32_t* random,
+		/* TODO: REMOVE THAT! DON'T KEEP EVEN IN DEBUG MODE! */
+		uint32_t* ww);
 
 /*
  * Error/printf formating

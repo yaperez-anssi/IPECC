@@ -94,6 +94,9 @@ package ecc_utils is
 	subtype std_logic352 is std_logic_vector(351 downto 0);
 	subtype std_logic384 is std_logic_vector(383 downto 0);
 	subtype std_logic512 is std_logic_vector(511 downto 0);
+	subtype std_logic528 is std_logic_vector(527 downto 0);
+	subtype std_logic544 is std_logic_vector(543 downto 0);
+	subtype std_logic1024 is std_logic_vector(1023 downto 0);
 
 	function std_nat(arg, size: natural) return std_logic_vector;
 

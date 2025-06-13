@@ -21,7 +21,7 @@
 #include "ecc-test-linux.h"
 
 /* Test "is point on curve?" */
-int ip_set_pt_and_check_on_curve(ipecc_test_t* t)
+int ip_test_set_pt_and_check_on_curve(ipecc_test_t* t)
 {
 	int hw_answer;
 	/*
@@ -132,7 +132,7 @@ err:
 }
 
 /* Test "are points equal?" */
-int ip_set_pts_and_test_equal(ipecc_test_t* t)
+int ip_test_set_pts_and_test_equal(ipecc_test_t* t)
 {
 	int hw_answer;
 	/*
@@ -272,7 +272,7 @@ err:
 }
 
 /* Test "are points opposite?" */
-int ip_set_pts_and_test_oppos(ipecc_test_t* t)
+int ip_test_set_pts_and_test_oppos(ipecc_test_t* t)
 {
 	int hw_answer;
 	/*

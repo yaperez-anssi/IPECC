@@ -87,6 +87,7 @@ entity ecc_curve is
 		dbgdecodepc : out std_logic_vector(IRAM_ADDR_SZ - 1 downto 0);
 		dbgbreakpointid : out std_logic_vector(1 downto 0);
 		dbgbreakpointhit : out std_logic;
+		dbgtrngcompletebypass : in std_logic;
 		-- debug features (interface with ecc_scalar)
 		dbgpgmstate : in std_logic_vector(3 downto 0);
 		dbgnbbits : in std_logic_vector(15 downto 0)
@@ -253,18 +254,18 @@ architecture rtl of ecc_curve is
 	end record;
 
 	type shuffle_reg_type is record
-		zero : std_logic_vector(1 downto 0);
-		one : std_logic_vector(1 downto 0);
-		two : std_logic_vector(1 downto 0);
-		three : std_logic_vector(1 downto 0);
-		next_zero: std_logic_vector(1 downto 0);
-		next_one : std_logic_vector(1 downto 0);
-		next_two : std_logic_vector(1 downto 0);
-		next_three : std_logic_vector(1 downto 0);
-		next_next_zero: std_logic_vector(1 downto 0);
-		next_next_one : std_logic_vector(1 downto 0);
-		next_next_two : std_logic_vector(1 downto 0);
-		next_next_three : std_logic_vector(1 downto 0);
+		adr_x0 : std_logic_vector(1 downto 0);
+		adr_y0 : std_logic_vector(1 downto 0);
+		adr_x1 : std_logic_vector(1 downto 0);
+		adr_y1 : std_logic_vector(1 downto 0);
+		next_adr_x0 : std_logic_vector(1 downto 0);
+		next_adr_y0 : std_logic_vector(1 downto 0);
+		next_adr_x1 : std_logic_vector(1 downto 0);
+		next_adr_y1 : std_logic_vector(1 downto 0);
+		next_next_adr_x0 : std_logic_vector(1 downto 0);
+		next_next_adr_y0 : std_logic_vector(1 downto 0);
+		next_next_adr_x1 : std_logic_vector(1 downto 0);
+		next_next_adr_y1 : std_logic_vector(1 downto 0);
 		trng_rdy : std_logic;
 		trng_data : std_logic_vector(1 downto 0);
 		trng_valid : std_logic;
@@ -301,22 +302,22 @@ architecture rtl of ecc_curve is
 		-- debug features
 		debug : debug_reg_type;
 		-- pragma translate_off
-		shuffle_zero : std_logic_vector(1 downto 0);
-		shuffle_zero_sw3 : std_logic_vector(1 downto 0);
-		shuffle_zero_sw2 : std_logic_vector(1 downto 0);
-		shuffle_zero_sw1 : std_logic_vector(1 downto 0);
-		shuffle_one : std_logic_vector(1 downto 0);
-		shuffle_one_sw3 : std_logic_vector(1 downto 0);
-		shuffle_one_sw2 : std_logic_vector(1 downto 0);
-		shuffle_one_sw1 : std_logic_vector(1 downto 0);
-		shuffle_two : std_logic_vector(1 downto 0);
-		shuffle_two_sw3 : std_logic_vector(1 downto 0);
-		shuffle_two_sw2 : std_logic_vector(1 downto 0);
-		shuffle_two_sw1 : std_logic_vector(1 downto 0);
-		shuffle_three : std_logic_vector(1 downto 0);
-		shuffle_three_sw3 : std_logic_vector(1 downto 0);
-		shuffle_three_sw2 : std_logic_vector(1 downto 0);
-		shuffle_three_sw1 : std_logic_vector(1 downto 0);
+		shuffle_adr_x0 : std_logic_vector(1 downto 0);
+		shuffle_adr_x0_sw3 : std_logic_vector(1 downto 0);
+		shuffle_adr_x0_sw2 : std_logic_vector(1 downto 0);
+		shuffle_adr_x0_sw1 : std_logic_vector(1 downto 0);
+		shuffle_adr_y0 : std_logic_vector(1 downto 0);
+		shuffle_adr_y0_sw3 : std_logic_vector(1 downto 0);
+		shuffle_adr_y0_sw2 : std_logic_vector(1 downto 0);
+		shuffle_adr_y0_sw1 : std_logic_vector(1 downto 0);
+		shuffle_adr_x1 : std_logic_vector(1 downto 0);
+		shuffle_adr_x1_sw3 : std_logic_vector(1 downto 0);
+		shuffle_adr_x1_sw2 : std_logic_vector(1 downto 0);
+		shuffle_adr_x1_sw1 : std_logic_vector(1 downto 0);
+		shuffle_adr_y1 : std_logic_vector(1 downto 0);
+		shuffle_adr_y1_sw3 : std_logic_vector(1 downto 0);
+		shuffle_adr_y1_sw2 : std_logic_vector(1 downto 0);
+		shuffle_adr_y1_sw1 : std_logic_vector(1 downto 0);
 		-- pragma translate_on
 	end record;
 
@@ -328,7 +329,7 @@ architecture rtl of ecc_curve is
 
 	-- address of variable OPC_VOID below must be chosen in such a way that
 	-- it does not bash any useful variable (variable OPC_VOID is used as a
-	-- dummy target varaible:
+	-- dummy target variable:
 	--   - during blinding when the result of the instruction opcode must be
 	--     discarded due to the patch, instead of being written to variable
 	--     kb0 or kb1)
@@ -410,6 +411,7 @@ begin
 	               iterate_shuffle_valid, iterate_shuffle_force, dbghalt,
 	               doblinding, opo, dbgbreakpoints, dbgpgmstate, dbgnbbits,
 	               dbgnbopcodes, dbgdosomeopcodes, dbgresume, dbgnoxyshuf,
+	               dbgtrngcompletebypass,
 	               swrst, zu, zc, r0z, r1z, ptadd,
 	               pts_are_equal, pts_are_oppos, first3pz, firstzaddu, firstzdbl)
 		variable v : reg_type;
@@ -419,22 +421,22 @@ begin
 		variable vdobranch : boolean;
 		variable v_breakpointhit : boolean;
 		variable v_breakpointnb : natural range 0 to 3;
-		variable v_shuffle_zero : std_logic_vector(1 downto 0);
-		variable v_shuffle_zero_sw3 : std_logic_vector(1 downto 0);
-		variable v_shuffle_zero_sw2 : std_logic_vector(1 downto 0);
-		variable v_shuffle_zero_sw1 : std_logic_vector(1 downto 0);
-		variable v_shuffle_one : std_logic_vector(1 downto 0);
-		variable v_shuffle_one_sw3 : std_logic_vector(1 downto 0);
-		variable v_shuffle_one_sw2 : std_logic_vector(1 downto 0);
-		variable v_shuffle_one_sw1 : std_logic_vector(1 downto 0);
-		variable v_shuffle_two : std_logic_vector(1 downto 0);
-		variable v_shuffle_two_sw3 : std_logic_vector(1 downto 0);
-		variable v_shuffle_two_sw2 : std_logic_vector(1 downto 0);
-		variable v_shuffle_two_sw1 : std_logic_vector(1 downto 0);
-		variable v_shuffle_three : std_logic_vector(1 downto 0);
-		variable v_shuffle_three_sw3 : std_logic_vector(1 downto 0);
-		variable v_shuffle_three_sw2 : std_logic_vector(1 downto 0);
-		variable v_shuffle_three_sw1 : std_logic_vector(1 downto 0);
+		variable v_shuffle_adr_x0 : std_logic_vector(1 downto 0);
+		variable v_shuffle_adr_x0_sw3 : std_logic_vector(1 downto 0);
+		variable v_shuffle_adr_x0_sw2 : std_logic_vector(1 downto 0);
+		variable v_shuffle_adr_x0_sw1 : std_logic_vector(1 downto 0);
+		variable v_shuffle_adr_y0 : std_logic_vector(1 downto 0);
+		variable v_shuffle_adr_y0_sw3 : std_logic_vector(1 downto 0);
+		variable v_shuffle_adr_y0_sw2 : std_logic_vector(1 downto 0);
+		variable v_shuffle_adr_y0_sw1 : std_logic_vector(1 downto 0);
+		variable v_shuffle_adr_x1 : std_logic_vector(1 downto 0);
+		variable v_shuffle_adr_x1_sw3 : std_logic_vector(1 downto 0);
+		variable v_shuffle_adr_x1_sw2 : std_logic_vector(1 downto 0);
+		variable v_shuffle_adr_x1_sw1 : std_logic_vector(1 downto 0);
+		variable v_shuffle_adr_y1 : std_logic_vector(1 downto 0);
+		variable v_shuffle_adr_y1_sw3 : std_logic_vector(1 downto 0);
+		variable v_shuffle_adr_y1_sw2 : std_logic_vector(1 downto 0);
+		variable v_shuffle_adr_y1_sw1 : std_logic_vector(1 downto 0);
 		variable vpar : std_logic;
 	begin
 		v := r;
@@ -528,10 +530,10 @@ begin
 				-- reinitialize number of pending instructions
 				v.ctrl.pending_ops := (others => '0');
 				v.shuffle.start := '1';
-				v.shuffle.zero := "00";
-				v.shuffle.one := "01";
-				v.shuffle.two := "10";
-				v.shuffle.three := "11";
+				v.shuffle.adr_x0 := "00";
+				v.shuffle.adr_y0 := "01";
+				v.shuffle.adr_x1 := "10";
+				v.shuffle.adr_y1 := "11";
 				v.shuffle.step := 3;
 				v.shuffle.state := "00";
 				v.shuffle.trng_rdy := '1';
@@ -2414,28 +2416,28 @@ begin
 					v.decode.a.popa := CST_ADDR_YR1;
 				elsif r.decode.patch.opax0 = '1' then
 					v.decode.a.popa := -- (1 downto 0)
-						XYR01_MSB & r.shuffle.zero;
+						XYR01_MSB & r.shuffle.adr_x0;
 				elsif r.decode.patch.opay0 = '1' then
 					v.decode.a.popa := -- (1 downto 0)
-						XYR01_MSB & r.shuffle.one;
+						XYR01_MSB & r.shuffle.adr_y0;
 				elsif r.decode.patch.opax1 = '1' then
 					v.decode.a.popa := -- (1 downto 0)
-						XYR01_MSB & r.shuffle.two;
+						XYR01_MSB & r.shuffle.adr_x1;
 				elsif r.decode.patch.opay1 = '1' then
 					v.decode.a.popa := -- (1 downto 0)
-						XYR01_MSB & r.shuffle.three;
+						XYR01_MSB & r.shuffle.adr_y1;
 				elsif r.decode.patch.opax0next = '1' then
 					v.decode.a.popa := -- (1 downto 0)
-						XYR01_MSB & r.shuffle.next_zero;
+						XYR01_MSB & r.shuffle.next_adr_x0;
 				elsif r.decode.patch.opay0next = '1' then
 					v.decode.a.popa := -- (1 downto 0)
-						XYR01_MSB & r.shuffle.next_one;
+						XYR01_MSB & r.shuffle.next_adr_y0;
 				elsif r.decode.patch.opax1next = '1' then
 					v.decode.a.popa := -- (1 downto 0)
-						XYR01_MSB & r.shuffle.next_two;
+						XYR01_MSB & r.shuffle.next_adr_x1;
 				elsif r.decode.patch.opay1next = '1' then
 					v.decode.a.popa := -- (1 downto 0)
-						XYR01_MSB & r.shuffle.next_three;
+						XYR01_MSB & r.shuffle.next_adr_y1;
 				elsif r.decode.patch.opaxtmp = '1' then
 					v.decode.a.popa := C_PATCH_XTMP;
 				elsif r.decode.patch.opaytmp = '1' then
@@ -2462,28 +2464,28 @@ begin
 					v.decode.a.popb := CST_ADDR_XR1;
 				elsif r.decode.patch.opbx0 = '1' then
 					v.decode.a.popb := -- (1 downto 0)
-						XYR01_MSB & r.shuffle.zero;
+						XYR01_MSB & r.shuffle.adr_x0;
 				elsif r.decode.patch.opby0 = '1' then
 					v.decode.a.popb := -- (1 downto 0)
-						XYR01_MSB & r.shuffle.one;
+						XYR01_MSB & r.shuffle.adr_y0;
 				elsif r.decode.patch.opbx1 = '1' then
 					v.decode.a.popb := -- (1 downto 0)
-						XYR01_MSB & r.shuffle.two;
+						XYR01_MSB & r.shuffle.adr_x1;
 				elsif r.decode.patch.opby1 = '1' then
 					v.decode.a.popb := -- (1 downto 0)
-						XYR01_MSB & r.shuffle.three;
+						XYR01_MSB & r.shuffle.adr_y1;
 				elsif r.decode.patch.opbx0next = '1' then
 					v.decode.a.popb := -- (1 downto 0)
-						XYR01_MSB & r.shuffle.next_zero;
+						XYR01_MSB & r.shuffle.next_adr_x0;
 				elsif r.decode.patch.opby0next = '1' then
 					v.decode.a.popb := -- (1 downto 0)
-						XYR01_MSB & r.shuffle.next_one;
+						XYR01_MSB & r.shuffle.next_adr_y0;
 				elsif r.decode.patch.opbx1next = '1' then
 					v.decode.a.popb := -- (1 downto 0)
-						XYR01_MSB & r.shuffle.next_two;
+						XYR01_MSB & r.shuffle.next_adr_x1;
 				elsif r.decode.patch.opby1next = '1' then
 					v.decode.a.popb := -- (1 downto 0)
-						XYR01_MSB & r.shuffle.next_three;
+						XYR01_MSB & r.shuffle.next_adr_y1;
 				elsif r.decode.patch.opbz = '1' then
 					v.decode.a.popb := C_PATCH_ZERO;
 				elsif r.decode.patch.opbr = '1' then
@@ -2494,22 +2496,22 @@ begin
 				-- ---
 				if r.decode.patch.opcx1 = '1' then
 					v.decode.a.popc := -- (1 downto 0)
-						XYR01_MSB & r.shuffle.two;
+						XYR01_MSB & r.shuffle.adr_x1;
 				elsif r.decode.patch.opcy1 = '1' then
 					v.decode.a.popc := -- (1 downto 0)
-						XYR01_MSB & r.shuffle.three;
+						XYR01_MSB & r.shuffle.adr_y1;
 				elsif r.decode.patch.opcx0next = '1' then
 					v.decode.a.popc := -- (1 downto 0)
-						XYR01_MSB & r.shuffle.next_zero;
+						XYR01_MSB & r.shuffle.next_adr_x0;
 				elsif r.decode.patch.opcy0next = '1' then
 					v.decode.a.popc := -- (1 downto 0)
-						XYR01_MSB & r.shuffle.next_one;
+						XYR01_MSB & r.shuffle.next_adr_y0;
 				elsif r.decode.patch.opcx1next = '1' then
 					v.decode.a.popc := -- (1 downto 0)
-						XYR01_MSB & r.shuffle.next_two;
+						XYR01_MSB & r.shuffle.next_adr_x1;
 				elsif r.decode.patch.opcy1next = '1' then
 					v.decode.a.popc := -- (1 downto 0)
-						XYR01_MSB & r.shuffle.next_three;
+						XYR01_MSB & r.shuffle.next_adr_y1;
 				elsif r.decode.patch.opccopiesopa = '1' then
 					v.decode.a.popc := r.decode.a.popa;
 				elsif r.decode.patch.opcvoid = '1' then
@@ -2520,10 +2522,10 @@ begin
 					v.decode.a.popc := C_PATCH_KB1;
 				elsif r.decode.patch.opcx0 = '1' then
 					v.decode.a.popc := -- (1 downto 0)
-						XYR01_MSB & r.shuffle.zero;
+						XYR01_MSB & r.shuffle.adr_x0;
 				elsif r.decode.patch.opcy0 = '1' then
 					v.decode.a.popc := -- (1 downto 0)
-						XYR01_MSB & r.shuffle.one;
+						XYR01_MSB & r.shuffle.adr_y0;
 				elsif r.decode.patch.opcx0det = '1' then
 					v.decode.a.popc := CST_ADDR_XR0;
 				elsif r.decode.patch.opcy0det = '1' then
@@ -2781,7 +2783,11 @@ begin
 			if r.shuffle.step = 3 then
 				-- in this step all possible 2-bit values can be used (no TRNG data
 				-- shall be lost)
-				v.shuffle.sw3 := r.shuffle.trng_data;
+				if debug and dbgtrngcompletebypass = '1' then
+					v.shuffle.sw3 := "11";
+				else
+					v.shuffle.sw3 := r.shuffle.trng_data;
+				end if;
 				v.shuffle.trng_valid := '0';
 				v.shuffle.trng_rdy := '1';
 				v.shuffle.step := 2;
@@ -2791,11 +2797,16 @@ begin
 			elsif r.shuffle.step = 2 then
 				-- in this step only 2-bit values 00, 01 and 10 are acceptable
 				-- (TRNG data 11 is useless and must be discarded)
-				if r.shuffle.trng_data = "00" or r.shuffle.trng_data = "01" or
-			 		r.shuffle.trng_data = "10"
-				then
-					v.shuffle.sw2 := r.shuffle.trng_data;
+				if debug and dbgtrngcompletebypass = '1' then
+					v.shuffle.sw2 := "10";
 					v.shuffle.step := 1;
+				else
+					if r.shuffle.trng_data = "00" or r.shuffle.trng_data = "01" or
+						r.shuffle.trng_data = "10"
+					then
+						v.shuffle.sw2 := r.shuffle.trng_data;
+						v.shuffle.step := 1;
+					end if;
 				end if;
 				v.shuffle.trng_valid := '0';
 				v.shuffle.trng_rdy := '1';
@@ -2804,7 +2815,11 @@ begin
 				-- but we can avoid losing TRNG data by regrouping 00 and 10
 				-- as one single element and doing the same for 10 and 11
 				-- values
-				v.shuffle.sw1 := '0' & r.shuffle.trng_data(0);
+				if debug and dbgtrngcompletebypass = '1' then
+					v.shuffle.sw1 := "01";
+				else
+					v.shuffle.sw1 := '0' & r.shuffle.trng_data(0);
+				end if;
 				-- prepare next random draw from TRNG
 				v.shuffle.trng_valid := '0';
 				v.shuffle.trng_rdy := '1'; -- (s42)
@@ -2822,282 +2837,247 @@ begin
 		-- applying the permutation (using r.shuffle.sw[123] computed previously)
 		-- ------------------------
 		-- all v_shuffle_xxx[_sw[321]] variables below designate combinational
-		-- signals (whatever the if statement they go through their value is
-		-- always defined) and are only here to store as intermediate results
-		-- in the computation of r.shuffle.next_zero/one/two/three registers
+		-- signals (whatever the if statement they go through, their value is
+		-- always defined) and are only here as intermediate results in the
+		-- computation of r.shuffle.next_adr_x0/y0/x1/y1 registers
 
 		-- ---------------------------------------------------------------------
-		--   1st stem of permutation (r.shuffle.zero)
+		--   1st stem of permutation (r.shuffle.adr_x0)
 		-- ---------------------------------------------------------------------
 		--     select input
-		--       (depending on either this is the first time of [k]P computation
-		--       or not, permutation should be made on r.shuffle.zero - if it's the
-		--       first time - or on r.shuffle.next_zero otherwise)
+		--       (depending on whether this is the first time of [k]P computation
+		--       or not, permutation should be made on r.shuffle.adr_x0 - if it's the
+		--       first time - or on r.shuffle.next_adr_x0 otherwise)
 		if r.shuffle.start = '1' then
-			v_shuffle_zero := r.shuffle.zero;
+			v_shuffle_adr_x0 := r.shuffle.adr_x0;
 		else --if r.shuffle.start = '0' then
-			v_shuffle_zero := r.shuffle.next_zero;
+			v_shuffle_adr_x0 := r.shuffle.next_adr_x0;
 		end if;
 		--     1st transposition
-		if v_shuffle_zero = "11" then
-			v_shuffle_zero_sw3 := r.shuffle.sw3;
-		elsif v_shuffle_zero = r.shuffle.sw3 then
-			v_shuffle_zero_sw3 := "11";
-		else
-			v_shuffle_zero_sw3 := v_shuffle_zero;
+		if    v_shuffle_adr_x0 = "11"              then v_shuffle_adr_x0_sw3 :=        r.shuffle.sw3;
+		elsif v_shuffle_adr_x0 = r.shuffle.sw3     then v_shuffle_adr_x0_sw3 :=                 "11";
+		else                                            v_shuffle_adr_x0_sw3 :=     v_shuffle_adr_x0;
 		end if;
 		--     2nd transposition
-		if v_shuffle_zero_sw3 = "10" then
-			v_shuffle_zero_sw2 := r.shuffle.sw2;
-		elsif v_shuffle_zero_sw3 = r.shuffle.sw2 then
-			v_shuffle_zero_sw2 := "10";
-		else
-			v_shuffle_zero_sw2 := v_shuffle_zero_sw3;
+		if    v_shuffle_adr_x0_sw3 = "10"          then v_shuffle_adr_x0_sw2 :=        r.shuffle.sw2;
+		elsif v_shuffle_adr_x0_sw3 = r.shuffle.sw2 then v_shuffle_adr_x0_sw2 :=                 "10";
+		else                                            v_shuffle_adr_x0_sw2 := v_shuffle_adr_x0_sw3;
 		end if;
 		--     3rd transposition (last)
-		if v_shuffle_zero_sw2 = "01" then
-			v_shuffle_zero_sw1 := r.shuffle.sw1;
-		elsif v_shuffle_zero_sw2 = r.shuffle.sw1 then
-			v_shuffle_zero_sw1 := "01";
-		else
-			v_shuffle_zero_sw1 := v_shuffle_zero_sw2;
+		if    v_shuffle_adr_x0_sw2 = "01"          then v_shuffle_adr_x0_sw1 :=        r.shuffle.sw1;
+		elsif v_shuffle_adr_x0_sw2 = r.shuffle.sw1 then v_shuffle_adr_x0_sw1 :=                 "01";
+		else                                            v_shuffle_adr_x0_sw1 := v_shuffle_adr_x0_sw2;
 		end if;
 		--     select output
 		--       (depending on whether it is the first time of [k]P computation,
-		--       permutation should be iterated into r.shuffle.next_zero (if it's
-		--       the first time) or into r.shuffle.next_next_zero (if it's not)
+		--       permutation should be iterated into r.shuffle.next_adr_x0 (if it's
+		--       the first time) or into r.shuffle.next_next_adr_x0 (if it's not)
 		--           TODO: set a multicycle on all paths:
-		--                       r.shuffle.zero -> r.shuffle.next_zero
-		--                       r.shuffle.sw[321] -> r.shuffle.next_zero
-		--                       r.shuffle.next_zero -> r.shuffle.next_next_zero
-		--                       r.shuffle.sw[321] -> r.shuffle.next_next_zero
+		--                       r.shuffle.adr_x0 -> r.shuffle.next_adr_x0
+		--                       r.shuffle.sw[321] -> r.shuffle.next_adr_x0
+		--                       r.shuffle.next_adr_x0 -> r.shuffle.next_next_adr_x0
+		--                       r.shuffle.sw[321] -> r.shuffle.next_next_adr_x0
 		--           (but in this case arm a small counter & wait for it before
 		--           having (s43) asserting r.shuffle.state)
 		if r.shuffle.start = '1' then
-			v.shuffle.next_zero := v_shuffle_zero_sw1;
+			v.shuffle.next_adr_x0 := v_shuffle_adr_x0_sw1;
 		else --if r.shuffle.start = '0' then
-			v.shuffle.next_next_zero := v_shuffle_zero_sw1;
+			v.shuffle.next_next_adr_x0 := v_shuffle_adr_x0_sw1;
 		end if;
 
 		-- pragma translate_off
-		v.shuffle_zero := v_shuffle_zero;
-		v.shuffle_zero_sw3 := v_shuffle_zero_sw3;
-		v.shuffle_zero_sw2 := v_shuffle_zero_sw2;
-		v.shuffle_zero_sw1 := v_shuffle_zero_sw1;
+		v.shuffle_adr_x0     := v_shuffle_adr_x0;
+		v.shuffle_adr_x0_sw3 := v_shuffle_adr_x0_sw3;
+		v.shuffle_adr_x0_sw2 := v_shuffle_adr_x0_sw2;
+		v.shuffle_adr_x0_sw1 := v_shuffle_adr_x0_sw1;
 		-- pragma translate_on
 
 		-- ---------------------------------------------------------------------
-		--   2nd stem of permutation (r.shuffle.one)
+		--   2nd stem of permutation (r.shuffle.adr_y0)
 		-- ---------------------------------------------------------------------
 		--     select input
 		--       (depending on this is the first time or not of [k]P computation
-		--       permutation should be iterated on r.shuffle.one - if it's the
-		--       first time - or on r.shuffle.next_one otherwise)
+		--       permutation should be iterated on r.shuffle.adr_y0 - if it's the
+		--       first time - or on r.shuffle.next_adr_y0 otherwise)
 		-- ---------------------------------------------------------------------
 		if r.shuffle.start = '1' then
-			v_shuffle_one := r.shuffle.one;
+			v_shuffle_adr_y0 := r.shuffle.adr_y0;
 		else --if r.shuffle.start = '0' then
-			v_shuffle_one := r.shuffle.next_one;
+			v_shuffle_adr_y0 := r.shuffle.next_adr_y0;
 		end if;
 		--     1st transposition
-		if v_shuffle_one = "11" then
-			v_shuffle_one_sw3 := r.shuffle.sw3;
-		elsif v_shuffle_one = r.shuffle.sw3 then
-			v_shuffle_one_sw3 := "11";
-		else
-			v_shuffle_one_sw3 := v_shuffle_one;
+		if    v_shuffle_adr_y0 = "11"              then v_shuffle_adr_y0_sw3 :=     r.shuffle.sw3;
+		elsif v_shuffle_adr_y0 = r.shuffle.sw3     then v_shuffle_adr_y0_sw3 :=              "11";
+		else                                         v_shuffle_adr_y0_sw3 :=     v_shuffle_adr_y0;
 		end if;
 		--     2nd transposition
-		if v_shuffle_one_sw3 = "10" then
-			v_shuffle_one_sw2 := r.shuffle.sw2;
-		elsif v_shuffle_one_sw3 = r.shuffle.sw2 then
-			v_shuffle_one_sw2 := "10";
-		else
-			v_shuffle_one_sw2 := v_shuffle_one_sw3;
+		if    v_shuffle_adr_y0_sw3 = "10"          then v_shuffle_adr_y0_sw2 :=     r.shuffle.sw2;
+		elsif v_shuffle_adr_y0_sw3 = r.shuffle.sw2 then v_shuffle_adr_y0_sw2 :=              "10";
+		else                                         v_shuffle_adr_y0_sw2 := v_shuffle_adr_y0_sw3;
 		end if;
 		--     3rd transposition (last)
-		if v_shuffle_one_sw2 = "01" then
-			v_shuffle_one_sw1 := r.shuffle.sw1;
-		elsif v_shuffle_one_sw2 = r.shuffle.sw1 then
-			v_shuffle_one_sw1 := "01";
-		else
-			v_shuffle_one_sw1 := v_shuffle_one_sw2;
+		if    v_shuffle_adr_y0_sw2 = "01"          then v_shuffle_adr_y0_sw1 :=     r.shuffle.sw1;
+		elsif v_shuffle_adr_y0_sw2 = r.shuffle.sw1 then v_shuffle_adr_y0_sw1 :=              "01";
+		else                                         v_shuffle_adr_y0_sw1 := v_shuffle_adr_y0_sw2;
 		end if;
 		--     select output
 		--       (depending on this is the first time or not of [k]P computation
-		--       permutation should be iterated into r.shuffle.next_one (if it's
-		--       the first time, or into r.shuffle.next_next_one otherwise)
+		--       permutation should be iterated into r.shuffle.next_adr_y0 (if it's
+		--       the first time, or into r.shuffle.next_next_adr_y0 otherwise)
 		--           TODO: set a multicycle on all paths:
-		--                       r.shuffle.one -> r.shuffle.next_one
-		--                       r.shuffle.sw[321] -> r.shuffle.next_one
-		--                       r.shuffle.next_one -> r.shuffle.next_next_one
-		--                       r.shuffle.sw[321] -> r.shuffle.next_next_one
+		--                       r.shuffle.adr_y0 -> r.shuffle.next_adr_y0
+		--                       r.shuffle.sw[321] -> r.shuffle.next_adr_y0
+		--                       r.shuffle.next_adr_y0 -> r.shuffle.next_next_adr_y0
+		--                       r.shuffle.sw[321] -> r.shuffle.next_next_adr_y0
 		--           (but in this case arm a small counter & wait for it before
 		--           having (s43) asserting r.shuffle.state)
 		if r.shuffle.start = '1' then
-			v.shuffle.next_one := v_shuffle_one_sw1;
+			v.shuffle.next_adr_y0 := v_shuffle_adr_y0_sw1;
 		else --if r.shuffle.start = '0' then
-			v.shuffle.next_next_one := v_shuffle_one_sw1;
+			v.shuffle.next_next_adr_y0 := v_shuffle_adr_y0_sw1;
 		end if;
 
 		-- pragma translate_off
-		v.shuffle_one := v_shuffle_one;
-		v.shuffle_one_sw3 := v_shuffle_one_sw3;
-		v.shuffle_one_sw2 := v_shuffle_one_sw2;
-		v.shuffle_one_sw1 := v_shuffle_one_sw1;
+		v.shuffle_adr_y0 := v_shuffle_adr_y0;
+		v.shuffle_adr_y0_sw3 := v_shuffle_adr_y0_sw3;
+		v.shuffle_adr_y0_sw2 := v_shuffle_adr_y0_sw2;
+		v.shuffle_adr_y0_sw1 := v_shuffle_adr_y0_sw1;
 		-- pragma translate_on
 
 		-- ---------------------------------------------------------------------
-		--   3rd stem of permutation (r.shuffle.two)
+		--   3rd stem of permutation (r.shuffle.adr_x1)
 		-- ---------------------------------------------------------------------
 		--     select input
 		--       (depending on this is the first time or not of [k]P computation
-		--       permutation should be iterated on r.shuffle.two - if it's the
-		--       first time - or on r.shuffle.next_two otherwise)
+		--       permutation should be iterated on r.shuffle.adr_x1 - if it's the
+		--       first time - or on r.shuffle.next_adr_x1 otherwise)
 		-- ---------------------------------------------------------------------
 		if r.shuffle.start = '1' then
-			v_shuffle_two := r.shuffle.two;
+			v_shuffle_adr_x1 := r.shuffle.adr_x1;
 		else --if r.shuffle.start = '0' then
-			v_shuffle_two := r.shuffle.next_two;
+			v_shuffle_adr_x1 := r.shuffle.next_adr_x1;
 		end if;
 		--     1st transposition
-		if v_shuffle_two = "11" then
-			v_shuffle_two_sw3 := r.shuffle.sw3;
-		elsif v_shuffle_two = r.shuffle.sw3 then
-			v_shuffle_two_sw3 := "11";
-		else
-			v_shuffle_two_sw3 := v_shuffle_two;
+		if    v_shuffle_adr_x1 = "11"              then v_shuffle_adr_x1_sw3 :=     r.shuffle.sw3;
+		elsif v_shuffle_adr_x1 = r.shuffle.sw3     then v_shuffle_adr_x1_sw3 :=              "11";
+		else                                         v_shuffle_adr_x1_sw3 :=     v_shuffle_adr_x1;
 		end if;
 		--     2nd transposition
-		if v_shuffle_two_sw3 = "10" then
-			v_shuffle_two_sw2 := r.shuffle.sw2;
-		elsif v_shuffle_two_sw3 = r.shuffle.sw2 then
-			v_shuffle_two_sw2 := "10";
-		else
-			v_shuffle_two_sw2 := v_shuffle_two_sw3;
+		if    v_shuffle_adr_x1_sw3 = "10"          then v_shuffle_adr_x1_sw2 :=     r.shuffle.sw2;
+		elsif v_shuffle_adr_x1_sw3 = r.shuffle.sw2 then v_shuffle_adr_x1_sw2 :=              "10";
+		else                                         v_shuffle_adr_x1_sw2 := v_shuffle_adr_x1_sw3;
 		end if;
 		--     3rd transposition (last)
-		if v_shuffle_two_sw2 = "01" then
-			v_shuffle_two_sw1 := r.shuffle.sw1;
-		elsif v_shuffle_two_sw2 = r.shuffle.sw1 then
-			v_shuffle_two_sw1 := "01";
-		else
-			v_shuffle_two_sw1 := v_shuffle_two_sw2;
+		if    v_shuffle_adr_x1_sw2 = "01"          then v_shuffle_adr_x1_sw1 :=     r.shuffle.sw1;
+		elsif v_shuffle_adr_x1_sw2 = r.shuffle.sw1 then v_shuffle_adr_x1_sw1 :=              "01";
+		else                                         v_shuffle_adr_x1_sw1 := v_shuffle_adr_x1_sw2;
 		end if;
 		--     select ouput
 		--       (depending on this is the first time or not of [k]P computation
-		--       permutation should be iterated into r.shuffle.next_two (if it's
-		--       the first time, or into r.shuffle.next_next_two otherwise)
+		--       permutation should be iterated into r.shuffle.next_adr_x1 (if it's
+		--       the first time, or into r.shuffle.next_next_adr_x1 otherwise)
 		--           TODO: set a multicycle on all paths:
-		--                       r.shuffle.two -> r.shuffle.next_two
-		--                       r.shuffle.sw[321] -> r.shuffle.next_two
-		--                       r.shuffle.next_two -> r.shuffle.next_next_two
-		--                       r.shuffle.sw[321] -> r.shuffle.next_next_two
+		--                       r.shuffle.adr_x1 -> r.shuffle.next_adr_x1
+		--                       r.shuffle.sw[321] -> r.shuffle.next_adr_x1
+		--                       r.shuffle.next_adr_x1 -> r.shuffle.next_next_adr_x1
+		--                       r.shuffle.sw[321] -> r.shuffle.next_next_adr_x1
 		--           (but in this case arm a small counter & wait for it before
 		--           having (s43) asserting r.shuffle.state)
 		if r.shuffle.start = '1' then
-			v.shuffle.next_two := v_shuffle_two_sw1;
+			v.shuffle.next_adr_x1 := v_shuffle_adr_x1_sw1;
 		else --if r.shuffle.start = '0' then
-			v.shuffle.next_next_two := v_shuffle_two_sw1;
+			v.shuffle.next_next_adr_x1 := v_shuffle_adr_x1_sw1;
 		end if;
 
 		-- pragma translate_off
-		v.shuffle_two := v_shuffle_two;
-		v.shuffle_two_sw3 := v_shuffle_two_sw3;
-		v.shuffle_two_sw2 := v_shuffle_two_sw2;
-		v.shuffle_two_sw1 := v_shuffle_two_sw1;
+		v.shuffle_adr_x1 := v_shuffle_adr_x1;
+		v.shuffle_adr_x1_sw3 := v_shuffle_adr_x1_sw3;
+		v.shuffle_adr_x1_sw2 := v_shuffle_adr_x1_sw2;
+		v.shuffle_adr_x1_sw1 := v_shuffle_adr_x1_sw1;
 		-- pragma translate_on
 
 		-- ---------------------------------------------------------------------
-		--   4th stem of permutation (r.shuffle.three)
+		--   4th stem of permutation (r.shuffle.adr_y1)
 		--     (depending on this is the first time or not of [k]P computation
-		--     permutation should be iterated on r.shuffle.three (if it's the
-		--     first time, or from r.shuffle.next_three otherwise)
+		--     permutation should be iterated on r.shuffle.adr_y1 (if it's the
+		--     first time, or from r.shuffle.next_adr_y1 otherwise)
 		-- ---------------------------------------------------------------------
 		if r.shuffle.start = '1' then
-			v_shuffle_three := r.shuffle.three;
+			v_shuffle_adr_y1 := r.shuffle.adr_y1;
 		else --if r.shuffle.start = '0' then
-			v_shuffle_three := r.shuffle.next_three;
+			v_shuffle_adr_y1 := r.shuffle.next_adr_y1;
 		end if;
 		--     1st transposition
-		if v_shuffle_three = "11" then
-			v_shuffle_three_sw3 := r.shuffle.sw3;
-		elsif v_shuffle_three = r.shuffle.sw3 then
-			v_shuffle_three_sw3 := "11";
-		else
-			v_shuffle_three_sw3 := v_shuffle_three;
+		if    v_shuffle_adr_y1 = "11"              then v_shuffle_adr_y1_sw3 :=       r.shuffle.sw3;
+		elsif v_shuffle_adr_y1 = r.shuffle.sw3     then v_shuffle_adr_y1_sw3 :=                "11";
+		else                                           v_shuffle_adr_y1_sw3 :=     v_shuffle_adr_y1;
 		end if;
 		--     2nd transposition
-		if v_shuffle_three_sw3 = "10" then
-			v_shuffle_three_sw2 := r.shuffle.sw2;
-		elsif v_shuffle_three_sw3 = r.shuffle.sw2 then
-			v_shuffle_three_sw2 := "10";
-		else
-			v_shuffle_three_sw2 := v_shuffle_three_sw3;
+		if    v_shuffle_adr_y1_sw3 = "10"          then v_shuffle_adr_y1_sw2 :=       r.shuffle.sw2;
+		elsif v_shuffle_adr_y1_sw3 = r.shuffle.sw2 then v_shuffle_adr_y1_sw2 :=                "10";
+		else                                           v_shuffle_adr_y1_sw2 := v_shuffle_adr_y1_sw3;
 		end if;
 		--     3rd transposition (last)
-		if v_shuffle_three_sw2 = "01" then
-			v_shuffle_three_sw1 := r.shuffle.sw1;
-		elsif v_shuffle_three_sw2 = r.shuffle.sw1 then
-			v_shuffle_three_sw1 := "01";
-		else
-			v_shuffle_three_sw1 := v_shuffle_three_sw2;
+		if    v_shuffle_adr_y1_sw2 = "01"          then v_shuffle_adr_y1_sw1 :=       r.shuffle.sw1;
+		elsif v_shuffle_adr_y1_sw2 = r.shuffle.sw1 then v_shuffle_adr_y1_sw1 :=                "01";
+		else                                           v_shuffle_adr_y1_sw1 := v_shuffle_adr_y1_sw2;
 		end if;
 		--     (depending on this is the first time or not of [k]P computation
-		--     permutation should be iterated into r.shuffle.next_three (if it's
-		--     the first time, or into r.shuffle.next_next_three otherwise)
+		--     permutation should be iterated into r.shuffle.next_adr_y1 (if it's
+		--     the first time, or into r.shuffle.next_next_adr_y1 otherwise)
 		--         TODO: set a multicycle on all paths:
-		--                     r.shuffle.three -> r.shuffle.next_three
-		--                     r.shuffle.sw[321] -> r.shuffle.next_three
-		--                     r.shuffle.next_three -> r.shuffle.next_next_three
-		--                     r.shuffle.sw[321] -> r.shuffle.next_next_three
+		--                     r.shuffle.adr_y1 -> r.shuffle.next_adr_y1
+		--                     r.shuffle.sw[321] -> r.shuffle.next_adr_y1
+		--                     r.shuffle.next_adr_y1 -> r.shuffle.next_next_adr_y1
+		--                     r.shuffle.sw[321] -> r.shuffle.next_next_adr_y1
 		--         (but in this case arm a small counter & wait for it before
 		--         having (s43) asserting r.shuffle.state)
 		if r.shuffle.start = '1' then
-			v.shuffle.next_three := v_shuffle_three_sw1;
+			v.shuffle.next_adr_y1 := v_shuffle_adr_y1_sw1;
 		else -- if r.shuffle.start = '0' then
-			v.shuffle.next_next_three := v_shuffle_three_sw1;
+			v.shuffle.next_next_adr_y1 := v_shuffle_adr_y1_sw1;
 		end if;
 		
 		-- pragma translate_off
-		v.shuffle_three := v_shuffle_three;
-		v.shuffle_three_sw3 := v_shuffle_three_sw3;
-		v.shuffle_three_sw2 := v_shuffle_three_sw2;
-		v.shuffle_three_sw1 := v_shuffle_three_sw1;
+		v.shuffle_adr_y1 := v_shuffle_adr_y1;
+		v.shuffle_adr_y1_sw3 := v_shuffle_adr_y1_sw3;
+		v.shuffle_adr_y1_sw2 := v_shuffle_adr_y1_sw2;
+		v.shuffle_adr_y1_sw1 := v_shuffle_adr_y1_sw1;
 		-- pragma translate_on
 
 		-- handshake w/ ecc_scalar
 		if r.shuffle.state(0) = '1' and iterate_shuffle_valid = '1' then
-			v.shuffle.zero := r.shuffle.next_zero;
-			v.shuffle.one := r.shuffle.next_one;
-			v.shuffle.two := r.shuffle.next_two;
-			v.shuffle.three := r.shuffle.next_three;
-			v.shuffle.next_zero := r.shuffle.next_next_zero;
-			v.shuffle.next_one := r.shuffle.next_next_one;
-			v.shuffle.next_two := r.shuffle.next_next_two;
-			v.shuffle.next_three := r.shuffle.next_next_three;
+			v.shuffle.adr_x0 := r.shuffle.next_adr_x0;
+			v.shuffle.adr_y0 := r.shuffle.next_adr_y0;
+			v.shuffle.adr_x1 := r.shuffle.next_adr_x1;
+			v.shuffle.adr_y1 := r.shuffle.next_adr_y1;
+			v.shuffle.next_adr_x0 := r.shuffle.next_next_adr_x0;
+			v.shuffle.next_adr_y0 := r.shuffle.next_next_adr_y0;
+			v.shuffle.next_adr_x1 := r.shuffle.next_next_adr_x1;
+			v.shuffle.next_adr_y1 := r.shuffle.next_next_adr_y1;
 			v.shuffle.state := "00";
 			-- v.shuffle.step := 3; -- useless, already done by (s44)
 			-- no need to reassert r.shuffle.trng_rdy, this was already done by (s42)
 		elsif iterate_shuffle_force = '1' then
-			v.shuffle.zero := r.shuffle.next_zero;
-			v.shuffle.one := r.shuffle.next_one;
-			v.shuffle.two := r.shuffle.next_two;
-			v.shuffle.three := r.shuffle.next_three;
+			v.shuffle.adr_x0 := r.shuffle.next_adr_x0;
+			v.shuffle.adr_y0 := r.shuffle.next_adr_y0;
+			v.shuffle.adr_x1 := r.shuffle.next_adr_x1;
+			v.shuffle.adr_y1 := r.shuffle.next_adr_y1;
 		end if;
 
 		-- in debug mode, shuffled addresses can be bypassed with deterministic
 		-- constants of coordinates [XY]R[01]
 		if debug then
-			if dbgnoxyshuf = '1' then
-				v.shuffle.zero := "00";
-				v.shuffle.one := "01";
-				v.shuffle.two := "10";
-				v.shuffle.three := "11";
-				v.shuffle.next_zero := "00";
-				v.shuffle.next_one := "01";
-				v.shuffle.next_two := "10";
-				v.shuffle.next_three := "11";
+			if dbgnoxyshuf = '1' --or dbgtrngcompletebypass = '1'
+			then
+				v.shuffle.adr_x0 := "00";
+				v.shuffle.adr_y0 := "01";
+				v.shuffle.adr_x1 := "10";
+				v.shuffle.adr_y1 := "11";
+				v.shuffle.next_adr_x0 := "00";
+				v.shuffle.next_adr_y0 := "01";
+				v.shuffle.next_adr_x1 := "10";
+				v.shuffle.next_adr_y1 := "11";
 			end if;
 		end if;
 
@@ -3130,7 +3110,7 @@ begin
 			v.err_flags := (others => '0');
 			-- shuffle
 			v.shuffle.trng_rdy := '0';
-			-- no need to reset r.shuffle.zero/.one/.two/.three
+			-- no need to reset r.shuffle.adr_x0/.adr_y0/.adr_x1/.adr_y1
 			-- no need to reset r.shuffle.step/.state/.start
 			v.shuffle.trng_valid := '0';
 			-- no need to reset the r.shuffle.next_ registers
@@ -3190,7 +3170,7 @@ begin
 	frdy <= r.frdy;
 	ferr <= r.err;
 	zero <= r.ctrl.z;
-	iterate_shuffle_rdy <= r.shuffle.state(0);
+	iterate_shuffle_rdy <= r.shuffle.state(0); -- (s119)
 	xmxz <= r.ctrl.xmxz;
 	ymyz <= r.ctrl.ymyz;
 	first2pz <= r.ctrl.first2pz;
@@ -3245,10 +3225,10 @@ begin
 	nop <= '1' when r.decode.state = decode and r.decode.c.optype = OPCODE_NOP
 				 else '0';
 	imma <= r.decode.b.imma;
-	xr0addr <= r.shuffle.next_zero;
-	yr0addr <= r.shuffle.next_one;
-	xr1addr <= r.shuffle.next_two;
-	yr1addr <= r.shuffle.next_three;
+	xr0addr <= r.shuffle.next_adr_x0;
+	yr0addr <= r.shuffle.next_adr_y0;
+	xr1addr <= r.shuffle.next_adr_x1;
+	yr1addr <= r.shuffle.next_adr_y1;
 	opi.parsh <= r.decode.a.tparsh;
 	opi.oposhr <= opo.shr(to_integer(unsigned(r.decode.a.popb(1 downto 0))));
 	stop <= r.decode.c.stop;

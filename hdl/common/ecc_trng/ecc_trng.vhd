@@ -43,17 +43,17 @@ entity ecc_trng is
 		rdy1 : in std_logic;
 		valid1 : out std_logic;
 		data1 : out std_logic_vector(ww - 1 downto 0);
-		irncount1 : out std_logic_vector(log2(irn_fifo_size_fp) - 1 downto 0);
+		irncount1 : out std_logic_vector(log2(irn_fifo_size_efp) - 1 downto 0);
 		-- interface with entropy client ecc_curve
 		rdy2 : in std_logic;
 		valid2 : out std_logic;
 		data2 : out std_logic_vector(1 downto 0);
-		irncount2 : out std_logic_vector(log2(irn_fifo_size_curve) - 1 downto 0);
+		irncount2 : out std_logic_vector(log2(irn_fifo_size_crv) - 1 downto 0);
 		-- interface with entropy client ecc_fp_dram_sh
 		rdy3 : in std_logic;
 		valid3 : out std_logic;
 		data3 : out std_logic_vector(irn_width_sh - 1 downto 0);
-		irncount3 : out std_logic_vector(log2(irn_fifo_size_sh) - 1 downto 0);
+		irncount3 : out std_logic_vector(log2(irn_fifo_size_shf) - 1 downto 0);
 		-- interface with ecc_axi (only usable in debug mode)
 		dbgtrngta : in unsigned(15 downto 0);
 		dbgtrngrawreset : in std_logic;
@@ -67,12 +67,15 @@ entity ecc_trng is
 		dbgtrngrawduration : out unsigned(31 downto 0);
 		dbgtrngvonneuman : in std_logic;
 		dbgtrngidletime : in unsigned(3 downto 0);
+		dbgtrngrawcount : out std_logic_vector(log2(raw_ram_size) - 1 downto 0);
 		dbgtrngusepseudosource : in std_logic;
 		dbgtrngrawpullppdis : in std_logic;
 		-- interface with the external pseudo TRNG component
 		dbgpseudotrngdata : in std_logic_vector(7 downto 0);
 		dbgpseudotrngvalid : in std_logic;
-		dbgpseudotrngrdy : out std_logic
+		dbgpseudotrngrdy : out std_logic;
+		dbgtrngrawrdy : out std_logic;
+		dbgtrngrawvalid : out std_logic
 	);
 end entity ecc_trng;
 
@@ -97,7 +100,8 @@ architecture rtl of ecc_trng is
 			dbgtrngrawfiforeaddis : in std_logic;
 			dbgtrngrawduration : out unsigned(31 downto 0);
 			dbgtrngvonneuman : in std_logic;
-			dbgtrngidletime : in unsigned(3 downto 0)
+			dbgtrngidletime : in unsigned(3 downto 0);
+			dbgtrngrawcount : out std_logic_vector(log2(raw_ram_size) - 1 downto 0)
 		);
 	end component es_trng;
 
@@ -121,7 +125,8 @@ architecture rtl of ecc_trng is
 			dbgtrngrawfiforeaddis : in std_logic;
 			dbgtrngrawduration : out unsigned(31 downto 0);
 			dbgtrngvonneuman : in std_logic;
-			dbgtrngidletime : in unsigned(3 downto 0)
+			dbgtrngidletime : in unsigned(3 downto 0);
+			dbgtrngrawcount : out std_logic_vector(log2(raw_ram_size) - 1 downto 0)
 		);
 	end component es_trng_sim;
 	-- pragma translate_on
@@ -170,17 +175,17 @@ architecture rtl of ecc_trng is
 			rdy1 : in std_logic;
 			valid1 : out std_logic;
 			data1 : out std_logic_vector(ww - 1 downto 0);
-			irncount1 : out std_logic_vector(log2(irn_fifo_size_fp) - 1 downto 0);
+			irncount1 : out std_logic_vector(log2(irn_fifo_size_efp) - 1 downto 0);
 			-- interface with entropy client ecc_curve
 			rdy2 : in std_logic;
 			valid2 : out std_logic;
 			data2 : out std_logic_vector(1 downto 0);
-			irncount2 : out std_logic_vector(log2(irn_fifo_size_curve) - 1 downto 0);
+			irncount2 : out std_logic_vector(log2(irn_fifo_size_crv) - 1 downto 0);
 			-- interface with entropy client ecc_fp_dram_sh
 			rdy3 : in std_logic;
 			valid3 : out std_logic;
 			data3 : out std_logic_vector(irn_width_sh - 1 downto 0);
-			irncount3 : out std_logic_vector(log2(irn_fifo_size_sh) - 1 downto 0);
+			irncount3 : out std_logic_vector(log2(irn_fifo_size_shf) - 1 downto 0);
 			-- interface with ecc_axi (only usable in debug mode)
 			dbgtrngcompletebypass : in std_logic;
 			dbgtrngcompletebypassbit : in std_logic
@@ -218,7 +223,8 @@ begin
 				dbgtrngrawfiforeaddis => dbgtrngrawfiforeaddis,
 				dbgtrngrawduration => dbgtrngrawduration,
 				dbgtrngvonneuman => dbgtrngvonneuman,
-				dbgtrngidletime => dbgtrngidletime
+				dbgtrngidletime => dbgtrngidletime,
+				dbgtrngrawcount => dbgtrngrawcount
 			);
 	end generate;
 
@@ -243,7 +249,8 @@ begin
 				dbgtrngrawfiforeaddis => dbgtrngrawfiforeaddis,
 				dbgtrngrawduration => dbgtrngrawduration,
 				dbgtrngvonneuman => dbgtrngvonneuman,
-				dbgtrngidletime => dbgtrngidletime
+				dbgtrngidletime => dbgtrngidletime,
+				dbgtrngrawcount => dbgtrngrawcount
 			);
 	end generate;
 	-- pragma translate_on
@@ -305,5 +312,8 @@ begin
 			dbgtrngcompletebypass => dbgtrngcompletebypass,
 			dbgtrngcompletebypassbit => dbgtrngcompletebypassbit
 		);
+
+	dbgtrngrawrdy <= rdy_t;
+	dbgtrngrawvalid <= valid_t;
 
 end architecture rtl;
