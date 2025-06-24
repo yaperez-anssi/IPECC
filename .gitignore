@@ -16,6 +16,7 @@ hdl/common/ecc_curve_iram/latex/assembly.awk.vardefs
 hdl/common/ecc_curve_iram/latex/texify.awk
 hdl/common/ecc_curve_iram/ecc_vars.vhd
 hdl/common/ecc_curve_iram/ecc_regs.h
+hdl/common/ecc_curve_iram/ecc_platform.h
 ecc_vars.h
 ecc_addr.h
 ecc_states.h

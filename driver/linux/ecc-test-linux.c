@@ -436,7 +436,7 @@ int main(int argc, char *argv[])
 	line_t line_type_expected = EXPECT_NONE;
 	size_t len = 0;
 	ssize_t nread;
-	uint32_t debug_not_prod;
+	bool debug_not_prod;
 	uint32_t vmajor, vminor, vpatch;
 
 	(void)argc;

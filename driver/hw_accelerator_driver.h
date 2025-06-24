@@ -207,7 +207,7 @@ typedef struct {
 int hw_driver_mul(const uint8_t *x, uint32_t x_sz, const uint8_t *y, uint32_t y_sz,
 		  const uint8_t *scalar, uint32_t scalar_sz,
 		  uint8_t *out_x, uint32_t *out_x_sz, uint8_t *out_y, uint32_t *out_y_sz,
-			kp_trace_info_t* ktrc, long* kp_time);
+			kp_trace_info_t* ktrc);
 
 /* Set the small scalar size in the hardware */
 int hw_driver_set_small_scalar_size(uint32_t bit_sz);

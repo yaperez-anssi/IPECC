@@ -4179,18 +4179,6 @@ static inline int ip_ecc_get_clocks_freq(uint32_t* mhz, uint32_t* mhz_mm, uint32
 	return 0;
 }
 
-
-struct timespec now() {
-  struct timespec now;
-  clock_gettime(CLOCK_MONOTONIC, &now);
-  return now;
-}
-
-long interval_ns(struct timespec tick, struct timespec tock) {
-  return (tock.tv_sec - tick.tv_sec) * 1000000000L
-      + (tock.tv_nsec - tick.tv_nsec);
-}
-
 #ifdef KP_TRACE
 void ip_debug_read_all_limbs(uint32_t lgnb, uint32_t* nbbuf)
 {
@@ -4583,13 +4571,8 @@ err:
  * by the hardware). When in debug mode setting 'blocking' to 0 allowsa to
  * debug monitor the operation, using e.g breakpoints.
  */
-static inline int ip_ecc_exec_command(ip_ecc_command cmd, int *flag, kp_trace_info_t* ktrc,
-		long* kp_time)
+static inline int ip_ecc_exec_command(ip_ecc_command cmd, int *flag, kp_trace_info_t* ktrc)
 {
-#ifndef KP_TRACE
-	struct timespec tick, tock;
-#endif
-
 	/* Wait until the IP is not busy */
 	IPECC_BUSY_WAIT();
 
@@ -4620,7 +4603,6 @@ static inline int ip_ecc_exec_command(ip_ecc_command cmd, int *flag, kp_trace_in
 				};
 			}
 #else
-			tick = now();
 			IPECC_EXEC_PT_KP();
 			(void)ktrc; /* To avoid unused parameter warning from gcc */
 #endif
@@ -4649,14 +4631,6 @@ static inline int ip_ecc_exec_command(ip_ecc_command cmd, int *flag, kp_trace_in
 
 	/* Wait until the IP is not busy */
 	IPECC_BUSY_WAIT();
-
-#ifndef KP_TRACE
-	tock = now();
-	if (kp_time)
-	{
-		*kp_time = interval_ns(tick, tock);
-	}
-#endif
 
 	/* Check for error */
 	if(ip_ecc_check_error(NULL)){
@@ -6600,7 +6574,7 @@ int hw_driver_is_on_curve(const uint8_t *x, uint32_t x_sz, const uint8_t *y, uin
 	}
 
 	/* Check if it is on curve */
-	if(ip_ecc_exec_command(PT_CHK, on_curve, NULL, NULL)){
+	if(ip_ecc_exec_command(PT_CHK, on_curve, NULL)){
 		goto err;
 	}
 
@@ -6659,7 +6633,7 @@ int hw_driver_eq(const uint8_t *x1, uint32_t x1_sz, const uint8_t *y1, uint32_t 
 	}
 
 	/* Check if it the points are equal */
-	if(ip_ecc_exec_command(PT_EQU, is_eq, NULL, NULL)){
+	if(ip_ecc_exec_command(PT_EQU, is_eq, NULL)){
 		goto err;
 	}
 
@@ -6719,7 +6693,7 @@ int hw_driver_opp(const uint8_t *x1, uint32_t x1_sz, const uint8_t *y1, uint32_t
 
 
 	/* Check if the points are opposite */
-	if(ip_ecc_exec_command(PT_OPP, is_opp, NULL, NULL)){
+	if(ip_ecc_exec_command(PT_OPP, is_opp, NULL)){
 		goto err;
 	}
 
@@ -6901,7 +6875,7 @@ int hw_driver_neg(const uint8_t *x, uint32_t x_sz, const uint8_t *y, uint32_t y_
 	}
 
 	/* Execute our NEG command */
-	if(ip_ecc_exec_command(PT_NEG, NULL, NULL, NULL)){
+	if(ip_ecc_exec_command(PT_NEG, NULL, NULL)){
 		goto err;
 	}
 
@@ -6967,7 +6941,7 @@ int hw_driver_dbl(const uint8_t *x, uint32_t x_sz, const uint8_t *y, uint32_t y_
 	}
 
 	/* Execute our DBL command */
-	if(ip_ecc_exec_command(PT_DBL, NULL, NULL, NULL)){
+	if(ip_ecc_exec_command(PT_DBL, NULL, NULL)){
 		goto err;
 	}
 
@@ -7042,7 +7016,7 @@ int hw_driver_add(const uint8_t *x1, uint32_t x1_sz, const uint8_t *y1, uint32_t
 	}
 
 	/* Execute our ADD command */
-	if(ip_ecc_exec_command(PT_ADD, NULL, NULL, NULL)){
+	if(ip_ecc_exec_command(PT_ADD, NULL, NULL)){
 		goto err;
 	}
 
@@ -7076,9 +7050,7 @@ err:
 int hw_driver_mul(const uint8_t *x, uint32_t x_sz, const uint8_t *y, uint32_t y_sz,
                   const uint8_t *scalar, uint32_t scalar_sz,
                   uint8_t *out_x, uint32_t *out_x_sz, uint8_t *out_y, uint32_t *out_y_sz,
-									kp_trace_info_t* ktrc,
-									/* REMOVE THAT! DON'T KEEP EVEN IN DEBUG MODE! */
-									long* kp_time)
+									kp_trace_info_t* ktrc)
 {
 	int inf_r0, inf_r1;
 	uint32_t nn_sz;
@@ -7147,7 +7119,7 @@ int hw_driver_mul(const uint8_t *x, uint32_t x_sz, const uint8_t *y, uint32_t y_
 	}
 
 	/* Execute our [k]P command */
-	if(ip_ecc_exec_command(PT_KP, NULL, ktrc, kp_time)) {
+	if(ip_ecc_exec_command(PT_KP, NULL, ktrc)) {
 		log_print("In hw_driver_mul(): Error in ip_ecc_exec_command()\n\r");
 		goto err;
 	}
