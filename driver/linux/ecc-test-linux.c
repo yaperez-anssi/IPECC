@@ -492,7 +492,7 @@ int main(int argc, char *argv[])
 	 */
 #if 0
 	/* Example of how to disable XY-shuffling (if DEBUG mode) */
-	if (hw_driver_disable_xyshuf()) {
+	if (hw_driver_disable_xyshuf_DBG()) {
 		printf("Error: hw_driver_disable_xyshuf() returned exception\n\r");
 		exit(EXIT_FAILURE);
 	}
@@ -500,7 +500,7 @@ int main(int argc, char *argv[])
 #endif
 
 #if 0
-	/* Example of how to disable shuffling (if DEBUG mode) */
+	/* Example of how to disable shuffling of large-nb memory (if DEBUG mode) */
 	if (hw_driver_disable_shuffling()) {
 		printf("Error: hw_driver_disable_shuffling() returned exception\n\r");
 		exit(EXIT_FAILURE);

@@ -62,7 +62,7 @@ typedef volatile uint64_t ip_ecc_word;
  * integer quotient i / s.
  */
 #define DIV(i, s) \
-	( ((i) % (s)) ? ((i) / (s)) + 1 : (i) / (s))
+	( ((i) % (s)) ? ( ((i) / (s)) + 1 ) : ( (i) / (s)) )
 
 #define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
 
@@ -3328,7 +3328,7 @@ static inline int ip_ecc_write_limb(int32_t i, uint32_t j, uint32_t limb)
 	uint32_t w, n;
 
 	/* Get the value of 'w' from capabilities */
-	w = IPECC_DBG_GET_W();
+	w = DIV(IPECC_GET_NN_MAX() + 4, IPECC_DBG_GET_WW());
 
 	/* Compute n */
 	if (ge_pow_of_2(w, &n)) {
@@ -3444,7 +3444,7 @@ static inline int ip_ecc_read_limb(int32_t i, uint32_t j, uint32_t* limb)
 	uint32_t w, n;
 
 	/* Get the value of 'w' from capabilities */
-	w = IPECC_DBG_GET_W();
+	w = DIV(IPECC_GET_NN_MAX() + 4, IPECC_DBG_GET_WW());
 
 	/* Compute n */
 	if (ge_pow_of_2(w, &n)) {
