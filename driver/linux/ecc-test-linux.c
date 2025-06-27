@@ -148,6 +148,12 @@ unsigned int debug_lambda[NBMAXSZ/4];
 unsigned int debug_phi0[NBMAXSZ/4];
 unsigned int debug_phi1[NBMAXSZ/4];
 unsigned int debug_alpha[NBMAXSZ/4];
+unsigned int debug_kap0msk[NBMAXSZ/4];
+unsigned int debug_kap1msk[NBMAXSZ/4];
+unsigned int debug_kapP0msk[NBMAXSZ/4];
+unsigned int debug_kapP1msk[NBMAXSZ/4];
+unsigned int debug_phi0msk[NBMAXSZ/4];
+unsigned int debug_phi1msk[NBMAXSZ/4];
 unsigned int debug_xr0[NBMAXSZ/4];
 unsigned int debug_yr0[NBMAXSZ/4];
 unsigned int debug_xr1[NBMAXSZ/4];
@@ -170,6 +176,18 @@ kp_trace_info_t kp_trace_info =
 	.phi1_valid = false,
 	.alpha = debug_alpha,
 	.alpha_valid = false,
+	.kap0msk = debug_kap0msk,
+	.kap0msk_valid = false,
+	.kap1msk = debug_kap1msk,
+	.kap1msk_valid = false,
+	.kapP0msk = debug_kapP0msk,
+	.kapP0msk_valid = false,
+	.kapP1msk = debug_kapP1msk,
+	.kapP1msk_valid = false,
+	.phi0msk = debug_phi0msk,
+	.phi0msk_valid = false,
+	.phi1msk = debug_phi1msk,
+	.phi1msk_valid = false,
 	.nb_steps = 0,
 	.nb_xr0 = debug_xr0,
 	.nb_yr0 = debug_yr0,
@@ -439,6 +457,13 @@ int main(int argc, char *argv[])
 	bool debug_not_prod;
 	uint32_t vmajor, vminor, vpatch;
 
+	/* HW capabilities */
+	bool secure;
+	bool shuffle;
+	bool nndyn;
+	bool axi64;
+	uint32_t nnmax;
+
 	(void)argc;
 	(void)argv;
 
@@ -483,6 +508,15 @@ int main(int argc, char *argv[])
 		log_print("IP in production mode (HW version %d.%d.%d)\n\r", vmajor, vminor, vpatch);
 	}
 #endif
+
+	/* REMOVE THAT! DON'T KEEP EVEN IN DEBUG MODE! */
+	/* Get whole capabilities from hardware
+	 */
+	if (hw_driver_get_capabilities(&secure, &shuffle, &nndyn, &axi64, &nnmax))
+	{
+		printf("Error: hw_driver_get_capabilities() returned exception\n\r");
+		exit(EXIT_FAILURE);
+	}
 
 	/* Add here possible extra configuration for the IP
 	 * ************************************************
@@ -537,6 +571,32 @@ int main(int argc, char *argv[])
 	}
 	printf("%sTRNG bypassed using all 0 values instead%s\n\r", KWHT, KNRM);
 #endif
+
+#ifdef ATTACK
+	/* ATTACK feature: setting attack level to 0 for test */
+#define ATTACK_LEVEL   0   /* TODO: nasty to have this here */
+	if (hw_driver_attack_set_level(ATTACK_LEVEL)) {
+		printf("Error:  hw_driver_attack_set_level() returned exception\n\r");
+		exit(EXIT_FAILURE);
+	}
+	printf("%sATTACK LEVEL: %d%s\n\r", KWHT, ATTACK_LEVEL, KNRM);
+
+	hw_driver_disable_xyshuf_DBG();
+	hw_driver_enable_zremask_and_set_period(1);
+	hw_driver_enable_shuffling();
+
+
+	/* Set & configure clk & clkmm division & out feature */
+#define CLK_DIV     16384
+#define CLKMM_DIV   16384
+	if (hw_driver_attack_set_clock_div_out(CLK_DIV, CLKMM_DIV)) {
+		printf("Error:  hw_driver_attack_set_clock_div_out() returned exception\n\r");
+		exit(EXIT_FAILURE);
+	}
+	printf("clk divided by %d\n\r", CLK_DIV);
+	printf("clkmm divided by %d\n\r", CLKMM_DIV);
+#endif
+
 
 	/* Before entering the main loop, hook up the SIGINT signal
 	 * to our own handler.

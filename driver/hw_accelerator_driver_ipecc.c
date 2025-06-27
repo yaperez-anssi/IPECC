@@ -325,6 +325,21 @@ static volatile uint64_t *ipecc_baddr = NULL;
 #define IPECC_W_DBG_CFG_TOKEN_EN    (((uint32_t)0x1) << 0)
 #define IPECC_W_DBG_CFG_TOKEN_DIS    (((uint32_t)0x0) << 0)
 
+/* Fields for IPECC_W_ATTACK_CFG_0 */
+#define IPECC_W_ATK_NOT_ALWAYS_ADD   (((uint32_t)0x1) << 0)
+#define IPECC_W_ATK_NO_COLLISION_CR   (((uint32_t)0x1) << 4)
+
+/* Fields for IPECC_W_ATTACK_CFG_1 */
+#define IPECC_W_ATK_NO_NNRND_SF     (((uint32_t)0x1) << 0)
+
+/* Fields for IPECC_W_ATTACK_CFG_2 */
+#define IPECC_W_ATK_DIV_ENABLE      (0x1)
+#define IPECC_W_ATK_DIVMM_ENABLE    (0x10000)
+#define IPECC_W_ATK_DIV_FACTOR_POS     (0)
+#define IPECC_W_ATK_DIV_FACTOR_MASK    (0xfffe)
+#define IPECC_W_ATK_DIVMM_FACTOR_POS     (16)
+#define IPECC_W_ATK_DIVMM_FACTOR_MASK    (0xfffe)
+
 /* Fields for R_STATUS */
 #define IPECC_R_STATUS_BUSY	   (((uint32_t)0x1) << 0)
 #define IPECC_R_STATUS_KP	   (((uint32_t)0x1) << 4)
@@ -1425,6 +1440,53 @@ static volatile uint64_t *ipecc_baddr = NULL;
 	IPECC_SET_REG(IPECC_W_DBG_CFG_TOKEN, IPECC_W_DBG_CFG_TOKEN_DIS); \
 } while (0)
 
+/* Actions involving register W_ATTACK_CFG_0
+ * *****************************************
+ */
+
+/* Set register W_ATTACK_CFG_0
+ * CAUTION: calling this macro to set W_ATTACK_CFG_0 register might not be enough
+ *          to set a proper level of (un)security. Also microcode might require
+ *          be patched, and some of the counter-measures to be deactivated (in
+ *          case they were on) or reactivated (in case they were off).
+ */
+#define IPECC_ATTACK_SET_HW_CFG(naive, nocollisioncr) do { \
+	ip_ecc_word val = 0; \
+	val |= ((naive) ? IPECC_W_ATK_NOT_ALWAYS_ADD : 0); \
+	val |= ((nocollisioncr) ? IPECC_W_ATK_NO_COLLISION_CR : 0); \
+	IPECC_SET_REG(IPECC_W_ATTACK_CFG_0, val); \
+} while (0)
+
+/* Enable masking of kappa & kappa' by shift-registers embedded in the hardware.
+ * CAUTION: same remark as for macro IPECC_ATTACK_SET_HW_CFG()
+ */
+#define IPECC_ATTACK_ENABLE_NNRNDSF() do { \
+	IPECC_SET_REG(IPECC_W_ATTACK_CFG_1, 0); \
+} while (0)
+
+/* Disable masking of kappa & kappa' by shift-registers embedded in the hardware.
+ * CAUTION: same remark as for macro IPECC_ATTACK_SET_HW_CFG()
+ */
+#define IPECC_ATTACK_DISABLE_NNRNDSF() do { \
+	IPECC_SET_REG(IPECC_W_ATTACK_CFG_1, IPECC_W_ATK_NO_NNRND_SF); \
+} while (0)
+
+/* Actions involving register W_ATTACK_CFG_2
+ * *****************************************
+ */
+#define IPECC_ATTACK_SET_CLOCK_DIVOUT(div, divmm) do { \
+	ip_ecc_word val = 0; \
+	if (div != 0) { \
+		val |= IPECC_W_ATK_DIV_ENABLE; \
+		val |= (div & IPECC_W_ATK_DIV_FACTOR_MASK) << IPECC_W_ATK_DIV_FACTOR_POS; \
+	} \
+	if (divmm != 0) { \
+		val |= IPECC_W_ATK_DIVMM_ENABLE; \
+		val |= (divmm & IPECC_W_ATK_DIVMM_FACTOR_MASK) << IPECC_W_ATK_DIVMM_FACTOR_POS; \
+	} \
+	IPECC_SET_REG(IPECC_W_ATTACK_CFG_2, val); \
+} while (0)
+
 /* Actions involving register R_DBG_CAPABILITIES_0
  * ***********************************************
  */
@@ -2175,7 +2237,7 @@ static inline int ip_ecc_enable_zremask_and_set_period(uint32_t period)
 
 	if(period == 0){
 		log_print("ip_ecc_enable_zremask_and_set_period(): error, a period of 0 is not supported - "
-				"use ip_ecc_disable_zremask() instead to disable the countermeare\n\r");
+				"use ip_ecc_disable_zremask() instead to disable the countermeasure\n\r");
 	}
 	else{
 		/* Enable the Zremask countermeasure and set its period.
@@ -4179,7 +4241,7 @@ static inline int ip_ecc_get_clocks_freq(uint32_t* mhz, uint32_t* mhz_mm, uint32
 	return 0;
 }
 
-#ifdef KP_TRACE
+#if defined(KP_TRACE) || defined(KP_CHECK_ZMASK)
 void ip_debug_read_all_limbs(uint32_t lgnb, uint32_t* nbbuf)
 {
 	uint32_t i;
@@ -4187,7 +4249,9 @@ void ip_debug_read_all_limbs(uint32_t lgnb, uint32_t* nbbuf)
 		ip_ecc_read_limb(lgnb, i, &nbbuf[i]);
 	}
 }
+#endif
 
+#ifdef KP_TRACE
 static void get_exp_flags(kp_exp_flags_t* flg)
 {
 	uint32_t dbg_exp_flags;
@@ -4536,6 +4600,105 @@ static int kp_debug_trace(kp_trace_info_t* ktrc)
 				}
 				break;
 
+			case DEBUG_ECC_IRAM_ZADD_VOID_ADDR:
+				/* Only instruction of .zadd_voidL
+				 */
+				kp_trace_msg_append(ktrc, "PC=%s0x%03x%s (%s%s%s)\n\r", KGRN, dbgpc, KNRM, KYEL, str_ipecc_state(dbgstate), KNRM);
+				kp_trace_msg_append(ktrc, "[VHD-CMP-SAGE] R0/R1 coordinates (in .zadd_voidL)\n");
+					/* Read values of [XY]R[01] and flags r0z and r1z.
+					 */
+				ip_read_and_print_xyr0(ktrc, &flags);
+				ip_read_and_print_xyr1(ktrc, &flags);
+				ip_read_and_print_zr01(ktrc);
+				break;
+
+			case DEBUG_ECC_IRAM_ZDBL_NOT_ALWAYS_OP1_ADDR:
+				/* 1st instruction of .zdbl_not_alwaysL
+				 */
+				kp_trace_msg_append(ktrc, "PC=%s0x%03x%s (%s%s%s)\n\r", KGRN, dbgpc, KNRM, KYEL, str_ipecc_state(dbgstate), KNRM);
+				kp_trace_msg_append(ktrc, "[VHD-CMP-SAGE] R0/R1 coordinates (entrance of .zdbl_not_alwaysL)\n");
+					/* Read values of [XY]R[01] and flags r0z and r1z.
+					 */
+				ip_read_and_print_xyr0(ktrc, &flags);
+				ip_read_and_print_xyr1(ktrc, &flags);
+				ip_read_and_print_zr01(ktrc);
+				break;
+
+			case DEBUG_ECC_IRAM_ZDBL_NOT_ALWAYS_OPLAST_ADDR:
+				/* Last instruction of .zdbl_not_alwaysL
+				 */
+				kp_trace_msg_append(ktrc, "PC=%s0x%03x%s (%s%s%s)\n\r", KGRN, dbgpc, KNRM, KYEL, str_ipecc_state(dbgstate), KNRM);
+				kp_trace_msg_append(ktrc, "[VHD-CMP-SAGE] R0/R1 coordinates (terminated .zdbl_not_alwaysL)\n");
+					/* Read values of [XY]R[01] and flags r0z and r1z.
+					 */
+				ip_read_and_print_xyr0(ktrc, &flags);
+				ip_read_and_print_xyr1(ktrc, &flags);
+				ip_read_and_print_zr01(ktrc);
+				break;
+
+			case DEBUG_ECC_IRAM_PRE_ZADDU_LAST_ADDR:
+				/* Last instruction of .zadduL
+				 */
+				if (dbgstate == IPECC_DEBUG_STATE_ZADDU)
+				{
+					kp_trace_msg_append(ktrc, "PC=%s0x%03x%s (%s%s%s)\n\r", KGRN, dbgpc, KNRM, KYEL, str_ipecc_state(dbgstate), KNRM);
+					kp_trace_msg_append(ktrc, "[VHD-CMP-SAGE] R0/R1 coordinates (terminated .pre_zadduL)\n");
+					/* Read values of [XY]R[01] and flags r0z and r1z.
+					 */
+					ip_read_and_print_xyr0(ktrc, &flags);
+					ip_read_and_print_xyr1(ktrc, &flags);
+					ip_read_and_print_zr01(ktrc);
+				}
+				break;
+
+			case DEBUG_ECC_IRAM_ZADDU_OPLAST_ADDR:
+				/* Last instruction of .zadduL
+				 */
+				if (dbgstate == IPECC_DEBUG_STATE_ZADDU)
+				{
+					kp_trace_msg_append(ktrc, "PC=%s0x%03x%s (%s%s%s)\n\r", KGRN, dbgpc, KNRM, KYEL, str_ipecc_state(dbgstate), KNRM);
+					kp_trace_msg_append(ktrc, "[VHD-CMP-SAGE] R0/R1 coordinates (terminated .zadduL)\n");
+					/* Read values of [XY]R[01] and flags r0z and r1z.
+					 */
+					ip_read_and_print_xyr0(ktrc, &flags);
+					ip_read_and_print_xyr1(ktrc, &flags);
+					ip_read_and_print_zr01(ktrc);
+				}
+				break;
+
+			case DEBUG_ECC_IRAM_RANDOM_KAPMSK_ADDR:
+				/* Read kap0msk & kap1msk */
+				ip_debug_read_all_limbs(IPECC_LARGE_NB_KAP0MSK_ADDR, ktrc->kap0msk);
+				ktrc->kap0msk_valid = true;
+				ip_debug_read_all_limbs(IPECC_LARGE_NB_KAP1MSK_ADDR, ktrc->kap1msk);
+				ktrc->kap1msk_valid = true;
+				kp_trace_msg_append(ktrc, "PC=%s0x%03x%s (%s%s%s)\n\r", KGRN, dbgpc, KNRM, KYEL, str_ipecc_state(dbgstate), KNRM);
+				print_all_limbs_of_number(ktrc, "  kap0msk  = 0x", ktrc->kap0msk); kp_trace_msg_append(ktrc, "\n\r");
+				print_all_limbs_of_number(ktrc, "  kap1msk  = 0x", ktrc->kap1msk); kp_trace_msg_append(ktrc, "\n\r");
+				break;
+
+			case DEBUG_ECC_IRAM_RANDOM_KAPPMSK_ADDR:
+				/* Read kapP0msk & kapP1msk */
+				ip_debug_read_all_limbs(IPECC_LARGE_NB_KAPP0MSK_ADDR, ktrc->kapP0msk);
+				ktrc->kapP0msk_valid = true;
+				ip_debug_read_all_limbs(IPECC_LARGE_NB_KAPP1MSK_ADDR, ktrc->kapP1msk);
+				ktrc->kapP1msk_valid = true;
+				kp_trace_msg_append(ktrc, "PC=%s0x%03x%s (%s%s%s)\n\r", KGRN, dbgpc, KNRM, KYEL, str_ipecc_state(dbgstate), KNRM);
+				print_all_limbs_of_number(ktrc, "  kapP0msk  = 0x", ktrc->kapP0msk); kp_trace_msg_append(ktrc, "\n\r");
+				print_all_limbs_of_number(ktrc, "  kapP1msk  = 0x", ktrc->kapP1msk); kp_trace_msg_append(ktrc, "\n\r");
+				break;
+
+			case DEBUG_ECC_IRAM_RANDOM_PHIMSK_ADDR:
+				/* Read phi0msk & phi1msk */
+				ip_debug_read_all_limbs(IPECC_LARGE_NB_PHI0MSK_ADDR, ktrc->phi0msk);
+				ktrc->phi0msk_valid = true;
+				ip_debug_read_all_limbs(IPECC_LARGE_NB_PHI1MSK_ADDR, ktrc->phi1msk);
+				ktrc->phi1msk_valid = true;
+				kp_trace_msg_append(ktrc, "PC=%s0x%03x%s (%s%s%s)\n\r", KGRN, dbgpc, KNRM, KYEL, str_ipecc_state(dbgstate), KNRM);
+				print_all_limbs_of_number(ktrc, "  phi0msk  = 0x", ktrc->phi0msk); kp_trace_msg_append(ktrc, "\n\r");
+				print_all_limbs_of_number(ktrc, "  phi1msk  = 0x", ktrc->phi1msk); kp_trace_msg_append(ktrc, "\n\r");
+				break;
+
 			default:
 				break;
 		} /* switch-case on dbgpc */
@@ -4562,6 +4725,133 @@ err:
 }
 #endif /* KP_TRACE */
 
+#ifdef KP_SET_ZMASK
+static int kp_run_with_specific_zmask(uint32_t* zmask)
+{
+	int i;
+	uint32_t w, n;
+	uint32_t dbgpc, dbgstate;
+
+	/* 32768 bits are more than enough for any practical
+	 * use of elliptic curve cryptography.
+	 */
+	uint32_t check_zmask[4096 / sizeof(uint32_t)]; /* Heck, a whole page? Yes indeed. */
+
+	if (zmask == NULL) {
+		printf("Error: calling kp_run_with_specific_zmask() with a null pointer!\n\r");
+		goto err;
+	}
+
+	/* Set breakpoint on the NOP instruction just following
+	 * the random draw of lambda & its reduction. We can find the
+	 * specific opcode address thx to ecc_addr.h (generated in
+	 * hdl/ecc_curve_iram when doing 'make' in that folder).
+	 */
+	ip_ecc_set_breakpoint(DEBUG_ECC_IRAM_RANDOM_LAMBDA_ADDR, 0);
+
+	/* Transmit the [k]P run command to the IP. */
+	IPECC_EXEC_PT_KP();
+
+	/* Poll register R_DBG_STATUS until it shows IP is halted
+	 * in debug mode.
+	 */
+	IPECC_POLL_UNTIL_DEBUG_HALTED();
+
+	/* IPECC IS HALTED */
+	/* Get the PC & state from IPECC_R_DBG_STATUS */
+	dbgpc = IPECC_GET_PC();
+	dbgstate = IPECC_GET_FSM_STATE();
+
+	/* Check that PC matchs the expected opcode of .setupL */
+	if (dbgpc != DEBUG_ECC_IRAM_RANDOM_LAMBDA_ADDR) {
+		printf("Error in kp_run_with_specific_zmask(): breakpoint was expected on opcode "
+				"0x%03x\n\r", DEBUG_ECC_IRAM_RANDOM_LAMBDA_ADDR);
+		printf("      and instead it is on 0x%03x\n\r", dbgpc);
+		goto err;
+	}
+	if (dbgstate != IPECC_DEBUG_STATE_SETUP) {
+		printf("Error in kp_run_with_specific_zmask(): should be in state %d\n\r", IPECC_DEBUG_STATE_SETUP);
+		printf("      and instead in state (%d, decode this number using file <ecc_states.h>)\n\r", dbgstate);
+		goto err;
+	}
+
+#ifdef KP_CHECK_ZMASK
+	/* Get & display initial random value drawn as Z-mask
+	 */
+	ip_debug_read_all_limbs(IPECC_LARGE_NB_LAMBDA_ADDR, check_zmask);
+
+	printf("Initially drawn random:     Zmask = 0x");
+	for (i=IPECC_DBG_GET_W() - 1 ; i>=0; i--) {
+		printf("%04x", check_zmask[i]);
+	}
+	printf("\n\r");
+#endif
+
+	w = DIV(IPECC_GET_NN_MAX() + 4, IPECC_DBG_GET_WW());
+
+	/* Ignore possible error return case for ge_pow_of_2 here. */
+	ge_pow_of_2(w, &n);
+
+	for (i = 0; i < (int)IPECC_DBG_GET_W(); i++) {
+		/* Set proper address for current limb.
+		 * The address of 'lambda' variable (the random Z-masking large number in the
+		 * memory of large numbers) is given in file <ecc_vars.h>, which is automatically
+		 * generated by the Makefile in ecc_curve_iram/.
+		 */
+		IPECC_DBG_SET_FP_WRITE_ADDR((IPECC_LARGE_NB_LAMBDA_ADDR * n) + i);
+		/* Now set the value of the limb.
+		 * This also triggers the write itself.
+		 */
+		IPECC_DBG_SET_FP_WRITE_DATA(zmask[i]);
+	}
+
+#ifdef KP_CHECK_ZMASK
+	/* Check that value was correctly set into memory of large nbs.
+	 */
+	ip_debug_read_all_limbs(IPECC_LARGE_NB_LAMBDA_ADDR, check_zmask);
+
+	printf("Read-back after modif:      Zmask = 0x");
+	for (i=IPECC_DBG_GET_W() - 1 ; i>=0; i--) {
+		printf("%04x", check_zmask[i]);
+	}
+	printf("\n\r");
+
+	/* set new breakpoint just before ZR01 is masked */
+	ip_ecc_set_breakpoint(DEBUG_ECC_IRAM_CHECK0_ZMASK_ADDR, 0);
+	IPECC_RESUME();
+
+	IPECC_POLL_UNTIL_DEBUG_HALTED();
+	/* get value of ZR01 before masking */
+	ip_debug_read_all_limbs(IPECC_LARGE_NB_ZR01_ADDR, check_zmask);
+	printf("Checked in memory (before): ZR01  = 0x");
+	for (i=IPECC_DBG_GET_W() - 1 ; i>=0; i--) {
+		printf("%04x", check_zmask[i]);
+	}
+	printf("\n\r");
+
+	/* set new breakpoint just after ZR01 has been masked */
+	ip_ecc_set_breakpoint(DEBUG_ECC_IRAM_CHECK1_ZMASK_ADDR, 0);
+	IPECC_RESUME();
+
+	IPECC_POLL_UNTIL_DEBUG_HALTED();
+	/* get value of ZR01 before masking */
+	ip_debug_read_all_limbs(IPECC_LARGE_NB_ZR01_ADDR, check_zmask);
+	printf("Checked in memory (after):  ZR01  = 0x");
+	for (i=IPECC_DBG_GET_W() - 1 ; i>=0; i--) {
+		printf("%04x", check_zmask[i]);
+	}
+	printf("\n\r");
+
+#endif
+
+	IPECC_REMOVE_BREAKPOINT(0);
+	IPECC_RESUME();
+
+	return 0;
+err:
+	return -1;
+}
+#endif /* KP_SET_ZMASK */
 
 /*
  * Commands execution (point operation)
@@ -4571,7 +4861,7 @@ err:
  * by the hardware). When in debug mode setting 'blocking' to 0 allowsa to
  * debug monitor the operation, using e.g breakpoints.
  */
-static inline int ip_ecc_exec_command(ip_ecc_command cmd, int *flag, kp_trace_info_t* ktrc)
+static inline int ip_ecc_exec_command(ip_ecc_command cmd, int *flag, kp_trace_info_t* ktrc, uint32_t* zmask)
 {
 	/* Wait until the IP is not busy */
 	IPECC_BUSY_WAIT();
@@ -4603,8 +4893,28 @@ static inline int ip_ecc_exec_command(ip_ecc_command cmd, int *flag, kp_trace_in
 				};
 			}
 #else
+  #ifdef KP_SET_ZMASK
+			/* sanity check */
+			if (zmask == NULL) {
+				IPECC_EXEC_PT_KP();
+			} else {
+				/* Since 'zmask' ptr is not null, this means it contains a valid
+				 * large number to be used as the initial "random" masking for Z
+				 * coordinate.
+				 *
+				 * Some config is required before running the [k]P command,
+				 * which is done by kp_run_with_specific_zmask().
+				 */
+				if (kp_run_with_specific_zmask(zmask)) {
+					goto err;
+				};
+			}
+			(void)ktrc; /* To avoid unused parameter warning from gcc */
+  #else
 			IPECC_EXEC_PT_KP();
 			(void)ktrc; /* To avoid unused parameter warning from gcc */
+			(void)zmask; /* To avoid unused parameter warning from gcc */
+  #endif
 #endif
 			break;
 		}
@@ -4751,6 +5061,65 @@ static inline int ip_ecc_get_version_tags(uint32_t* maj, uint32_t* min, uint32_t
 	return 0;
 }
 
+int ip_ecc_attack_set_cfg_0(bool naive, bool nocollisioncr)
+{
+	/* Wait until the IP is not busy */
+	IPECC_BUSY_WAIT();
+
+	/* Transmit configuration to low-level routine */
+	IPECC_ATTACK_SET_HW_CFG(naive, nocollisioncr);
+
+	/* Wait until the IP is not busy */
+	IPECC_BUSY_WAIT();
+
+	return 0;
+}
+
+/* Enable masking of kappa & kappa' by shift-registers embedded in the hardware.
+ */
+int ip_ecc_attack_enable_nnrndsf()
+{
+	/* Wait until the IP is not busy */
+	IPECC_BUSY_WAIT();
+
+	/* Transmit configuration to low-level routine */
+	IPECC_ATTACK_ENABLE_NNRNDSF();
+
+	/* Wait until the IP is not busy */
+	IPECC_BUSY_WAIT();
+
+	return 0;
+}
+
+/* Disable masking of kappa & kappa' by shift-registers embedded in the hardware.
+ */
+int ip_ecc_attack_disable_nnrndsf()
+{
+	/* Wait until the IP is not busy */
+	IPECC_BUSY_WAIT();
+
+	/* Transmit configuration to low-level routine */
+	IPECC_ATTACK_DISABLE_NNRNDSF();
+
+	/* Wait until the IP is not busy */
+	IPECC_BUSY_WAIT();
+
+	return 0;
+}
+
+int ip_ecc_attack_set_clock_div_out(int div, int divmm)
+{
+	/* Wait until the IP is not busy */
+	IPECC_BUSY_WAIT();
+
+	/* Transmit configuration to low-level routine */
+	IPECC_ATTACK_SET_CLOCK_DIVOUT(div, divmm);
+
+	/* Wait until the IP is not busy */
+	IPECC_BUSY_WAIT();
+
+	return 0;
+}
 
 #if 0
 /* Function to get the random output of the RAW FIFO */
@@ -6017,6 +6386,162 @@ err:
 	return -1;
 }
 
+/* Attack features: set a specific level of side-channel resistance */
+int hw_driver_attack_set_level(int level)
+{
+	uint32_t jumpop;
+
+	if(driver_setup()){
+		goto err;
+	}
+	
+	if ((level != 0) && (level != 1) && (level != 2) && (level != 3)) {
+		log_print("In hw_driver_attack_set_level(): only levels 0 (min security) to 3 (max) are defined\n\r");
+		goto err;
+	}
+
+	switch (level) {
+
+		case 0:
+			/* Level 0: minimum security case, i.e NAIVE (non constant time) implementation.
+			 *
+			 * This is performed through the following steps:
+			 *   1. Write register W_ATTACK_CFG (with 0x011 = no-nnrndsf | naive )
+			 *   2. Microcode needs to be patched:
+			 *        2.1. phi0 and phi1 are cleared w/ NNCLR instead of randomized w/ NNRND
+			 *             (this is in adpa.s)
+			 *        2.2. kap0 and kap1 need to be 1-bit left-shifted instead of doing the
+			 *             TESTPAR that was sampling the first bit of phi
+			 *             (this is also in adpa.s)
+			 *        2.3. In setup.s, instead of calling .dozdblL, we jump to .zdbl_not_alwaysL
+			 *
+			 *   3. Furthermore, as side-effect, we must also disable the on-the-fly masking of k
+			 *      by the AXI interface.
+			 *
+			 *   4. Disable the three kappa, kappa' & phi shift-registers
+			 */
+			/* The 0x21 in the MSPart of the opcode below stands for "J" or simply "jump".
+			 * The real proper thing would be to construct unequivocally the opcode word
+			 * using a C header file automatically exported from VHDL source (ecc_pkg.vhd).
+			 */
+			jumpop = 0x21000000UL + ECC_IRAM_ZDBL_NOT_ALWAYS_ADDR; /*0x1fa*/
+			/* Step 1 */
+			ip_ecc_attack_set_cfg_0(true, false); /* can't generate any error */
+			/* Step 2.1 */
+			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_RANDOM_PHI0_ADDR /*0x04c*/, 0, 0x51007fea, 1);    /* NNCLR            phi0 */
+			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_RANDOM_PHI1_ADDR /*0x04d*/, 0, 0x51007feb, 1);    /* NNCLR            phi1 */
+			/* Step 2.2 */
+			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_SAMPLE0_KAPLSB_ADDR /*0x073*/, 0, 0x1400300c, 1); /* NNSLL    kap0    kap0 */
+			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_SAMPLE1_KAPLSB_ADDR /*0x074*/, 0, 0x1480340d, 1); /* NNSLL,X  kap1    kap1 */
+			/* Step 2.3 */
+			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_JUMP_DOUBLE_ADDR /*0x083*/, 0, jumpop, 1);        /* J   .zdbl_not_alwaysL */
+			/* Step 3 */
+			ip_ecc_disable_aximsk(); /* can't generate any error */
+			/* Step 4 */
+			ip_ecc_attack_disable_nnrndsf(); /* can't generate any error */
+			log_print("hw_driver_attack_set_level(): set attack level -0-\n\r");
+			/*
+			 * Note: in level 0, it still makes sense to activate following
+			 *       coutermeasures:
+			 *         - periodic Z-remask
+			 *             (see API functions hw_driver_enable_zremask_and_set_period()
+			 *                              & hw_driver_disable_zremask())
+			 *         - memory shuffling
+			 *             (see API functions hw_driver_enable_shuffling()
+			 *                              & hw_driver_disable_shuffling())
+			 *         - blinding
+			 *             (see API functions hw_driver_enable_blinding_and_set_size()
+			 *                              & hw_driver_disable_blinding())
+			 *
+			 * so the definition of level 0 is not "unequivocal" by itself.
+			 */
+			break;
+
+		case 1:
+			/* Level 1: constant time execution, the least one should do when considering
+			 *          side-channel attacks & physical observation.
+			 *
+			 * Function calls below are quite understandable when compared w/ what is described
+			 * for level 0.
+			 */
+			/* The 0x26 in the MSPart of the opcode below stands for "JL" or "jump-and-link"
+			 * (aka CALL).
+			 */
+			jumpop = 0x26000000UL + DEBUG_ECC_IRAM_DOZDBL_ADDR; /*0x19b*/
+			ip_ecc_disable_aximsk(); /* can't generate any error */
+			ip_ecc_attack_set_cfg_0(false, true); /* can't generate any error */
+			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_RANDOM_PHI0_ADDR, 0, 0x51007fea, 1);    /* NNCLR            phi0 */
+			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_RANDOM_PHI1_ADDR, 0, 0x51007feb, 1);    /* NNCLR            phi1 */
+			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_SAMPLE0_KAPLSB_ADDR, 0, 0x16003022, 1); /* TESTPARs kap0  1 %kap */
+			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_SAMPLE1_KAPLSB_ADDR, 0, 0x00000000, 1); /* NOP                   */
+			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_JUMP_DOUBLE_ADDR, 0, jumpop, 1);        /* JL           .dozdblL */
+			ip_ecc_attack_enable_nnrndsf(); /* can't generate any error */
+			log_print("hw_driver_attack_set_level(): set attack level -1-\n\r");
+			/*
+			 * Note: it still makes sense to activate the following coutermeasures:
+			 *         - the same 3 as for level 0 (Z-remask, mem shuffling, blinding)
+			 *         - XY-shuffling
+			 *
+			 * so the definition of level 1 neither is "unequivocal" by itself.
+			 */
+			break;
+
+		case 2:
+			/* Level 2: a little bit more hardware security, we implement Anti address-bit DPA.
+			 */
+			jumpop = 0x26000000UL + DEBUG_ECC_IRAM_DOZDBL_ADDR; /*0x19b*/
+			ip_ecc_disable_aximsk(); /* can't generate any error */
+			ip_ecc_attack_set_cfg_0(false, true); /* can't generate any error */
+			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_RANDOM_PHI0_ADDR, 0, 0x1500000a, 1);    /* NNRND            phi0 */
+			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_RANDOM_PHI1_ADDR, 0, 0x1500000b, 1);    /* NNRND            phi1 */
+			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_SAMPLE0_KAPLSB_ADDR, 0, 0x16003022, 1); /* TESTPARs kap0  1 %kap */
+			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_SAMPLE1_KAPLSB_ADDR, 0, 0x00000000, 1); /* NOP                   */
+			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_JUMP_DOUBLE_ADDR, 0, jumpop, 1);        /* JL           .dozdblL */
+			log_print("hw_driver_attack_set_level(): set attack level -2-\n\r");
+			/*
+			 * Note: same as above, the following coutermeasures can still be enabled:
+			 *         - the same 4 as for level 1
+			 *         - masking of kappa & kappa' using in-logic-fabric shift-registers.
+			 *
+			 * so the definition of level 2 neither is "unequivocal" by itself.
+			 */
+			break;
+
+		case 3:
+			/* Level 3: quite satisfying hardware security, on-the-fly patching is done
+			 *          on instructions of the microcode that manipulate the coordinates
+			 *          [XY]R[01] of the two sensitive points, so as to ensure that exec-
+			 *          ution of ZADDU & ZADDC routines are perfectly symmetric as regard
+			 *          to the address of operands they manipulate (those theoretically
+			 *          cannot be used anymore to distinguish between values of the two
+			 *          bits kappa_i and kappa'_i during one step of the scalar right-to-
+			 *          left loop).
+			 */
+			jumpop = 0x26000000UL + DEBUG_ECC_IRAM_DOZDBL_ADDR; /*0x19b*/
+			ip_ecc_disable_aximsk(); /* can't generate any error */
+			ip_ecc_attack_set_cfg_0(false, false); /* can't generate any error */
+			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_RANDOM_PHI0_ADDR, 0, 0x1500000a, 1);    /* NNRND            phi0 */
+			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_RANDOM_PHI1_ADDR, 0, 0x1500000b, 1);    /* NNRND            phi1 */
+			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_SAMPLE0_KAPLSB_ADDR, 0, 0x16003022, 1); /* TESTPARs kap0  1 %kap */
+			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_SAMPLE1_KAPLSB_ADDR, 0, 0x00000000, 1); /* NOP                   */
+			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_JUMP_DOUBLE_ADDR, 0, jumpop, 1);        /* JL           .dozdblL */
+			log_print("hw_driver_attack_set_level(): set attack level -3-\n\r");
+			/*
+			 * Note: same as above, the 5 following coutermeasures can still be enabled
+			 * as for level 2, hence definition of level 3 neither is "unequivocal" by
+			 * itself.
+			 */
+			break;
+
+		default: 
+			break;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
 /* To get some more capabilties than offered by hw_driver_get_capabilities()
  *
  * (only in debug mode, as some of the infos might give inside to the internal
@@ -6356,6 +6881,50 @@ int hw_driver_get_trng_diagnostics_DBG(trng_diagcnt_t* tdg)
 		goto err;
 	}
 
+	return 0;
+err:
+	return -1;
+}
+
+int hw_driver_attack_enable_nnrndsf(void)
+{
+	if(driver_setup()){
+		goto err;
+	}
+	if (ip_ecc_attack_enable_nnrndsf()){
+		goto err;
+	}
+	return 0;
+err:
+	return -1;
+}
+
+int hw_driver_attack_disable_nnrndsf(void)
+{
+	if(driver_setup()){
+		goto err;
+	}
+	if (ip_ecc_attack_disable_nnrndsf()){
+		goto err;
+	}
+	return 0;
+err:
+	return -1;
+}
+
+/* Attack features: set clk & clkmm division & out feature.
+ * (set div to 0 to switch off clock 'clk',
+ *  set divmm to 0 to switch off clock 'clkmm').
+ */
+int hw_driver_attack_set_clock_div_out(int div, int divmm) /* set to 0 to switch off clock */
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	if (ip_ecc_attack_set_clock_div_out(div, divmm)){
+		goto err;
+	}
 	return 0;
 err:
 	return -1;
@@ -7050,7 +7619,7 @@ err:
 int hw_driver_mul(const uint8_t *x, uint32_t x_sz, const uint8_t *y, uint32_t y_sz,
                   const uint8_t *scalar, uint32_t scalar_sz,
                   uint8_t *out_x, uint32_t *out_x_sz, uint8_t *out_y, uint32_t *out_y_sz,
-									kp_trace_info_t* ktrc)
+									kp_trace_info_t* ktrc, uint32_t* zmask)
 {
 	int inf_r0, inf_r1;
 	uint32_t nn_sz;
@@ -7119,7 +7688,7 @@ int hw_driver_mul(const uint8_t *x, uint32_t x_sz, const uint8_t *y, uint32_t y_
 	}
 
 	/* Execute our [k]P command */
-	if(ip_ecc_exec_command(PT_KP, NULL, ktrc)) {
+	if(ip_ecc_exec_command(PT_KP, NULL, ktrc, zmask)){
 		log_print("In hw_driver_mul(): Error in ip_ecc_exec_command()\n\r");
 		goto err;
 	}

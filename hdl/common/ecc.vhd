@@ -78,7 +78,10 @@ entity ecc is
 		--   pseudo-trng port
 		dbgptdata : in std_logic_vector(7 downto 0);
 		dbgptvalid : in std_logic;
-		dbgptrdy : out std_logic
+		dbgptrdy : out std_logic;
+		-- clk & clkmm division & out feature
+		clkdivo : out std_logic;
+		clkmmdivo : out std_logic
 	);
 end entity ecc;
 
@@ -220,6 +223,7 @@ architecture struct of ecc is
 			nndyn_mask_wm2 : out std_logic;
 			nndyn_nnp1 : out unsigned(log2(nn + 1) - 1 downto 0);
 			nndyn_nnm3 : out unsigned(log2(nn) - 1 downto 0);
+			nndyn_nnm2 : out unsigned(log2(nn) - 1 downto 0);
 			-- busy signal for [k]P computation
 			kppending : out std_logic;
 			-- software reset (to other components of the IP)
@@ -279,7 +283,13 @@ architecture struct of ecc is
 			dbgtrngrawvalid : in std_logic;
 			-- debug feature (off-chip trigger)
 			dbgtrigger : out std_logic;
-			clkmm : in std_logic
+			-- Signals specific to attack feature
+			not_always_add : out std_logic;
+			no_nnrnd_sf : out std_logic;
+			no_collision_cr : out std_logic;
+			clkmm : in std_logic; -- Montgomery mult. clock required as input (for division & out)
+			clkdivo : out std_logic;
+			clkmmdivo : out std_logic
 		);
 	end component ecc_axi;
 
@@ -304,6 +314,7 @@ architecture struct of ecc is
 			ar1zo : in std_logic;
 			nndyn_nnp1 : in unsigned(log2(nn + 1) - 1 downto 0);
 			nndyn_nnm3 : in unsigned(log2(nn) - 1 downto 0);
+			nndyn_nnm2 : in unsigned(log2(nn) - 1 downto 0);
 			--   [k]P computation
 			agokp : in  std_logic;
 			kpdone : out std_logic;
@@ -384,6 +395,8 @@ architecture struct of ecc is
 			logfinalresult : out std_logic;
 			simbit : out natural
 			-- pragma translate_on
+			-- Signals specific to attack feature
+			; not_always_add : in std_logic
 		);
 	end component ecc_scalar;
 
@@ -473,6 +486,9 @@ architecture struct of ecc is
 			patching : out std_logic;
 			patchid : out integer
 			-- pragma translate_on
+			-- Signals specific to attack feature
+			; not_always_add : in std_logic;
+			no_collision_cr : in std_logic
 		);
 	end component ecc_curve;
 
@@ -584,6 +600,8 @@ architecture struct of ecc is
 			fprwmask : in std_logic_vector(FP_ADDR - 1 downto 0);
 			vtophys : in virt_to_phys_table_type
 			-- pragma translate_on
+			-- Signals specific to attack feature
+			; no_nnrnd_sf : in std_logic
 		);
 	end component ecc_fp;
 
@@ -831,6 +849,7 @@ architecture struct of ecc is
 	signal amtydone : std_logic;
 	signal nndyn_nnp1 : unsigned(log2(nn + 1) - 1 downto 0);
 	signal nndyn_nnm3 : unsigned(log2(nn) - 1 downto 0);
+	signal nndyn_nnm2 : unsigned(log2(nn) - 1 downto 0);
 	signal dopop : std_logic;
 	signal popid : std_logic_vector(2 downto 0);
 	signal popdone : std_logic;
@@ -997,6 +1016,10 @@ architecture struct of ecc is
 	signal dbgtrngrawcount : std_logic_vector(log2(raw_ram_size) - 1 downto 0);
 	signal dbgtrngusepseudosource : std_logic;
 	signal dbgtrngrawpullppdis : std_logic;
+	-- Signals specific to attack feature
+	signal not_always_add : std_logic;
+	signal no_collision_cr : std_logic;
+	signal no_nnrnd_sf : std_logic;
 
 	-- pragma translate_off
 	-- signals between ecc_scalar & ecc_fp (simu only)
@@ -1176,6 +1199,7 @@ begin
 			nndyn_mask_wm2 => nndyn_mask_wm2,
 			nndyn_nnp1 => nndyn_nnp1,
 			nndyn_nnm3 => nndyn_nnm3,
+			nndyn_nnm2 => nndyn_nnm2,
 			-- general busy signal
 			kppending => busy,
 			-- software reset (to other components of the IP)
@@ -1232,7 +1256,13 @@ begin
 			dbgtrngrawvalid => dbgtrngrawvalid,
 			-- debug feature (off-chip trigger)
 			dbgtrigger => dbgtrigger,
-			clkmm => clkmm
+			-- Signals specific to attack feature
+			not_always_add => not_always_add,
+			no_nnrnd_sf => no_nnrnd_sf,
+			no_collision_cr => no_collision_cr,
+			clkmm => clkmm, -- Montgomery mult. clock required as input (for division & out)
+			clkdivo => clkdivo,
+			clkmmdivo => clkmmdivo
 		); -- ecc_axi
 
 	-- scalar arithmetic block
@@ -1256,6 +1286,7 @@ begin
 			ar1zo => ar1zo,
 			nndyn_nnp1 => nndyn_nnp1,
 			nndyn_nnm3 => nndyn_nnm3,
+			nndyn_nnm2 => nndyn_nnm2,
 			--   [k]P computation
 			agokp => agokp,
 			kpdone => kpdone,
@@ -1336,6 +1367,8 @@ begin
 			logfinalresult => logfinalresult,
 			simbit => simbit
 			-- pragma translate_on
+			-- Signals specific to attack feature
+			, not_always_add => not_always_add
 		); -- ecc_scalar
 
 	-- curve arithmetic programs/routines execution unit
@@ -1424,6 +1457,9 @@ begin
 			patching => patching,
 			patchid => patchid
 			-- pragma translate_on
+			-- Signals specific to attack feature
+			, not_always_add => not_always_add,
+			no_collision_cr => no_collision_cr
 		); -- ecc_curve
 
 	-- static memory storing programs
@@ -1527,6 +1563,8 @@ begin
 			fprwmask => fprwmask,
 			vtophys => vtophys
 			-- pragma translate_on
+			-- Signals specific to attack feature
+			, no_nnrnd_sf => no_nnrnd_sf
 		); -- ecc_fp
 
 	-- TRNG
@@ -1775,14 +1813,14 @@ begin
 		echo(integer'image(n));
 		echo("), ndsp = ");
 		echo(integer'image(ndsp));
-		echo(", sram lat = ");
-		echo(integer'image(sramlat));
 		echo(", async = ");
 		if async then
-			echo("TRUE");
+			echol("TRUE");
 		else
-			echo("FALSE");
+			echol("FALSE");
 		end if;
+		echo("[        ecc.vhd ]: Config: sram lat = ");
+		echo(integer'image(sramlat));
 		if shuffle_type /= none then
 			echo(", shuffle AVAIL (");
 			if shuffle_type = linear then

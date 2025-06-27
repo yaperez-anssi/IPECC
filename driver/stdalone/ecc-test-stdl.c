@@ -101,6 +101,8 @@ int main(int argc, char *argv[])
 		/* Set the blinding if necessary */
 		if(t.blinding){
 			ret = hw_driver_enable_blinding_and_set_size(t.blinding); EG(ret, "blinding");
+		} else {
+			hw_driver_disable_blinding();
 		}
 		szx = sizeof(Poutx);
 		szy = sizeof(Pouty);

@@ -81,7 +81,10 @@ package ecc_software is
 	constant W_DBG_CFG_XYSHUF : rat := std_nat(50, ADB);     -- 0x190
 	constant W_DBG_CFG_AXIMSK : rat := std_nat(51, ADB);     -- 0x198
 	constant W_DBG_CFG_TOKEN : rat := std_nat(52, ADB);      -- 0x1a0
-	-- reserved                                              -- 0x1a8...0x1f8
+	constant W_ATTACK_CFG_0 : rat := std_nat(53, ADB);       -- 0x1a8
+	constant W_ATTACK_CFG_1 : rat := std_nat(54, ADB);       -- 0x1b0
+	constant W_ATTACK_CFG_2 : rat := std_nat(55, ADB);       -- 0x1b8
+	-- reserved                                              -- 0x1c0...0x1f8
 	-- ----------------------------------------------
 	-- addresses of all AXI-accessible read registers
 	-- ----------------------------------------------
@@ -248,6 +251,19 @@ package ecc_software is
 
 	-- bit positions in W_DBG_CFG_TOKEN register
 	constant TOK_EN : natural := 0;
+
+	-- bit positions in W_ATTACK_CFG_0 register
+	constant DO_NOT_ALWAYS_ADD : natural := 0;
+	constant DO_NO_COLLISION_CR: natural := 4;
+
+	-- bit positions in W_ATTACK_CFG_1 register
+	constant DO_NO_NNRND_SF : natural := 0;
+
+	-- bit positions in W_ATTACK_CFG_2 register
+	constant CLK_DIV_LSB : natural := 0;
+	constant CLK_DIV_MSB : natural := 15;
+	constant CLKMM_DIV_LSB : natural := 16;
+	constant CLKMM_DIV_MSB : natural := 31;
 
 	-- ----------------------------------------------
 	-- bit positions / fields in read registers

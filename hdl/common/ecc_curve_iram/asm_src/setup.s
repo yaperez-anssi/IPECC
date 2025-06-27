@@ -56,6 +56,7 @@
 # ****************************************************************
 # compute R0 <- [2]P
 # ****************************************************************
+.jump_doubleL_dbg:
 	JL	.dozdblL
 .x1y1cozL:
 # ****************************************************************
@@ -67,9 +68,11 @@
 .r1zmultL:
 	FPREDC	lambda	R2modp	lambda
 	BARRIER
+.check0_zmaskL_dbg:
 	FPREDC	ZR01	lambda	ZR01
 	FPREDC	lambda	lambda	lambdasq
 	BARRIER
+.check1_zmaskL_dbg:
 	FPREDC,p44	XR1	lambdasq	XR1
 	FPREDC	lambdasq	lambda	lambdacu
 	BARRIER

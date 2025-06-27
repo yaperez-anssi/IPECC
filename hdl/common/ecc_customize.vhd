@@ -71,6 +71,7 @@ package ecc_customize is
 	constant simvecfile : string := "/tmp/ecc_vec_in.txt";
 	constant simkb : natural range 0 to natural'high := 0; -- if 0 then ignored
 	constant simlogfile : string := "/tmp/ecc.log";
+	constant simxyshuflogfile : string := "/tmp/ecc_xyshuf.log";
 	constant simtrngfile : string := "/tmp/random.txt";
 	-- ********************************
 	-- End of: user-editable parameters

@@ -9,43 +9,24 @@
 #     Adrian THILLARD
 #     Emmanuel PROUFF
 
+# Routine replacing addition when scalar bit is 0 (naive implem).
+.zadd_voidL:
+.zadd_voidL_export:
+.zadd_voidL_dbg:
+	NOP
+	STOP
+
 #####################################################################
 #               C O Z   D O U B L E   &   U P D A T E
 #####################################################################
-.zdblL:
-.zdblL_export:
-.zdbl_op1L_dbg:
-  BARRIER
-  JL .dozdblL
-.zdbl_oplastL_dbg:
-  NOP
-  STOP
-
-.dozdblL:
+.zdbl_not_alwaysL:
+.zdbl_not_alwaysL_export:
 # ****************************************************************
-# compute ( R0)     ([2]R1)
-#         ( R1)z -> (   R1)z'
+# compute ( R0)     (   R0)
+#         ( R1)z -> ([2]R1)z'
 # ****************************************************************
+.zdbl_not_always_op1L_dbg:
   BARRIER
-# preamble *******************************************************
-# In the 4 following opcodes, using buffers Xup & Yup for the coordinates
-# of the point to retain (as opposed to the one to discard) is necessary
-# before writing them into XR1 & YR1, otherwise some coordinates might be
-# clobbered (actually, only one patch could be used here instead of two,
-# as the risk is only to clobber the Y-coordinate - but whatever)
-.dozdblL_dbg:
-  NNMOV,p53  XR1              Xup
-  NNMOV,p54  YR1              Yup
-  NNMOV      Xup              XR1      # XR1 <- X of pt to be doubled
-  NNMOV      Yup              YR1      # YR1 <- Y of pt to be doubled
-  # test if point is of 2-torsion
-  NNSUB      YR1     twop     red
-  NNADD,p5   red     patchme  YR1
-  # we need to test if YR1 == 0 so reduce YR1 in [0, p-1[
-  NNSUB      YR1     p        red
-  NNADD,p56  red     patchme  YR1
-  BARRIER
-  # main common instructions ***************************************
   FPREDC     ZR01    ZR01     N        # N(8) <- Z²
   FPREDC     YR1     YR1      E        # E(9) <- Y²
   BARRIER
@@ -83,16 +64,16 @@
   NNADD      L       L        L        # L(16) <- 4E² (clobbers previous 2E²)
   NNSUB      L       twop     red
   NNADD,p5   red     patchme  L
-  NNADD,p22  L       L        YR1      # YR1(7) <- 8E² (clobbers previous Y!)    __Y_OF_UPDATE__
-  NNSUB      YR1     twop     red
-  NNADD,p5   red     patchme  YR1
+  NNADD,p22  L       L        L        # L(16) <- 8E² (clobbers previous 4E²)     # used to be __Y_OF_UPDATE__
+  NNSUB      L       twop     red
+  NNADD,p5   red     patchme  L
   BARRIER
   NNSUB      XpE     BpL      XpE      # XpE(20) <- (X + E)² - BZd - L (clobbers previous (X + E)²)
   NNADD,p5   XpE     patchme  XpE
   NNADD      XpE     XpE      S        # S(17) <- 2((X + E)² - BZd - L) (clobbers previous BZd + L)
   NNSUB      S       twop     red
   NNADD,p5   red     patchme  S
-  NNMOV,p23  S                XR1      # XR1 <- S = 2((X + E)² - BZd - L)          __X_OF_UPDATE__
+#  NNMOV,p23  S                XR1      # XR1 <- S = 2((X + E)² - BZd - L)          __X_OF_UPDATE__
   BARRIER
   NNSUB      YpZsq   EpN      Ztmp     # Ztmp(25) <- (Y + Z)² - E - N
   NNADD,p5   Ztmp    patchme  Ztmp
@@ -101,30 +82,31 @@
   NNSUB      MD      twop     red
   NNADD,p5   red     patchme  MD
   FPREDC     MD      MD       Msq      # Msq(21) <- (3BZd + aN²)² (clobbers YpZsq = (Y + Z)²)
-  NNADD      S       S        twoS     # twoS(18) <- 2S (clobbers Nsq = aN²)
+  NNADD      S       S        twoS     # twoS(23) <- 2S (clobbers Nsq = aN²)
   NNSUB      twoS    twop     red
   NNADD,p5   red     patchme  twoS
   BARRIER
-  NNSUB,p51  Msq     twoS     XR0      # XR0(4) <- = M² - 2S = (3BZd + aN²)² - 2S  __X_OF_DOUBLE__
-  NNADD,p5   XR0     patchme  XR0      # detection = 0 par ,p55 supprimé : seul compte Y = 0 pour détecter DBL=0
+  NNSUB,p51  Msq     twoS     XR1      # XR1(6) <- = M² - 2S = (3BZd + aN²)² - 2S  __X_OF_DOUBLE__
+  NNADD,p5   XR1     patchme  XR1      # detection = 0 par ,p55 supprimé : seul compte Y = 0 pour détecter DBL=0
   BARRIER
-  NNSUB      S       XR0      S        # S(17) <- S - XR0 (clobbers previous 2((X + E)² - BZd - L))
+  NNSUB      S       XR1      S        # S(17) <- S - XR1 (clobbers previous 2((X + E)² - BZd - L))
   NNADD,p5   S       patchme  S
-  FPREDC     S       MD       S        # S(17) <- M(S - XR0) (clobbers previous S - XR0)
-  BARRIER
-  NNSUB,p52  S       YR1      YR0      # YR0(5) <- M(S - XR0) - 8E²              __Y_OF_DOUBLE__
-  NNADD,p5   YR0     patchme  YR0      # ,p56 supprimé ici : detection of a null double done above
-  # postamble ******************************************************
-  #   R0 = double
-  # & R1 = update (of what was doubled)
-  NNMOV      XR0              XR0tmp
-  NNMOV      YR0              YR0tmp
-  NNMOV      XR1              XR1tmp
-  NNMOV      YR1              YR1tmp
-  # set updated point
-  NNMOV,p57  XR1tmp           XR1
-  NNMOV,p58  YR1tmp           YR1
-  # set result of double
-  NNMOV,p59  XR0tmp           XR0
-  NNMOV,p60  YR0tmp           YR0
-  RET
+  FPREDC     S       MD       S        # S(17) <- M(S - XR1) (clobbers previous S - XR1)
+# Back-up YR1 before it's clobbered w/ the Y of double
+	NNADD      YR1     YR1      2YR1     # 2YR1(8) <- YR1 + YR1 (clobbers previous M = 3BZd + aN²)
+	NNSUB      2YR1    twop     red
+	NNADD,p5   red     patchme  2YR1
+	FPREDC     2YR1    2YR1     4YR1sq   # 4YR1sq(23) <- 4YR1² (clobbers previous S = M(S - XR1))
+	BARRIER
+  FPREDC     4YR1sq  XR0      XR0      # XR0 <- XR0 * (2YR1)²   __X_OF_R0_AS_UPDATE__
+	FPREDC     4YR1sq  2YR1     8YR1cu   # 8YR1cu(23) <- 8YR1^3 (clobbers previous 4YR1sq = 4YR1²)
+	BARRIER
+	FPREDC     YR0     8YR1cu   YR0      # YR0 <- YR0 * (2YR1)^3  __Y_OF_R0_AS_UPDATE__
+
+#  BARRIER
+  NNSUB,p52  S       L        YR1      # YR1(7) <- M(S - XR0) - 8E²              __Y_OF_DOUBLE__
+  NNADD,p5   YR1     patchme  YR1      # ,p56 supprimé ici : detection of a null double done above
+	BARRIER
+.zdbl_not_always_oplastL_dbg:
+	NOP
+	STOP

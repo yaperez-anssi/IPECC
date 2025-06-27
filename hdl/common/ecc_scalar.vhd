@@ -49,6 +49,7 @@ entity ecc_scalar is
 		ar1zo : in std_logic;
 		nndyn_nnp1 : in unsigned(log2(nn + 1) - 1 downto 0);
 		nndyn_nnm3 : in unsigned(log2(nn) - 1 downto 0);
+		nndyn_nnm2 : in unsigned(log2(nn) - 1 downto 0);
 		--   [k]P computation
 		agokp : in std_logic;
 		kpdone : out std_logic;
@@ -129,6 +130,8 @@ entity ecc_scalar is
 		logfinalresult : out std_logic;
 		simbit : out natural
 		-- pragma translate_on
+		-- Signals specific to attack feature
+		; not_always_add : in std_logic
 	);
 end entity ecc_scalar;
 
@@ -154,7 +157,7 @@ architecture rtl of ecc_scalar is
 	end record;
 
 	type joye_state_type is (idle, itoh, prezaddu, zaddu, prezaddc, zaddc,
-		permutation, zdblu, zdblc, znegc, zrmsk);
+		permutation, zdblu, zdblc, znegc, zrmsk, zaddvoid, zdblnotalways);
 
 	-- registers used to encode Joye state machine
 	type joye_reg_type is record
@@ -310,6 +313,8 @@ architecture rtl of ecc_scalar is
 	constant IS_ON_CURVE_ROUTINE : natural := 30;
 	constant ZDBLSW_ROUTINE : natural := 31;
 	--constant NOP_ROUTINE : natural := 32;
+	constant ZDBL_NOT_ALWAYS_ROUTINE : natural := 32;
+	constant ZADD_VOID_ROUTINE : natural := 33;
 
 	-- Address of the routines below (all constants whose name starts with
 	-- "ECC_IRAM_" (see below definition of array constant EXEC_ADDR) are
@@ -344,7 +349,7 @@ architecture rtl of ecc_scalar is
 	-- to be synthesized as a synchronous SRAM memory (either for FPGA or
 	-- ASIC target) should not take a big effort in modifying the RTL below
 	subtype std_logic_pc is std_logic_vector(IRAM_ADDR_SZ - 1 downto 0);
-	type exec_addr_type is array(0 to 31) of std_logic_pc;
+	type exec_addr_type is array(0 to 33) of std_logic_pc;
 	constant EXEC_ADDR : exec_addr_type := ( -- (s115)  --  matching routine:
 		CONSTMTY0_ROUTINE => ECC_IRAM_CONSTMTY0_ADDR,     -- .constMTY0L[_export]
 		CONSTMTY1_ROUTINE => ECC_IRAM_CONSTMTY1_ADDR,     -- .constMTY1L[_export]
@@ -382,8 +387,11 @@ architecture rtl of ecc_scalar is
 		                                                  -- .addition_endL[_export]
 		ZDBLSW_ROUTINE => ECC_IRAM_ZDBL_SW_ADDR,          -- .zdbl_swL[_export]
 		GET_TOKEN_ROUTINE => ECC_IRAM_GET_TOKEN_ADDR,     -- .get_tokenL[_export]
-		MASK_TOKEN_ROUTINE => ECC_IRAM_TOKEN_KP_MASK_ADDR --.token_kP_maskL[_export]
-		-- NOP_ROUTINE =>         (not used here, clumsy exceeds 31, and for nothing)
+		MASK_TOKEN_ROUTINE => ECC_IRAM_TOKEN_KP_MASK_ADDR,
+		                                                  --.token_kP_maskL[_export]
+		ZDBL_NOT_ALWAYS_ROUTINE => ECC_IRAM_ZDBL_NOT_ALWAYS_ADDR,
+		                                                  -- .zdbl_not_alwaysL[_export]
+		ZADD_VOID_ROUTINE => ECC_IRAM_ZADD_VOID_ADDR      -- .zadd_not_alwaysL[_export]
 	);
 
 	-- pragma translate_off
@@ -412,12 +420,12 @@ begin
 	-- combinational process
 	comb : process(r, rstn, agokp, agocstmty, doblinding, blindbits, agomtya,
 	               frdy, ferr, zero, iterate_shuffle_rdy, permuterdy, doshuffle,
-	               k_is_null, aerr_inpt_ack, aerr_outpt_ack, nndyn_nnm3,
+	               k_is_null, aerr_inpt_ack, aerr_outpt_ack, nndyn_nnm3, nndyn_nnm2,
 	               nndyn_nnp1, dopop, popid, ar0zo, ar1zo,
 	               swrst, first2pz, xmxz, ymyz, torsion2, kap, kapp,
 	               phimsb, kb0end, small_k_sz_en, small_k_sz_en_en, small_k_sz,
 	               gentoken, tokenact, zremaskact, zremaskbits,
-	               dbgtrngcompletebypass)
+	               not_always_add, dbgtrngcompletebypass)
 		variable v : reg_type;
 		variable v_simkb : integer;
 		variable v01z : std_logic_vector(1 downto 0);
@@ -523,11 +531,21 @@ begin
 					v.ctrl.small_k_sz_en := '0';
 				elsif doblinding = '1' then
 					v.kp.blind_nbbits := unsigned(blindbits);
-					v.kp.joye.nbbits :=
-						  resize(unsigned(blindbits), log2(nn) + 1)
-						+ resize(nndyn_nnm3, log2(nn) + 1);
+					if not_always_add = '0' then
+						v.kp.joye.nbbits :=
+								resize(unsigned(blindbits), log2(nn) + 1)
+							+ resize(nndyn_nnm3, log2(nn) + 1);
+					elsif not_always_add = '1' then
+						v.kp.joye.nbbits :=
+								resize(unsigned(blindbits), log2(nn) + 1)
+							+ resize(nndyn_nnm2, log2(nn) + 1);
+					end if;
 				else
-					v.kp.joye.nbbits := resize(nndyn_nnm3, log2(nn) + 1);
+					if not_always_add = '0' then
+						v.kp.joye.nbbits := resize(nndyn_nnm3, log2(nn) + 1);
+					elsif not_always_add = '1' then
+						v.kp.joye.nbbits := resize(nndyn_nnm2, log2(nn) + 1);
+					end if;
 				end if;
 				-- pragma translate_off
 				nnmax_joye_loop_s <= to_integer(v.kp.joye.nbbits);
@@ -1080,7 +1098,21 @@ begin
 							-- Mont. & Jacobian domains, including a call to .pre_zaddU routine
 							-- in order to prepare the 3rd & last step) is enforced by asserting
 							-- .kp.ssetup_step to "01"
-							v.kp.ssetup_step := "01";
+							if not_always_add = '0' then
+								v.kp.ssetup_step := "01";
+							elsif not_always_add = '1' then
+								-- In naive implementation, we musn't perform the first zaddu
+								-- (the one computing (2P,P) -> (3P,P) or (P,3P). The microcode
+								-- of .setupL has been changed:
+								--    1. not to call .dozdblL but instead .zdbl_not_alwaysL
+								--       (thus computing (P,P) -> (P,2P) instead of (P,P) -> (2P,P)
+								--       which is what .dozdblL computes).
+								--    2. not to jump, at the end, to routine .pre_zadduL.
+								-- So we don't want to run .zadduL when back from .setupL routine,
+								-- and the best way to achieve that is to set r.kp.ssetup_step to "10"
+								-- that'll make us branch directly to .itohL, see (s126) below.
+								v.kp.ssetup_step := "10";
+							end if;
 						end if;
 					elsif r.kp.ssetup_step = "01" then
 						-- ----------------------------------
@@ -1128,7 +1160,7 @@ begin
 						v.sim.logr0r1 := '1';
 						v.sim.logr0r1step := 0;
 						-- pragma translate_on
-					elsif r.kp.ssetup_step = "10" then
+					elsif r.kp.ssetup_step = "10" then -- (s126)
 						-- ----------------------------------
 						-- 2nd pass of state 'ssetup' is done
 						-- ----------------------------------
@@ -1191,7 +1223,27 @@ begin
 						--                 end of ITOH
 						-- -------------------------------------------
 						v.int.faddr := EXEC_ADDR(PRE_ZADDU_ROUTINE); -- (s10)
-						if iterate_shuffle_rdy = '1' then
+						if not_always_add = '1' then
+							-- Naive implem (double and add not always): we only call ZADDU
+							-- if the scalar bit is 1 here
+							if kap = '1' then
+								v.kp.joye.state := prezaddu; -- (s12)
+								v.int.fgo := '1'; -- (s125), see (s67)
+							elsif kap = '0' then
+								-- If scalar bit is 0, we call .zadd_not_alwaysL instead that'll just do a NOP
+								v.int.faddr := EXEC_ADDR(ZADD_VOID_ROUTINE);
+								v.kp.joye.state := zaddvoid;
+								v.int.fgo := '1';
+								-- pragma translate_off
+								v.sim.logr0r1 := '1';
+								v.sim.logr0r1step := 2;
+								-- pragma translate_on
+							end if;
+							-- pragma translate_off
+							v.sim.simbit := r.sim.simbit + 1;
+							-- pragma translate_on
+							v.dbg.joyebit := std_logic_vector(unsigned(r.dbg.joyebit) + 1);
+						elsif iterate_shuffle_rdy = '1' then
 							-- enter Joye FSM state 'prezaddu'
 							v.kp.joye.state := prezaddu; -- (s12)
 							v.int.fgo := '1'; -- (s91), see (s67)
@@ -1211,6 +1263,15 @@ begin
 							v.kp.substate := wait_xyr01_permute;
 							v.kp.nextsubstate := joyecoz; -- (s14)
 						end if;
+					elsif r.kp.joye.state = zaddvoid then
+						-- If we're here, not_always_add = 1 necessarily so no need to test this
+						v.int.faddr := EXEC_ADDR(ZDBL_NOT_ALWAYS_ROUTINE);
+						v.int.fgo := '1';
+						v.kp.joye.state := zdblnotalways;
+						-- pragma translate_off
+						v.sim.logr0r1 := '1';
+						v.sim.logr0r1step := 2;
+						-- pragma translate_on
 					elsif r.kp.joye.state = prezaddu then
 						-- -------------------------------------------
 						--             end of pre-ZADDU
@@ -1247,80 +1308,90 @@ begin
 						-- -------------------------------------------
 						--                end of ZADDU
 						-- -------------------------------------------
-						v.int.faddr := EXEC_ADDR(PRE_ZADDC_ROUTINE); -- (s11)
-						if iterate_shuffle_rdy = '1' then
-							v.kp.joye.state := prezaddc; -- (s17)
-							v.int.fgo := '1'; -- (s93), see (s67)
-							v.kp.iterate_shuffle_valid := '1';
+						if not_always_add = '1' then
+							v.int.faddr := EXEC_ADDR(ZDBL_NOT_ALWAYS_ROUTINE);
+							v.kp.joye.state :=  zdblnotalways;
+							v.int.fgo := '1';
 							-- pragma translate_off
 							v.sim.logr0r1 := '1';
 							v.sim.logr0r1step := 2;
 							-- pragma translate_on
-						elsif iterate_shuffle_rdy = '0' then
-							-- switch from substate joyecoz to wait_xyr01_permute.
-							-- Having not set r.kp.joye.state to prezaddc (see (s17) just
-							-- above) and instead having kept it to 'zaddu' will ensure that
-							-- logic described by (s18) below will recognize that we entered
-							-- substate 'wait_xyr01_permute' for preparing a zaddu-to-prezaddc
-							-- Joye-state transition
-							v.kp.substate := wait_xyr01_permute;
-							v.kp.nextsubstate := joyecoz; -- (s16)
-						end if;
-						-- compute new nullity flags for R0 & R1.
-						-- Independently of whether we're entering immediately prezaddc
-						-- joye-state or temporarily switching to state wait_xyr01_permute,
-						-- we set the zero flags according to:
-						--    - r.kp.pts_are_[equal/oppos] signals which were set at the
-						--      end of prezaddu state
-						--    - r.ctrl.r[01]z
-						--    - kap & kapp inputs (driven by ecc_curve), also used in patchs
-						--    - (torsion2 plays no role here, only in ZDBL - see below)
-						if r.ctrl.r0z = '0' and r.ctrl.r1z = '0' then
-							-- neither R0 nor R1 were null when starting ZADDU
-							if r.kp.pts_are_equal = '1' then -- was set by (s45)
-								assert (FALSE)
-									report "[ ecc_scalar.vhd ]: ERROR: Points were equal in pre-ZADDU: "
-									& "we shouldn't be at the end of ZADDU but at the "
-									& "end of ZDBLU!"
-										severity FAILURE;
-							elsif r.kp.pts_are_oppos = '1' then -- was set by (s46)
-								if kapp = '0' then
-									-- v.ctrl.r0z := '0' -- useless (R0 wasn't null, it stays so)
-									v.ctrl.r1z := '1'; -- R1 is now null
-								elsif kapp = '1' then
-									v.ctrl.r0z := '1'; -- R0 is now null
-									-- v.ctrl.r1z := '0' -- useless (R1 wasn't null, it stays so)
+						elsif not_always_add = '0' then
+							v.int.faddr := EXEC_ADDR(PRE_ZADDC_ROUTINE); -- (s11)
+							if iterate_shuffle_rdy = '1' then
+								v.kp.joye.state := prezaddc; -- (s17)
+								v.int.fgo := '1'; -- (s93), see (s67)
+								v.kp.iterate_shuffle_valid := '1';
+								-- pragma translate_off
+								v.sim.logr0r1 := '1';
+								v.sim.logr0r1step := 2;
+								-- pragma translate_on
+							elsif iterate_shuffle_rdy = '0' then
+								-- switch from substate joyecoz to wait_xyr01_permute.
+								-- Having not set r.kp.joye.state to prezaddc (see (s17) just
+								-- above) and instead having kept it to 'zaddu' will ensure that
+								-- logic described by (s18) below will recognize that we entered
+								-- substate 'wait_xyr01_permute' for preparing a zaddu-to-prezaddc
+								-- Joye-state transition
+								v.kp.substate := wait_xyr01_permute;
+								v.kp.nextsubstate := joyecoz; -- (s16)
+							end if;
+							-- compute new nullity flags for R0 & R1.
+							-- Independently of whether we're entering immediately prezaddc
+							-- joye-state or temporarily switching to state wait_xyr01_permute,
+							-- we set the zero flags according to:
+							--    - r.kp.pts_are_[equal/oppos] signals which were set at the
+							--      end of prezaddu state
+							--    - r.ctrl.r[01]z
+							--    - kap & kapp inputs (driven by ecc_curve), also used in patchs
+							--    - (torsion2 plays no role here, only in ZDBL - see below)
+							if r.ctrl.r0z = '0' and r.ctrl.r1z = '0' then
+								-- neither R0 nor R1 were null when starting ZADDU
+								if r.kp.pts_are_equal = '1' then -- was set by (s45)
+									assert (FALSE)
+										report "[ ecc_scalar.vhd ]: ERROR: Points were equal in pre-ZADDU: "
+										& "we shouldn't be at the end of ZADDU but at the "
+										& "end of ZDBLU!"
+											severity FAILURE;
+								elsif r.kp.pts_are_oppos = '1' then -- was set by (s46)
+									if kapp = '0' then
+										-- v.ctrl.r0z := '0' -- useless (R0 wasn't null, it stays so)
+										v.ctrl.r1z := '1'; -- R1 is now null
+									elsif kapp = '1' then
+										v.ctrl.r0z := '1'; -- R0 is now null
+										-- v.ctrl.r1z := '0' -- useless (R1 wasn't null, it stays so)
+									end if;
+								else
+									-- points were neither equal nor opposite (and non null)
+									-- so they stay non-null
+									--v.ctrl.r0z := '0'; -- useless (R0 wasn't null, it stays so)
+									--v.ctrl.r1z := '0'; -- useless (R0 wasn't null, it stays so)
+									null;
 								end if;
-							else
-								-- points were neither equal nor opposite (and non null)
-								-- so they stay non-null
-								--v.ctrl.r0z := '0'; -- useless (R0 wasn't null, it stays so)
-								--v.ctrl.r1z := '0'; -- useless (R0 wasn't null, it stays so)
+							elsif r.ctrl.r0z = '0' and r.ctrl.r1z = '1' then
+								-- R0 was non null, but R1 was, when starting ZADDU
+								if kapp = '0' then
+									v.ctrl.r0z := '1'; -- R0 is now null
+									v.ctrl.r1z := '0'; -- R1 is not null anymore
+								elsif kapp = '1' then
+									-- v.ctrl.r0z := '0' -- useless (R0 wasn't null, it stays so)
+									v.ctrl.r1z := '0'; -- R1 is not null anymore
+								end if;
+							elsif r.ctrl.r0z = '1' and r.ctrl.r1z = '0' then
+								-- R0 was null, and R1 wasn't, when starting ZADDU
+								if kapp = '0' then
+									v.ctrl.r0z := '0'; -- R0 is not null anymore
+									-- v.ctrl.r1z := '0' -- useless (R1 wasn't null, it stays so)
+								elsif kapp = '1' then
+									v.ctrl.r0z := '0'; -- R0 is not null anymore
+									v.ctrl.r1z := '1'; -- R1 is now null
+								end if;
+							elsif r.ctrl.r0z = '1' and r.ctrl.r1z = '1' then
+								-- R0 & R1 were both null when starting ZADDU
+								--v.ctrl.r0z := '1'; -- useless (R0 was null, it stays so)
+								--v.ctrl.r1z := '1'; -- useless (R1 was null, it stays so)
 								null;
 							end if;
-						elsif r.ctrl.r0z = '0' and r.ctrl.r1z = '1' then
-							-- R0 was non null, but R1 was, when starting ZADDU
-							if kapp = '0' then
-								v.ctrl.r0z := '1'; -- R0 is now null
-								v.ctrl.r1z := '0'; -- R1 is not null anymore
-							elsif kapp = '1' then
-								-- v.ctrl.r0z := '0' -- useless (R0 wasn't null, it stays so)
-								v.ctrl.r1z := '0'; -- R1 is not null anymore
-							end if;
-						elsif r.ctrl.r0z = '1' and r.ctrl.r1z = '0' then
-							-- R0 was null, and R1 wasn't, when starting ZADDU
-							if kapp = '0' then
-								v.ctrl.r0z := '0'; -- R0 is not null anymore
-								-- v.ctrl.r1z := '0' -- useless (R1 wasn't null, it stays so)
-							elsif kapp = '1' then
-								v.ctrl.r0z := '0'; -- R0 is not null anymore
-								v.ctrl.r1z := '1'; -- R1 is now null
-							end if;
-						elsif r.ctrl.r0z = '1' and r.ctrl.r1z = '1' then
-							-- R0 & R1 were both null when starting ZADDU
-							--v.ctrl.r0z := '1'; -- useless (R0 was null, it stays so)
-							--v.ctrl.r1z := '1'; -- useless (R1 was null, it stays so)
-							null;
 						end if;
 					elsif r.kp.joye.state = zdblu then
 						-- -------------------------------------------
@@ -1594,7 +1665,7 @@ begin
 					-- Logic below does not interfere anyway with logic in (s50), (s51)
 					-- above, as the latter ones only set r.ctrl.r0z & r.ctrl.r1z
 					if r.kp.joye.state = zaddc or r.kp.joye.state = zdblc
-						or r.kp.joye.state = znegc
+						or r.kp.joye.state = znegc or r.kp.joye.state = zdblnotalways
 					then
 						-- -------------------------------------------
 						--       end of ZADDC or ZDBLC or ZNEGC
@@ -2147,11 +2218,12 @@ begin
 			when r.kp.substate = joyecoz and r.kp.joye.state = itoh
 	  else DEBUG_STATE_ZADDU
 			when r.kp.substate = joyecoz and (r.kp.joye.state = prezaddu
-			or r.kp.joye.state = zaddu or r.kp.joye.state = zdblu)
+			or r.kp.joye.state = zaddu or r.kp.joye.state = zdblu
+			or r.kp.joye.state = zaddvoid)
 	  else DEBUG_STATE_ZADDC
 			when r.kp.substate = joyecoz and (r.kp.joye.state = prezaddc
 			or r.kp.joye.state = zaddc or r.kp.joye.state = zdblc
-			or r.kp.joye.state = znegc)
+			or r.kp.joye.state = znegc or r.kp.joye.state = zdblnotalways)
 	  else DEBUG_STATE_SUBTRACTP when r.kp.substate = subtractp
 	  else DEBUG_STATE_EXIT when r.kp.substate = exits
 	  else "1111";

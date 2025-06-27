@@ -156,6 +156,7 @@ entity ecc_axi is
 		nndyn_mask_wm2 : out std_logic;
 		nndyn_nnp1 : out unsigned(log2(nn + 1) - 1 downto 0);
 		nndyn_nnm3 : out unsigned(log2(nn) - 1 downto 0);
+		nndyn_nnm2 : out unsigned(log2(nn) - 1 downto 0);
 		-- busy signal for [k]P computation
 		kppending : out std_logic;
 		-- software reset (to other components of the IP)
@@ -215,7 +216,13 @@ entity ecc_axi is
 		dbgtrngrawvalid : in std_logic;
 		-- debug feature (off-chip trigger)
 		dbgtrigger : out std_logic;
-		clkmm : in std_logic
+		-- Signals specific to attack feature
+		not_always_add : out std_logic;
+		no_nnrnd_sf : out std_logic;
+		no_collision_cr : out std_logic;
+		clkmm : in std_logic; -- Montgomery mult. clock required as input (for division & out)
+		clkdivo : out std_logic;
+		clkmmdivo : out std_logic
 	);
 end entity ecc_axi;
 
@@ -403,6 +410,7 @@ architecture rtl of ecc_axi is
 		valnnp3 : unsigned(log2(nn + 3) - 1 downto 0);
 		valnnp4 : unsigned(log2(nn + 4) - 1 downto 0);
 		valnnm3 : unsigned(log2(nn) - 1 downto 0);
+		valnnm2 : unsigned(log2(nn) - 1 downto 0);
 		valw, valwtmp : unsigned(log2(w) - 1 downto 0);
 		valwerr : std_logic;
 		mask, masktmp : std_logic_vector(ww - 1 downto 0);
@@ -526,12 +534,35 @@ architecture rtl of ecc_axi is
 		readsh : std_logic_vector(readlat downto 0);
 		noxyshuf : std_logic;
 		noaxirnd : std_logic;
+		-- Signals specific to attack feature
+		not_always_add : std_logic;
+		no_nnrnd_sf : std_logic;
+		no_collision_cr : std_logic;
+		-- Divided outputs of clk & clkmm
+		clkdivcnt : unsigned(CLK_DIV_MSB - CLK_DIV_LSB downto 0);
+		clkdivhperiod : unsigned(CLK_DIV_MSB - CLK_DIV_LSB downto 0);
+		clkmmdivhperiod : unsigned(CLK_DIV_MSB - CLK_DIV_LSB downto 0);
+		clkdivo : std_logic;
+		clkdivoen : std_logic;
+		clkmmdivoen : std_logic;
+		-- To allow software to estimate clk & clkmm frequencies
 		clkcnt0 : unsigned(R_DBG_CLK_MHZ_PRECNT - 1 downto 0);
 		clkcnt : unsigned(31 downto 0);
 		clkmmcnt_resync0 : unsigned(31 downto 0);
 		clkmmcnt_resync1 : unsigned(31 downto 0);
 		clkmmcnt : unsigned(31 downto 0);
 	end record;
+
+	signal r_debug_clkmmdivcnt : unsigned(CLKMM_DIV_MSB - CLKMM_DIV_LSB downto 0)
+		-- pragma translate_off
+		:= (others => '0')
+		-- pragma translate_on
+	;
+	signal r_debug_clkmmdivo : std_logic
+		-- pragma translate_off
+		:= '0'
+		-- pragma translate_on
+	;
 
 	-- all registers
 	type reg_type is record
@@ -559,6 +590,7 @@ architecture rtl of ecc_axi is
 	signal nndyn_nnrnd_zerowm1_s : std_logic;
 	signal nndyn_nnp1_s : unsigned(log2(nn + 1) - 1 downto 0);
 	signal nndyn_nnm3_s : unsigned(log2(nn) - 1 downto 0);
+	signal nndyn_nnm2_s : unsigned(log2(nn) - 1 downto 0);
 
 	-- pragma translate_off
 	signal r_ctrl_wk : std_logic;
@@ -894,6 +926,21 @@ begin
 			end if;
 			-- pragma translate_on
 		end if; -- debug
+
+		-- clk division & out
+		if debug then
+			if r.debug.clkdivoen = '1' then
+				v.debug.clkdivcnt := r.debug.clkdivcnt - 1;
+				if r.debug.clkdivcnt(CLK_DIV_MSB - CLK_DIV_LSB) = '0' and
+				   v.debug.clkdivcnt(CLK_DIV_MSB - CLK_DIV_LSB) = '1'
+				then
+					v.debug.clkdivcnt := r.debug.clkdivhperiod;
+					v.debug.clkdivo := not r.debug.clkdivo;
+				end if;
+			elsif r.debug.clkdivoen = '0' then
+				v.debug.clkdivo := '0';
+			end if;
+		end if;
 
 		-- v_pop_possible must be always defined to avoid spurious latch inference
 		-- TODO: multicycle constraints are possible  on the following paths (which
@@ -2464,6 +2511,47 @@ begin
 				v.axi.awready := '1';
 				v.axi.arready := '1';
 				v.axi.bvalid := '1';
+			-- -------------------------------------------------------------
+			-- decoding write to W_ATTACK_CFG_0 register
+			-- -------------------------------------------------------------
+			elsif debug and r.axi.waddr = W_ATTACK_CFG_0 then
+				v.debug.not_always_add := r.axi.wdatax(DO_NOT_ALWAYS_ADD);
+				v.debug.no_collision_cr := r.axi.wdatax(DO_NO_COLLISION_CR);
+				v.axi.wready := '1';
+				v.axi.awready := '1';
+				v.axi.arready := '1';
+				v.axi.bvalid := '1';
+			-- -------------------------------------------------------------
+			-- decoding write to W_ATTACK_CFG_1 register
+			-- -------------------------------------------------------------
+			elsif debug and r.axi.waddr = W_ATTACK_CFG_1 then
+				v.debug.no_nnrnd_sf := r.axi.wdatax(DO_NO_NNRND_SF);
+				v.axi.wready := '1';
+				v.axi.awready := '1';
+				v.axi.arready := '1';
+				v.axi.bvalid := '1';
+			-- -------------------------------------------------------------
+			-- decoding write to W_ATTACK_CFG_2 register
+			-- -------------------------------------------------------------
+			elsif debug and r.axi.waddr = W_ATTACK_CFG_2 then
+				v.debug.clkdivhperiod :=
+					unsigned('0' & r.axi.wdatax(CLK_DIV_MSB downto CLK_DIV_LSB + 1)) - 1;
+				v.debug.clkmmdivhperiod :=
+					unsigned('0' & r.axi.wdatax(CLKMM_DIV_MSB downto CLKMM_DIV_LSB + 1)) - 1;
+				if r.axi.wdatax(CLK_DIV_LSB) = '0' then
+					v.debug.clkdivoen := '0';
+				elsif r.axi.wdatax(CLK_DIV_LSB) = '1' then
+					v.debug.clkdivoen := '1';
+				end if;
+				if r.axi.wdatax(CLKMM_DIV_LSB) = '0' then
+					v.debug.clkmmdivoen := '0';
+				elsif r.axi.wdatax(CLKMM_DIV_LSB) = '1' then
+					v.debug.clkmmdivoen := '1';
+				end if;
+				v.axi.wready := '1';
+				v.axi.awready := '1';
+				v.axi.arready := '1';
+				v.axi.bvalid := '1';
 			else
 				-- unknown target address
 				-- (simply ignore & acknowledge everything)
@@ -3259,10 +3347,10 @@ begin
 				-- 2nd byte: minor number
 				-- 3rd & 4th bytes: patch number
 				dw := (others => '0');
-				-- Version 1.4.3
+				-- Version 1.4.4
 				dw(HW_VERSION_MAJ_MSB downto HW_VERSION_MAJ_LSB) := x"01"; -- major
 				dw(HW_VERSION_MIN_MSB downto HW_VERSION_MIN_LSB) := x"04"; -- minor
-				dw(HW_VERSION_PATCH_MSB downto HW_VERSION_PATCH_LSB) := x"0003"; -- patch
+				dw(HW_VERSION_PATCH_MSB downto HW_VERSION_PATCH_LSB) := x"0004"; -- patch
 				v.axi.rdatax := dw;
 				v.axi.rvalid := '1'; -- (s5)
 			-- --------------------------------------
@@ -3859,6 +3947,9 @@ begin
 
 			-- computation of r.nndyn.valnnm3 ( = nn - 3)
 			v.nndyn.valnnm3 := r.nndyn.valnn - 3;
+
+			-- computation of r.nndyn.valnnm2 ( = nn - 2)
+			v.nndyn.valnnm2 := r.nndyn.valnn - 2;
 
 			v.nndyn.savnnp2p3p4 := r.nndyn.start;
 
@@ -4519,6 +4610,7 @@ begin
 				v.nndyn.valwerr := '0';
 				v.nndyn.valnnp1 := to_unsigned(nn + 1, log2(nn + 1));
 				v.nndyn.valnnm3 := to_unsigned(nn - 3, log2(nn));
+				v.nndyn.valnnm2 := to_unsigned(nn - 2, log2(nn));
 				v.nndyn.doshcnt := '0';
 				v.nndyn.dodec3b := '0';
 				v.nndyn.doshcnt3b := '0';
@@ -4552,6 +4644,7 @@ begin
 				v.nndyn.valwerr := '0';
 				v.nndyn.valnnp1 := to_unsigned(nn + 1, log2(nn + 1));
 				v.nndyn.valnnm3 := to_unsigned(nn - 3, log2(nn));
+				v.nndyn.valnnm2 := to_unsigned(nn - 2, log2(nn));
 			end if; -- nn_dynamic
 			v.nndyn.active := '0';
 			-- debug feature
@@ -4593,6 +4686,16 @@ begin
 				-- any raw random bytes. Thus software must activate this, by using
 				-- register W_DBG_TRNG_CTRL_POSTP.
 				v.debug.trng.rawpullppdis := '1';
+				-- Signals specific to attack feature
+				v.debug.not_always_add := '0';
+				v.debug.no_nnrnd_sf := '0';
+				v.debug.no_collision_cr := '0';
+				v.debug.clkdivoen := '0';
+				v.debug.clkmmdivoen := '0';
+				-- pragma translate_off
+				v.debug.clkdivo := '0';
+				v.debug.clkdivcnt := (others => '0');
+				-- pragma translate_on
 			else
 				v.debug.trng.nnrnddeterm := '0'; -- present also when debug=FALSE, see (s38)
 			end if;
@@ -4706,6 +4809,8 @@ begin
 		nndyn_nnp1 <= nndyn_nnp1_s;
 		nndyn_nnm3_s <= r.nndyn.valnnm3;
 		nndyn_nnm3 <= nndyn_nnm3_s;
+		nndyn_nnm2_s <= r.nndyn.valnnm2;
+		nndyn_nnm2 <= nndyn_nnm2_s;
 	end generate;
 
 	nn0: if not nn_dynamic generate -- statically resolved by synthesizer
@@ -4752,6 +4857,8 @@ begin
 		nndyn_nnp1 <= nndyn_nnp1_s;
 		nndyn_nnm3_s <= to_unsigned(nn - 3, log2(nn));
 		nndyn_nnm3 <= nndyn_nnm3_s;
+		nndyn_nnm2_s <= to_unsigned(nn - 2, log2(nn));
+		nndyn_nnm2 <= nndyn_nnm2_s;
 	end generate;
 
 	-- general busy signal
@@ -4788,6 +4895,42 @@ begin
 	dbgtrngidletime <= r.debug.trng.idletime;
 	dbgtrngusepseudosource <= r.debug.trng.usepseudo;
 	dbgtrngrawpullppdis  <= r.debug.trng.rawpullppdis;
+
+	-- naive implem feature
+	not_always_add <= r.debug.not_always_add;
+	no_nnrnd_sf <= r.debug.no_nnrnd_sf;
+	no_collision_cr <= r.debug.no_collision_cr;
+
+	-- clk & clkmm division & out
+	clkdivo <= r.debug.clkdivo;
+	clkmmdivo <= r_debug_clkmmdivo;
+
+	-- clkmm division & out
+	cmmd0: if debug generate
+		-- r.debug.clkmmdivhperiod & r.debug.clkmmdivoen are registers from the 'clk'
+		-- clock period, used here as asynchronous combinational inputs to logic which is
+		-- synchronous to 'clkmm' clock, WITHOUT being resynchronized. However this is
+		-- a debug feature and both the registers are expected to toogle at a very low
+		-- frequentce. We don't even reset anything here.
+		process(clkmm) is
+			variable vcnt : unsigned(CLKMM_DIV_MSB - CLKMM_DIV_LSB downto 0);
+		begin
+			if clkmm'event and clkmm = '1' then
+				if r.debug.clkmmdivoen = '1' then
+					vcnt := r_debug_clkmmdivcnt - 1;
+					r_debug_clkmmdivcnt <= vcnt;
+					if r_debug_clkmmdivcnt(CLKMM_DIV_MSB - CLKMM_DIV_LSB) = '0'
+						and vcnt(CLKMM_DIV_MSB - CLKMM_DIV_LSB) = '1'
+					then
+						r_debug_clkmmdivcnt <= r.debug.clkmmdivhperiod;
+						r_debug_clkmmdivo <= not r_debug_clkmmdivo;
+					end if;
+				elsif r.debug.clkmmdivoen = '1' then
+					r_debug_clkmmdivo <= '0';
+				end if;
+			end if;
+		end process;
+	end generate;
 
 	-- pragma translate_off
 	-- Simulation process to log on simulator console the random value used by

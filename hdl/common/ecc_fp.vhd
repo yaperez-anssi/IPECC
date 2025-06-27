@@ -112,6 +112,8 @@ entity ecc_fp is
 		fprwmask : in std_logic_vector(FP_ADDR - 1 downto 0);
 		vtophys : in virt_to_phys_table_type
 		-- pragma translate_on
+		-- Signals specific to attack feature
+		; no_nnrnd_sf : in std_logic
 	);
 end entity ecc_fp;
 
@@ -638,6 +640,18 @@ architecture rtl of ecc_fp is
 			write(lineo, string'("]"));
 			writeline(fileo, lineo);
 		end if;
+		if v_pca = ECC_IRAM_ZADD_VOID_ADDR then
+			write(lineo, string'(".zadd_voidL [0x"));
+			hex_write(lineo, pca);
+			write(lineo, string'("]"));
+			writeline(fileo, lineo);
+		end if;
+		if v_pca = ECC_IRAM_ZDBL_NOT_ALWAYS_ADDR then
+			write(lineo, string'(".zdbl_not_alwaysL [0x"));
+			hex_write(lineo, pca);
+			write(lineo, string'("]"));
+			writeline(fileo, lineo);
+		end if;
 	end procedure is_new_routine;
 
 	procedure log_coords(strcoord : string; coord : std_logic_vector;
@@ -699,7 +713,8 @@ begin
 	               dbgtrngnnrnddet, dbghalted,
 	               dbgtrngcompletebypass, dbgtrngcompletebypassbit,
 	               nndyn_nnrnd_mask, nndyn_nnrnd_zerowm1, nndyn_wm1,
-								 nndyn_2wm1, swrst, token_generating)
+								 nndyn_2wm1, swrst, token_generating,
+								 no_nnrnd_sf)
 		variable v : reg_type;
 		variable v_op0 : unsigned(ww downto 0);
 		variable v_op1 : unsigned(ww downto 0);
@@ -2072,6 +2087,14 @@ begin
 				     & "opcode NNRNDs or NNRNDf"
 					severity FAILURE;
 			-- pragma translate_on
+		end if;
+
+		-- In naive implem we force r.rnd.data to all 0's whenever the opcode
+		-- which is executed is either an NNRNDs or an NNRNDf.
+		if no_nnrnd_sf = '1' then
+			if r.rnd.shift = '1' or r.rnd.shiftf = '1' then
+				v.rnd.data := (others => '0');
+			end if;
 		end if;
 
 		-- finalization of the shift-register (alignment of data at right top).

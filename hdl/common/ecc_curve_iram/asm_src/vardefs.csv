@@ -174,3 +174,6 @@ XR1bk,28
 YR1bk,12
 # variable used specifically by <token.s>
 token,18
+# variables used specifically by <zdbl-not-always.s>
+4YR1sq,23
+8YR1cu,23

@@ -21,7 +21,9 @@
 	NNCLR			alf
 .random_phiL:
 .random_phiL_export:
+.random_phi0L_dbg:
 	NNRND			phi0
+.random_phi1L_dbg:
 	NNRND			phi1
 # *******************************************************************
 # save kb0 (LSB of kb) as it will be required in the end to condition-
@@ -62,6 +64,7 @@
 # Generate shift-register masks for kap0 and kap1
 	NNRNDs		1	kap0msk
 	NNRNDf		1	kap1msk
+.random_kapmskL_dbg:
 	NNXOR	kap0	kap0msk	kap0
 	NNXOR	kap1	kap1msk	kap1
 	NNCLR			kap0msk
@@ -69,6 +72,7 @@
 # Generate shift-register masks for kapP0 and kapP1
 	NNRNDs		2	kapP0msk
 	NNRNDf		2	kapP1msk
+.random_kapPmskL_dbg:
 	NNXOR	kapP0	kapP0msk	kapP0
 	NNXOR	kapP1	kapP1msk	kapP1
 	NNCLR			kapP0msk
@@ -76,6 +80,7 @@
 # Generate shift-register masks for phi0 and phi1
 	NNRNDs		3	phi0msk
 	NNRNDf		3	phi1msk
+.random_phimskL_dbg:
 	NNXOR	phi0	phi0msk	phi0
 	NNXOR	phi1	phi1msk	phi1
 	NNCLR			phi0msk
@@ -85,7 +90,9 @@
 	NNCLR			mu1
 # Sample LSbit of Kappa, which is Kappa_1 (this bit will
 # be used later to possibly switch P and [3]P)
+.sample0_kaplsbL_dbg:
 	TESTPARs	kap0	1	%kap
+.sample1_kaplsbL_dbg:
 	NOP
 # Erase scalar (only Kappa & Kappa' masked versions remain)
 	NNCLR			kb0

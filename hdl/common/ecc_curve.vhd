@@ -111,6 +111,9 @@ entity ecc_curve is
 		patching : out std_logic;
 		patchid : out integer
 		-- pragma translate_on
+		-- Signals specific to attack feature
+		; not_always_add : in std_logic;
+		no_collision_cr : in std_logic
 	);
 end entity ecc_curve;
 
@@ -413,7 +416,8 @@ begin
 	               dbgnbopcodes, dbgdosomeopcodes, dbgresume, dbgnoxyshuf,
 	               dbgtrngcompletebypass,
 	               swrst, zu, zc, r0z, r1z, ptadd,
-	               pts_are_equal, pts_are_oppos, first3pz, firstzaddu, firstzdbl)
+	               pts_are_equal, pts_are_oppos, first3pz, firstzaddu, firstzdbl,
+	               not_always_add, no_collision_cr)
 		variable v : reg_type;
 		variable vtmp0 : std_logic_vector(14 downto 0);
 		variable vtmp1 : std_logic_vector(2 downto 0);
@@ -885,62 +889,112 @@ begin
 						v.decode.valid := '0'; -- (s18) bypass of (s17)
 						-- decode patch flags
 						if r.decode.c.patchid = "000000" then -- set opa for ",p0" patch
-							if laststep = '1' then
-								if (doblinding = '0' and (r.ctrl.kb0 xor masklsb) = '1')
-									or (doblinding = '1' and (r.ctrl.kb0 xor r.ctrl.mu0)='1')
-								then
-									-- the original scalar is actually ODD: the subtraction
-									-- performed by ZADDC must NOT take place, and instead
-									-- XR0 must be copied into XR1
-									v.decode.patch.opax0det := '1';
-								else -- (r.ctrl.kb0 xor "LSB of approp. mask") = '0'
-									-- the original scalar is actually EVEN: the subtraction
-									-- performed by ZADDC MUST take place
-									null; -- opa by default to XSUB in zaddc.s for this opcode
+							if not_always_add = '1' then
+								if laststep = '1' then -- actually it's necessarily the case
+									if (doblinding = '0' and (r.ctrl.kb0 xor masklsb) = '1')
+										or (doblinding = '1' and (r.ctrl.kb0 xor r.ctrl.mu0)='1')
+									then
+										-- the original scalar is actually ODD: the subtraction
+										-- performed by ZADDC must NOT take place, and instead
+										-- XR0 must be copied into XR1
+										v.decode.patch.opax0det := '1';
+									else -- (r.ctrl.kb0 xor "LSB of approp. mask") = '0'
+										-- the original scalar is actually EVEN: the subtraction
+										-- performed by ZADDC MUST take place
+										null; -- opa by default to XSUB in zaddc.s for this opcode
+									end if;
 								end if;
-							elsif laststep = '0' then
-								if r.ctrl.kap = '1' then
-									v.decode.patch.opcx1next := '1';
-								elsif r.ctrl.kap = '0' then
-									v.decode.patch.opcx0next := '1';
+							elsif not_always_add = '0' then
+								if laststep = '1' then
+									if (doblinding = '0' and (r.ctrl.kb0 xor masklsb) = '1')
+										or (doblinding = '1' and (r.ctrl.kb0 xor r.ctrl.mu0)='1')
+									then
+										-- the original scalar is actually ODD: the subtraction
+										-- performed by ZADDC must NOT take place, and instead
+										-- XR0 must be copied into XR1
+										v.decode.patch.opax0det := '1';
+									else -- (r.ctrl.kb0 xor "LSB of approp. mask") = '0'
+										-- the original scalar is actually EVEN: the subtraction
+										-- performed by ZADDC MUST take place
+										null; -- opa by default to XSUB in zaddc.s for this opcode
+									end if;
+								elsif laststep = '0' then
+									if r.ctrl.kap = '1' then
+										v.decode.patch.opcx1next := '1';
+									elsif r.ctrl.kap = '0' then
+										v.decode.patch.opcx0next := '1';
+									end if;
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "000001" then -- set opa for ",p1" patch
-							if laststep = '1' then
-								if (doblinding = '0' and (r.ctrl.kb0 xor masklsb) = '1')
-									or (doblinding = '1' and (r.ctrl.kb0 xor r.ctrl.mu0)='1')
-								then
-									-- the original scalar is actually ODD: the subtraction
-									-- performed by ZADDC must NOT take place, and instead
-									-- YR0 must be copied into YR1
-									v.decode.patch.opay0det := '1';
-								else -- (r.ctrl.kb0 xor "LSB of approp. mask") = '0'
-									-- the original scalar is actually EVEN: the subtraction
-									-- performed by ZADDC MUST take place
-									null; -- opa by default to YSUB in zaddc.s for this opcode
+							if not_always_add = '1' then
+								if laststep = '1' then -- actually it's necessarily the case
+									if (doblinding = '0' and (r.ctrl.kb0 xor masklsb) = '1')
+										or (doblinding = '1' and (r.ctrl.kb0 xor r.ctrl.mu0)='1')
+									then
+										-- the original scalar is actually ODD: the subtraction
+										-- performed by ZADDC must NOT take place, and instead
+										-- YR0 must be copied into YR1
+										v.decode.patch.opay0det := '1';
+									else -- (r.ctrl.kb0 xor "LSB of approp. mask") = '0'
+										-- the original scalar is actually EVEN: the subtraction
+										-- performed by ZADDC MUST take place
+										null; -- opa by default to YSUB in zaddc.s for this opcode
+									end if;
 								end if;
-							elsif laststep = '0' then
-								if r.ctrl.kap = '1' then
-									v.decode.patch.opcy1next := '1';
-								elsif r.ctrl.kap = '0' then
-									v.decode.patch.opcy0next := '1';
+							elsif not_always_add = '0' then
+								if laststep = '1' then
+									if (doblinding = '0' and (r.ctrl.kb0 xor masklsb) = '1')
+										or (doblinding = '1' and (r.ctrl.kb0 xor r.ctrl.mu0)='1')
+									then
+										-- the original scalar is actually ODD: the subtraction
+										-- performed by ZADDC must NOT take place, and instead
+										-- YR0 must be copied into YR1
+										v.decode.patch.opay0det := '1';
+									else -- (r.ctrl.kb0 xor "LSB of approp. mask") = '0'
+										-- the original scalar is actually EVEN: the subtraction
+										-- performed by ZADDC MUST take place
+										null; -- opa by default to YSUB in zaddc.s for this opcode
+									end if;
+								elsif laststep = '0' then
+									if r.ctrl.kap = '1' then
+										v.decode.patch.opcy1next := '1';
+									elsif r.ctrl.kap = '0' then
+										v.decode.patch.opcy0next := '1';
+									end if;
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "000010" then -- set opc for ",p2"
-							if laststep = '1' then
-								if ((doblinding = '0' and ((r.ctrl.kb0 xor masklsb) = '1'))
-									or
-									(doblinding = '1' and ((r.ctrl.kb0 xor r.ctrl.mu0)='1')))
-								then
-									-- the original scalar is actually ODD: the subtraction
-									-- performed by ZADDC must NOT take place, so ZR01 must
-									-- not be updated
-									v.decode.patch.opccopiesopa := '1';
-								else -- (r.ctrl.kb0 xor "LSB of approp. mask") = '0'
+							if not_always_add = '1' then
+								if laststep = '1' then -- actually it's necessarily the case
+									if ((doblinding = '0' and ((r.ctrl.kb0 xor masklsb) = '1'))
+										or
+										(doblinding = '1' and ((r.ctrl.kb0 xor r.ctrl.mu0)='1')))
+									then
+										-- the original scalar is actually ODD: the subtraction
+										-- performed by ZADDC must NOT take place, so ZR01 must
+										-- not be updated
+										v.decode.patch.opccopiesopa := '1';
+									else -- (r.ctrl.kb0 xor "LSB of approp. mask") = '0'
+										null; -- opc by default to ZR01 in zaddc.s for this opcode
+									end if;
+								end if;
+							elsif not_always_add = '0' then
+								if laststep = '1' then
+									if ((doblinding = '0' and ((r.ctrl.kb0 xor masklsb) = '1'))
+										or
+										(doblinding = '1' and ((r.ctrl.kb0 xor r.ctrl.mu0)='1')))
+									then
+										-- the original scalar is actually ODD: the subtraction
+										-- performed by ZADDC must NOT take place, so ZR01 must
+										-- not be updated
+										v.decode.patch.opccopiesopa := '1';
+									else -- (r.ctrl.kb0 xor "LSB of approp. mask") = '0'
+										null; -- opc by default to ZR01 in zaddc.s for this opcode
+									end if;
+								elsif laststep = '0' then
 									null; -- opc by default to ZR01 in zaddc.s for this opcode
 								end if;
-							elsif laststep = '0' then
-								null; -- opc by default to ZR01 in zaddc.s for this opcode
 							end if;
 						elsif r.decode.c.patchid = "000011" then -- set opc for ",p3" patch
 							if laststep = '1' then
@@ -976,15 +1030,20 @@ begin
 								v.decode.patch.opax0det := '1';
 								v.decode.patch.opbx1det := '1';
 							elsif ptadd = '0' then
-								-- firstzaddu is not used here because it is equivalent
-								-- to kapp = 0 (see (s46) just below)
-								if r.ctrl.kapp = '1' then
-									v.decode.patch.opax1 := '1';
-									v.decode.patch.opbx0 := '1';
-								elsif r.ctrl.kapp = '0' -- or firstzaddu = 1 (s46), see (s45)
-								then
+								if not_always_add = '1' then
 									v.decode.patch.opax0 := '1';
 									v.decode.patch.opbx1 := '1';
+								elsif not_always_add = '0' then
+									-- firstzaddu is not used here because it is equivalent
+									-- to kapp = 0 (see (s46) just below)
+									if r.ctrl.kapp = '1' then
+										v.decode.patch.opax1 := '1';
+										v.decode.patch.opbx0 := '1';
+									elsif r.ctrl.kapp = '0' -- or firstzaddu = 1 (s46), see (s45)
+									then
+										v.decode.patch.opax0 := '1';
+										v.decode.patch.opbx1 := '1';
+									end if;
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "001000" then -- set opa & opb for ",p8" patch
@@ -997,13 +1056,18 @@ begin
 								v.decode.patch.opay0det := '1';
 								v.decode.patch.opby1det := '1';
 							elsif ptadd = '0' then
-								if r.ctrl.kapp = '0' -- or firstzaddu = 1 (s47), see (s45)
-								then
+								if not_always_add = '1' then
 									v.decode.patch.opay0 := '1';
 									v.decode.patch.opby1 := '1';
-								elsif r.ctrl.kapp = '1' then
-									v.decode.patch.opay1 := '1';
-									v.decode.patch.opby0 := '1';
+								elsif not_always_add = '0' then
+									if r.ctrl.kapp = '0' -- or firstzaddu = 1 (s47), see (s45)
+									then
+										v.decode.patch.opay0 := '1';
+										v.decode.patch.opby1 := '1';
+									elsif r.ctrl.kapp = '1' then
+										v.decode.patch.opay1 := '1';
+										v.decode.patch.opby0 := '1';
+									end if;
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "001001" then -- ",p9" patch (in .znegcL)
@@ -1025,10 +1089,14 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opax0det := '1';
 							elsif ptadd = '0' then
-								if r.ctrl.kapp = '0' then -- (s48), see (s45)
+								if not_always_add = '1' then
 									v.decode.patch.opax0 := '1';
-								elsif r.ctrl.kapp = '1' then
-									v.decode.patch.opax1 := '1';
+								elsif not_always_add = '0' then
+									if r.ctrl.kapp = '0' then -- (s48), see (s45)
+										v.decode.patch.opax0 := '1';
+									elsif r.ctrl.kapp = '1' then
+										v.decode.patch.opax1 := '1';
+									end if;
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "001011" then -- set opa & opc for ",p11" patch (in .zadduL)
@@ -1040,46 +1108,25 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opcx0det := '1';
 							elsif ptadd = '0' then
-								if firstzaddu = '1' and r.ctrl.first2pz = '1' then
-									-- .zadduL called by .setupL and initial point P is a
-									-- 2-torsion point ([2]P = 0)
-									v.decode.patch.opbr := '1';
-									v.decode.patch.opcx0next := '1';
-								elsif firstzaddu = '1' and first3pz = '1' then
-									-- .zadduL called after .setupL with a 3-torsion point
-									v.decode.patch.opbr := '1';
-									if r.ctrl.kap = '0' then
-										-- kappa_1 = 0 (R0 & R1 must switch places)
-										v.decode.patch.opcx0next := '1';
-									elsif r.ctrl.kap = '1' then
-										-- kappa_1 = 1
-										v.decode.patch.opcx1next := '1';
-									end if;
-								elsif r0z = '0' and r1z = '0' and pts_are_oppos = '1' then
-									v.decode.patch.opbr := '1';
-									if r.ctrl.kapp = '0' then
-										v.decode.patch.opcx0next := '1';
-									elsif r.ctrl.kapp = '1' then
-										v.decode.patch.opcx1next := '1';
-									end if;
-								elsif r0z = '0' and r1z = '1' then
-									v.decode.patch.opbr := '1';
-									if r.ctrl.kapp = '0' then
-										v.decode.patch.opcx1next := '1';
-									elsif r.ctrl.kapp = '1' then
-										v.decode.patch.opcx0next := '1';
-									end if;
-								elsif r0z = '1' and r1z = '0' then
-									v.decode.patch.opbr := '1';
-									if r.ctrl.kapp = '0' then
-										v.decode.patch.opcx1next := '1';
-									elsif r.ctrl.kapp = '1' then
-										v.decode.patch.opcx0next := '1';
-									end if;
-								else
-									-- default case
-									-- (including firstzaddu = 1 and .first2pz = 0)
+								if not_always_add = '1' then
 									if firstzaddu = '1' then
+										if r.ctrl.kap = '0' then
+											v.decode.patch.opcx0next := '1';
+										elsif r.ctrl.kap = '1' then
+											v.decode.patch.opcx1next := '1';
+										end if;
+									elsif firstzaddu = '0' then
+										v.decode.patch.opcx1next := '1';
+									end if;
+								elsif not_always_add = '0' then
+									if firstzaddu = '1' and r.ctrl.first2pz = '1' then
+										-- .zadduL called by .setupL and initial point P is a
+										-- 2-torsion point ([2]P = 0)
+										v.decode.patch.opbr := '1';
+										v.decode.patch.opcx0next := '1';
+									elsif firstzaddu = '1' and first3pz = '1' then
+										-- .zadduL called after .setupL with a 3-torsion point
+										v.decode.patch.opbr := '1';
 										if r.ctrl.kap = '0' then
 											-- kappa_1 = 0 (R0 & R1 must switch places)
 											v.decode.patch.opcx0next := '1';
@@ -1087,11 +1134,48 @@ begin
 											-- kappa_1 = 1
 											v.decode.patch.opcx1next := '1';
 										end if;
-									elsif firstzaddu = '0' then
-										if r.ctrl.kapp = '0' then -- (s49), see (s45)
+									elsif r0z = '0' and r1z = '0' and pts_are_oppos = '1' then
+										v.decode.patch.opbr := '1';
+										if r.ctrl.kapp = '0' then
 											v.decode.patch.opcx0next := '1';
 										elsif r.ctrl.kapp = '1' then
 											v.decode.patch.opcx1next := '1';
+										end if;
+									elsif r0z = '0' and r1z = '1' then
+										v.decode.patch.opbr := '1';
+										if r.ctrl.kapp = '0' then
+											v.decode.patch.opcx1next := '1';
+										elsif r.ctrl.kapp = '1' then
+											v.decode.patch.opcx0next := '1';
+										end if;
+									elsif r0z = '1' and r1z = '0' then
+										v.decode.patch.opbr := '1';
+										if r.ctrl.kapp = '0' then
+											v.decode.patch.opcx1next := '1';
+										elsif r.ctrl.kapp = '1' then
+											v.decode.patch.opcx0next := '1';
+										end if;
+									else
+										-- default case
+										-- (including firstzaddu = 1 and .first2pz = 0)
+										if firstzaddu = '1' then
+											if r.ctrl.kap = '0' then
+												-- kappa_1 = 0 (R0 & R1 must switch places)
+												v.decode.patch.opcx0next := '1';
+											elsif r.ctrl.kap = '1' then
+												-- kappa_1 = 1
+												v.decode.patch.opcx1next := '1';
+											end if;
+										elsif firstzaddu = '0' then
+											if r.ctrl.kapp = '0' then -- (s49), see (s45)
+												if no_collision_cr = '1' then
+													v.decode.patch.opcx1next := '1';
+												elsif no_collision_cr = '0' then
+													v.decode.patch.opcx0next := '1';
+												end if;
+											elsif r.ctrl.kapp = '1' then
+												v.decode.patch.opcx1next := '1';
+											end if;
 										end if;
 									end if;
 								end if;
@@ -1105,44 +1189,25 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opcy0det := '1';
 							elsif ptadd = '0' then
-								if firstzaddu = '1' and r.ctrl.first2pz = '1' then
-									-- .zadduL called by .setupL and initial point P is a
-									-- 2-torsion point ([2]P = 0)
-									v.decode.patch.opbr := '1';
-									v.decode.patch.opcy0next := '1';
-								elsif firstzaddu = '1' and first3pz = '1' then
-									-- .zadduL called after .setupL with a 3-torsion point
-									v.decode.patch.opbr := '1';
-									if r.ctrl.kap = '0' then
-										-- kappa_1 = 0 (R0 & R1 must switch places)
-										v.decode.patch.opcy0next := '1';
-									elsif r.ctrl.kap = '1' then
-										-- kappa_1 = 1
-										v.decode.patch.opcy1next := '1';
-									end if;
-								elsif r0z = '0' and r1z = '0' and pts_are_oppos = '1' then
-									v.decode.patch.opbr := '1';
-									if r.ctrl.kapp = '0' then
-										v.decode.patch.opcy0next := '1';
-									elsif r.ctrl.kapp = '1' then
-										v.decode.patch.opcy1next := '1';
-									end if;
-								elsif r0z = '0' and r1z = '1' then
-									v.decode.patch.opbr := '1';
-									if r.ctrl.kapp = '0' then
-										v.decode.patch.opcy1next := '1';
-									elsif r.ctrl.kapp = '1' then
-										v.decode.patch.opcy0next := '1';
-									end if;
-								elsif r0z = '1' and r1z = '0' then
-									v.decode.patch.opbr := '1';
-									if r.ctrl.kapp = '0' then
-										v.decode.patch.opcy1next := '1';
-									elsif r.ctrl.kapp = '1' then
-										v.decode.patch.opcy0next := '1';
-									end if;
-								else -- default case
+								if not_always_add = '1' then
 									if firstzaddu = '1' then
+										if r.ctrl.kap = '0' then
+											v.decode.patch.opcy0next := '1';
+										elsif r.ctrl.kap = '1' then
+											v.decode.patch.opcy1next := '1';
+										end if;
+									elsif firstzaddu = '0' then
+										v.decode.patch.opcy1next := '1';
+									end if;
+								elsif not_always_add = '0' then
+									if firstzaddu = '1' and r.ctrl.first2pz = '1' then
+										-- .zadduL called by .setupL and initial point P is a
+										-- 2-torsion point ([2]P = 0)
+										v.decode.patch.opbr := '1';
+										v.decode.patch.opcy0next := '1';
+									elsif firstzaddu = '1' and first3pz = '1' then
+										-- .zadduL called after .setupL with a 3-torsion point
+										v.decode.patch.opbr := '1';
 										if r.ctrl.kap = '0' then
 											-- kappa_1 = 0 (R0 & R1 must switch places)
 											v.decode.patch.opcy0next := '1';
@@ -1150,63 +1215,147 @@ begin
 											-- kappa_1 = 1
 											v.decode.patch.opcy1next := '1';
 										end if;
-									elsif firstzaddu = '0' then
-										if r.ctrl.kapp = '0' then -- (s50), see (s45)
+									elsif r0z = '0' and r1z = '0' and pts_are_oppos = '1' then
+										v.decode.patch.opbr := '1';
+										if r.ctrl.kapp = '0' then
 											v.decode.patch.opcy0next := '1';
 										elsif r.ctrl.kapp = '1' then
 											v.decode.patch.opcy1next := '1';
+										end if;
+									elsif r0z = '0' and r1z = '1' then
+										v.decode.patch.opbr := '1';
+										if r.ctrl.kapp = '0' then
+											v.decode.patch.opcy1next := '1';
+										elsif r.ctrl.kapp = '1' then
+											v.decode.patch.opcy0next := '1';
+										end if;
+									elsif r0z = '1' and r1z = '0' then
+										v.decode.patch.opbr := '1';
+										if r.ctrl.kapp = '0' then
+											v.decode.patch.opcy1next := '1';
+										elsif r.ctrl.kapp = '1' then
+											v.decode.patch.opcy0next := '1';
+										end if;
+									else -- default case
+										if firstzaddu = '1' then
+											if r.ctrl.kap = '0' then
+												-- kappa_1 = 0 (R0 & R1 must switch places)
+												v.decode.patch.opcy0next := '1';
+											elsif r.ctrl.kap = '1' then
+												-- kappa_1 = 1
+												v.decode.patch.opcy1next := '1';
+											end if;
+										elsif firstzaddu = '0' then
+											if r.ctrl.kapp = '0' then -- (s50), see (s45)
+												if no_collision_cr = '1' then
+													v.decode.patch.opcy1next := '1';
+												elsif no_collision_cr = '0' then
+													v.decode.patch.opcy0next := '1';
+												end if;
+											elsif r.ctrl.kapp = '1' then
+												v.decode.patch.opcy1next := '1';
+											end if;
 										end if;
 									end if;
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "001101" then -- set opc for ",p13" patch
-							if laststep = '1' then
-								if ((doblinding='0' and ((r.ctrl.kb0 xor masklsb) = '1'))
-									or
-									(doblinding='1' and ((r.ctrl.kb0 xor r.ctrl.mu0) = '1')))
-								then
-									-- the original scalar is actually ODD: the subtraction
-									-- performed by ZADDC must NOT take place
-									v.decode.patch.opccopiesopa := '1';
-								else
-									-- the original scalar is actually EVEN: the subtraction
-									-- performed by ZADDC MUST take place
-									null; -- opc by default to XR0 in zaddc.s for this opcode
+							if not_always_add = '1' then
+								if laststep = '1' then -- actually it's necessarily the case
+									if ((doblinding='0' and ((r.ctrl.kb0 xor masklsb) = '1'))
+										or
+										(doblinding='1' and ((r.ctrl.kb0 xor r.ctrl.mu0) = '1')))
+									then
+										-- the original scalar is actually ODD: the subtraction
+										-- performed by ZADDC must NOT take place
+										-- Hence we must not clobber the value of XR0, as it'll be
+										-- copied by patch ,p0 into XR1
+										v.decode.patch.opccopiesopa := '1';
+									else
+										-- the original scalar is actually EVEN: the subtraction
+										-- performed by ZADDC MUST take place
+										-- There's nothing to here, because the default behaviour
+										-- of the opcode is to write XADD into XR0, and XR0 is
+										-- indifferent here.
+										null;
+									end if;
 								end if;
-							elsif laststep = '0' then
-								if r.ctrl.kap = '1' then
-									v.decode.patch.opcx0next := '1';
-								elsif r.ctrl.kap = '0' then
-									v.decode.patch.opcx1next := '1';
+							elsif not_always_add = '0' then
+								if laststep = '1' then
+									if ((doblinding='0' and ((r.ctrl.kb0 xor masklsb) = '1'))
+										or
+										(doblinding='1' and ((r.ctrl.kb0 xor r.ctrl.mu0) = '1')))
+									then
+										-- the original scalar is actually ODD: the subtraction
+										-- performed by ZADDC must NOT take place
+										v.decode.patch.opccopiesopa := '1';
+									else
+										-- the original scalar is actually EVEN: the subtraction
+										-- performed by ZADDC MUST take place
+										null; -- opc by default to XR0 in zaddc.s for this opcode
+									end if;
+								elsif laststep = '0' then
+									if r.ctrl.kap = '1' then
+										v.decode.patch.opcx0next := '1';
+									elsif r.ctrl.kap = '0' then
+										v.decode.patch.opcx1next := '1';
+									end if;
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "001110" then -- set opb for ",p14" patch
-							if laststep = '1' then
-								null; -- opb by default to XR0 in zaddc.s for this opcode
-							elsif r.ctrl.kap = '1' then
-								v.decode.patch.opbx0next := '1';
-							elsif r.ctrl.kap = '0' then
-								v.decode.patch.opbx1next := '1';
+							if not_always_add = '1' then
+								-- behaviour is indifferent here.
+								null;
+							elsif not_always_add = '0' then
+								if laststep = '1' then
+									null; -- opb by default to XR0 in zaddc.s for this opcode
+								elsif r.ctrl.kap = '1' then
+									v.decode.patch.opbx0next := '1';
+								elsif r.ctrl.kap = '0' then
+									v.decode.patch.opbx1next := '1';
+								end if;
 							end if;
 						elsif r.decode.c.patchid = "001111" then -- set opc for ",p15" patch
-							if laststep = '1' then
-								if ((doblinding='0' and ((r.ctrl.kb0 xor masklsb) = '1'))
-									or
-									(doblinding='1' and ((r.ctrl.kb0 xor r.ctrl.mu0) = '1')))
-								then
-									-- the original scalar is actually ODD: the subtraction
-									-- performed by ZADDC must NOT take place
-									v.decode.patch.opccopiesopa := '1';
-								else
-									-- the original scalar is actually EVEN: the subtraction
-									-- performed by ZADDC MUST take place
-									null; -- opc by default to YR0 in zaddc.s for this opcode
+							if not_always_add = '1' then
+								if laststep = '1' then -- actually it's necessarily the case
+									if ((doblinding='0' and ((r.ctrl.kb0 xor masklsb) = '1'))
+										or
+										(doblinding='1' and ((r.ctrl.kb0 xor r.ctrl.mu0) = '1')))
+									then
+										-- the original scalar is actually ODD: the subtraction
+										-- performed by ZADDC must NOT take place
+										-- Hence we must not clobber the value of YR0, as it'll be
+										-- copied by patch ,p1 into YR1
+										v.decode.patch.opccopiesopa := '1';
+									else
+										-- the original scalar is actually EVEN: the subtraction
+										-- performed by ZADDC MUST take place
+										-- There's nothing to here, because the default behaviour
+										-- of the opcode is to write YADD into YR0, and YR0 is
+										-- indifferent here.
+										null;
+									end if;
 								end if;
-							elsif laststep = '0' then
-								if r.ctrl.kap = '1' then
-									v.decode.patch.opcy0next := '1';
-								elsif r.ctrl.kap = '0' then
-									v.decode.patch.opcy1next := '1';
+							elsif not_always_add = '0' then
+								if laststep = '1' then
+									if ((doblinding='0' and ((r.ctrl.kb0 xor masklsb) = '1'))
+										or
+										(doblinding='1' and ((r.ctrl.kb0 xor r.ctrl.mu0) = '1')))
+									then
+										-- the original scalar is actually ODD: the subtraction
+										-- performed by ZADDC must NOT take place
+										v.decode.patch.opccopiesopa := '1';
+									else
+										-- the original scalar is actually EVEN: the subtraction
+										-- performed by ZADDC MUST take place
+										null; -- opc by default to YR0 in zaddc.s for this opcode
+									end if;
+								elsif laststep = '0' then
+									if r.ctrl.kap = '1' then
+										v.decode.patch.opcy0next := '1';
+									elsif r.ctrl.kap = '0' then
+										v.decode.patch.opcy1next := '1';
+									end if;
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "010000" then -- set opc for ",p16" patch
@@ -1336,30 +1485,46 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opcx1det := '1';
 							elsif ptadd = '0' then
-								if firstzaddu = '1' then
-									if r.ctrl.first2pz = '1' then
-										-- .zadduL called by .setupL and initial point P is a
-										-- 2-torsion point ([2]P = 0)
-										v.decode.patch.opax0next := '1';
-										v.decode.patch.opbz := '1';
-										v.decode.patch.opcx1next := '1';
-									elsif r.ctrl.first2pz = '0' then
+								if not_always_add = '1' then
+									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
-											-- kappa_1 = 0 (R0 & R1 must switch places)
 											v.decode.patch.opcx1next := '1';
 										elsif r.ctrl.kap = '1' then
-											-- kappa_1 = 1
 											v.decode.patch.opcx0next := '1';
 										end if;
+									elsif firstzaddu = '0' then
+										v.decode.patch.opcx0next := '1';
 									end if;
-								elsif firstzaddu = '0' then
-									if (r0z xor r1z) = '1' then
-										v.decode.patch.opcvoid := '1';
-									elsif (r0z xor r1z) = '0' then
-										if r.ctrl.kapp = '0' then -- (s51), see (s45)
+								elsif not_always_add = '0' then
+									if firstzaddu = '1' then
+										if r.ctrl.first2pz = '1' then
+											-- .zadduL called by .setupL and initial point P is a
+											-- 2-torsion point ([2]P = 0)
+											v.decode.patch.opax0next := '1';
+											v.decode.patch.opbz := '1';
 											v.decode.patch.opcx1next := '1';
-										elsif r.ctrl.kapp = '1' then
-											v.decode.patch.opcx0next := '1';
+										elsif r.ctrl.first2pz = '0' then
+											if r.ctrl.kap = '0' then
+												-- kappa_1 = 0 (R0 & R1 must switch places)
+												v.decode.patch.opcx1next := '1';
+											elsif r.ctrl.kap = '1' then
+												-- kappa_1 = 1
+												v.decode.patch.opcx0next := '1';
+											end if;
+										end if;
+									elsif firstzaddu = '0' then
+										if (r0z xor r1z) = '1' then
+											v.decode.patch.opcvoid := '1';
+										elsif (r0z xor r1z) = '0' then
+											if r.ctrl.kapp = '0' then -- (s51), see (s45)
+												if no_collision_cr = '1' then
+													v.decode.patch.opcx0next := '1';
+												elsif no_collision_cr = '0' then
+													v.decode.patch.opcx1next := '1';
+												end if;
+											elsif r.ctrl.kapp = '1' then
+												v.decode.patch.opcx0next := '1';
+											end if;
 										end if;
 									end if;
 								end if;
@@ -1372,19 +1537,35 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opbx0det := '1';
 							elsif ptadd = '0' then
-								if firstzaddu = '1' then
-									if r.ctrl.kap = '0' then
-										-- kappa_1 = 0 (R0 & R1 must switch places)
-										v.decode.patch.opbx0next := '1';
-									elsif r.ctrl.kap = '1' then
-										-- kappa_1 = 1
+								if not_always_add = '1' then
+									if firstzaddu = '1' then
+										if r.ctrl.kap = '0' then
+											v.decode.patch.opbx0next := '1';
+										elsif r.ctrl.kap = '1' then
+											v.decode.patch.opbx1next := '1';
+										end if;
+									elsif firstzaddu = '0' then
 										v.decode.patch.opbx1next := '1';
 									end if;
-								elsif firstzaddu = '0' then
-									if r.ctrl.kapp = '0' then -- (s52), see (s45)
-										v.decode.patch.opbx0next := '1';
-									elsif r.ctrl.kapp = '1' then
-										v.decode.patch.opbx1next := '1';
+								elsif not_always_add = '0' then
+									if firstzaddu = '1' then
+										if r.ctrl.kap = '0' then
+											-- kappa_1 = 0 (R0 & R1 must switch places)
+											v.decode.patch.opbx0next := '1';
+										elsif r.ctrl.kap = '1' then
+											-- kappa_1 = 1
+											v.decode.patch.opbx1next := '1';
+										end if;
+									elsif firstzaddu = '0' then
+										if r.ctrl.kapp = '0' then -- (s52), see (s45)
+											if no_collision_cr = '1' then
+												v.decode.patch.opbx1next := '1';
+											elsif no_collision_cr = '0' then
+												v.decode.patch.opbx0next := '1';
+											end if;
+										elsif r.ctrl.kapp = '1' then
+											v.decode.patch.opbx1next := '1';
+										end if;
 									end if;
 								end if;
 							end if;
@@ -1398,23 +1579,43 @@ begin
 								v.decode.patch.opax0det := '1';
 								v.decode.patch.opbx1det := '1';
 							elsif ptadd = '0' then
-								if firstzaddu = '1' then
-									if r.ctrl.kap = '0' then
-										-- kappa_1 = 0 (R0 & R1 must switch places)
-										v.decode.patch.opax0next := '1';
-										v.decode.patch.opbx1next := '1';
-									elsif r.ctrl.kap = '1' then
-										-- kappa_1 = 1
+								if not_always_add = '1' then
+									if firstzaddu = '1' then
+										if r.ctrl.kap = '0' then
+											v.decode.patch.opax0next := '1';
+											v.decode.patch.opbx1next := '1';
+										elsif r.ctrl.kap = '1' then
+											v.decode.patch.opax1next := '1';
+											v.decode.patch.opbx0next := '1';
+										end if;
+									elsif firstzaddu = '0' then
 										v.decode.patch.opax1next := '1';
 										v.decode.patch.opbx0next := '1';
 									end if;
-								elsif firstzaddu = '0' then
-									if r.ctrl.kapp = '0' then -- (s53), see (s45)
-										v.decode.patch.opax0next := '1';
-										v.decode.patch.opbx1next := '1';
-									elsif r.ctrl.kapp = '1' then
-										v.decode.patch.opax1next := '1';
-										v.decode.patch.opbx0next := '1';
+								elsif not_always_add = '0' then
+									if firstzaddu = '1' then
+										if r.ctrl.kap = '0' then
+											-- kappa_1 = 0 (R0 & R1 must switch places)
+											v.decode.patch.opax0next := '1';
+											v.decode.patch.opbx1next := '1';
+										elsif r.ctrl.kap = '1' then
+											-- kappa_1 = 1
+											v.decode.patch.opax1next := '1';
+											v.decode.patch.opbx0next := '1';
+										end if;
+									elsif firstzaddu = '0' then
+										if r.ctrl.kapp = '0' then -- (s53), see (s45)
+											if no_collision_cr = '1' then
+												v.decode.patch.opax1next := '1';
+												v.decode.patch.opbx0next := '1';
+											elsif no_collision_cr = '0' then
+												v.decode.patch.opax0next := '1';
+												v.decode.patch.opbx1next := '1';
+											end if;
+										elsif r.ctrl.kapp = '1' then
+											v.decode.patch.opax1next := '1';
+											v.decode.patch.opbx0next := '1';
+										end if;
 									end if;
 								end if;
 							end if;
@@ -1427,28 +1628,44 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opcy1det := '1';
 							elsif ptadd = '0' then
-								if firstzaddu = '1' then
-									if r.ctrl.first2pz = '1' then
-										-- .zadduL called by .setupL and initial point P is a
-										-- 2-torsion point ([2]P = 0)
-										v.decode.patch.opcy1next := '1';
-									elsif r.ctrl.first2pz = '0' then
+								if not_always_add = '1' then
+									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
-											-- kappa_1 = 0 (R0 & R1 must switch places)
 											v.decode.patch.opcy1next := '1';
 										elsif r.ctrl.kap = '1' then
-											-- kappa_1 = 1
 											v.decode.patch.opcy0next := '1';
 										end if;
+									elsif firstzaddu = '0' then
+										v.decode.patch.opcy0next := '1';
 									end if;
-								elsif firstzaddu = '0' then
-									if (r0z xor r1z) = '1' then
-										v.decode.patch.opcvoid := '1';
-									elsif (r0z xor r1z) = '0' then
-										if r.ctrl.kapp = '0' then -- (s54), see (s45)
+								elsif not_always_add = '0' then
+									if firstzaddu = '1' then
+										if r.ctrl.first2pz = '1' then
+											-- .zadduL called by .setupL and initial point P is a
+											-- 2-torsion point ([2]P = 0)
 											v.decode.patch.opcy1next := '1';
-										elsif r.ctrl.kapp = '1' then
-											v.decode.patch.opcy0next := '1';
+										elsif r.ctrl.first2pz = '0' then
+											if r.ctrl.kap = '0' then
+												-- kappa_1 = 0 (R0 & R1 must switch places)
+												v.decode.patch.opcy1next := '1';
+											elsif r.ctrl.kap = '1' then
+												-- kappa_1 = 1
+												v.decode.patch.opcy0next := '1';
+											end if;
+										end if;
+									elsif firstzaddu = '0' then
+										if (r0z xor r1z) = '1' then
+											v.decode.patch.opcvoid := '1';
+										elsif (r0z xor r1z) = '0' then
+											if r.ctrl.kapp = '0' then -- (s54), see (s45)
+												if no_collision_cr = '1' then
+													v.decode.patch.opcy0next := '1';
+												elsif no_collision_cr = '0' then
+													v.decode.patch.opcy1next := '1';
+												end if;
+											elsif r.ctrl.kapp = '1' then
+												v.decode.patch.opcy0next := '1';
+											end if;
 										end if;
 									end if;
 								end if;
@@ -1469,106 +1686,196 @@ begin
 								v.decode.patch.opby0det := '1';
 								v.decode.patch.opcy1det := '1';
 							elsif ptadd = '0' then
-								if firstzaddu = '1' then
-									if r.ctrl.first2pz = '1' then
-										-- .zadduL called by .setupL and initial point P is a
-										-- 2-torsion point ([2]P = 0)
-										v.decode.patch.opay0next := '1';
-										v.decode.patch.opbz := '1';
-										v.decode.patch.opcy1next := '1';
-									elsif r.ctrl.first2pz = '0' then
+								if not_always_add = '1' then
+									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
-											-- kappa_1 = 0 (R0 & R1 must switch places)
 											v.decode.patch.opay1next := '1';
 											v.decode.patch.opby0next := '1';
 											v.decode.patch.opcy1next := '1';
 										elsif r.ctrl.kap = '1' then
-											-- kappa_1 = 1
 											v.decode.patch.opay0next := '1';
 											v.decode.patch.opby1next := '1';
 											v.decode.patch.opcy0next := '1';
 										end if;
+									elsif firstzaddu = '0' then
+										v.decode.patch.opay0next := '1';
+										v.decode.patch.opby1next := '1';
+										v.decode.patch.opcy0next := '1';
 									end if;
-								elsif firstzaddu = '0' then
-									if (r0z xor r1z) = '1' then
-										v.decode.patch.opcvoid := '1';
-									elsif (r0z xor r1z) = '0' then
-										if r.ctrl.kapp = '0' then -- (s55), see (s45)
-											v.decode.patch.opay1next := '1';
-											v.decode.patch.opby0next := '1';
-											v.decode.patch.opcy1next := '1';
-										elsif r.ctrl.kapp = '1' then
+								elsif not_always_add = '0' then
+									if firstzaddu = '1' then
+										if r.ctrl.first2pz = '1' then
+											-- .zadduL called by .setupL and initial point P is a
+											-- 2-torsion point ([2]P = 0)
 											v.decode.patch.opay0next := '1';
-											v.decode.patch.opby1next := '1';
-											v.decode.patch.opcy0next := '1';
+											v.decode.patch.opbz := '1';
+											v.decode.patch.opcy1next := '1';
+										elsif r.ctrl.first2pz = '0' then
+											if r.ctrl.kap = '0' then
+												-- kappa_1 = 0 (R0 & R1 must switch places)
+												v.decode.patch.opay1next := '1';
+												v.decode.patch.opby0next := '1';
+												v.decode.patch.opcy1next := '1';
+											elsif r.ctrl.kap = '1' then
+												-- kappa_1 = 1
+												v.decode.patch.opay0next := '1';
+												v.decode.patch.opby1next := '1';
+												v.decode.patch.opcy0next := '1';
+											end if;
+										end if;
+									elsif firstzaddu = '0' then
+										if (r0z xor r1z) = '1' then
+											v.decode.patch.opcvoid := '1';
+										elsif (r0z xor r1z) = '0' then
+											if r.ctrl.kapp = '0' then -- (s55), see (s45)
+												if no_collision_cr = '1' then
+													v.decode.patch.opay0next := '1';
+													v.decode.patch.opby1next := '1';
+													v.decode.patch.opcy0next := '1';
+												elsif no_collision_cr = '0' then
+													v.decode.patch.opay1next := '1';
+													v.decode.patch.opby0next := '1';
+													v.decode.patch.opcy1next := '1';
+												end if;
+											elsif r.ctrl.kapp = '1' then
+												v.decode.patch.opay0next := '1';
+												v.decode.patch.opby1next := '1';
+												v.decode.patch.opcy0next := '1';
+											end if;
 										end if;
 									end if;
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "011101" then -- set opa & opb for ",p29" patch
-							if laststep = '1' then
-								null; -- opa/opb already set to XR1/XR0 in zaddc.s
-							elsif laststep = '0' then
-								if r.ctrl.kapp = '0' then
-									v.decode.patch.opax0 := '1';
-									v.decode.patch.opbx1 := '1';
-								elsif r.ctrl.kapp = '1' then
+							if not_always_add = '1' then
+								if laststep = '1' then -- actually it's necessarily the case
 									v.decode.patch.opax1 := '1';
 									v.decode.patch.opbx0 := '1';
 								end if;
+							elsif not_always_add = '0' then
+								if laststep = '1' then
+									null; -- opa/opb already set to XR1/XR0 in zaddc.s
+								elsif laststep = '0' then
+									if no_collision_cr = '1' then
+										v.decode.patch.opax1 := '1';
+										v.decode.patch.opbx0 := '1';
+									elsif no_collision_cr = '0' then
+										if r.ctrl.kapp = '0' then
+											v.decode.patch.opax0 := '1';
+											v.decode.patch.opbx1 := '1';
+										elsif r.ctrl.kapp = '1' then
+											v.decode.patch.opax1 := '1';
+											v.decode.patch.opbx0 := '1';
+										end if;
+									end if;
+								end if;
 							end if;
 						elsif r.decode.c.patchid = "011110" then -- set opa & opb for ",p30" patch
-							if laststep = '1' then
-								null; -- opa/opb already set to YR1/YR0 in zaddc.s
-							elsif laststep = '0' then
-								if r.ctrl.kapp = '0' then
-									v.decode.patch.opay0 := '1';
-									v.decode.patch.opby1 := '1';
-								elsif r.ctrl.kapp = '1' then
+							if not_always_add = '1' then
+								if laststep = '1' then -- actually it's necessarily the case
 									v.decode.patch.opay1 := '1';
 									v.decode.patch.opby0 := '1';
+								end if;
+							elsif not_always_add = '0' then
+								if laststep = '1' then
+									null; -- opa/opb already set to YR1/YR0 in zaddc.s
+								elsif laststep = '0' then
+									if no_collision_cr = '1' then
+										v.decode.patch.opay1 := '1';
+										v.decode.patch.opby0 := '1';
+									elsif no_collision_cr = '0' then
+										if r.ctrl.kapp = '0' then
+											v.decode.patch.opay0 := '1';
+											v.decode.patch.opby1 := '1';
+										elsif r.ctrl.kapp = '1' then
+											v.decode.patch.opay1 := '1';
+											v.decode.patch.opby0 := '1';
+										end if;
+									end if;
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "011111" then -- set opa & opb for ",p31" patch
-							if laststep = '1' then
-								null; -- opa/opb already set to YR0/YR1 in zaddc.s
-							elsif laststep = '0' then
-								if r.ctrl.kapp = '0' then
-									v.decode.patch.opay1 := '1';
-									v.decode.patch.opby0 := '1';
-								elsif r.ctrl.kapp = '1' then
+							if not_always_add = '1' then
+								if laststep = '1' then -- actually it's necessarily the case
 									v.decode.patch.opay0 := '1';
 									v.decode.patch.opby1 := '1';
 								end if;
+							elsif not_always_add = '0' then
+								if laststep = '1' then
+									null; -- opa/opb already set to YR0/YR1 in zaddc.s
+								elsif laststep = '0' then
+									if no_collision_cr = '1' then
+										v.decode.patch.opay0 := '1';
+										v.decode.patch.opby1 := '1';
+									elsif no_collision_cr = '0' then
+										if r.ctrl.kapp = '0' then
+											v.decode.patch.opay1 := '1';
+											v.decode.patch.opby0 := '1';
+										elsif r.ctrl.kapp = '1' then
+											v.decode.patch.opay0 := '1';
+											v.decode.patch.opby1 := '1';
+										end if;
+									end if;
+								end if;
 							end if;
 						elsif r.decode.c.patchid = "100000" then -- set opa for ",p32" patch
-							if laststep = '1' then
-								null; -- opa already set to XR0 in zaddc.s
-							elsif laststep = '0' then
-								if r.ctrl.kapp = '0' then
-									v.decode.patch.opax1 := '1';
-								elsif r.ctrl.kapp = '1' then
+							if not_always_add = '1' then
+								if laststep = '1' then -- actually it's necessarily the case
 									v.decode.patch.opax0 := '1';
+								end if;
+							elsif not_always_add = '0' then
+								if laststep = '1' then
+									null; -- opa already set to XR0 in zaddc.s
+								elsif laststep = '0' then
+									if no_collision_cr = '1' then
+										v.decode.patch.opax0 := '1';
+									elsif no_collision_cr = '0' then
+										if r.ctrl.kapp = '0' then
+											v.decode.patch.opax1 := '1';
+										elsif r.ctrl.kapp = '1' then
+											v.decode.patch.opax0 := '1';
+										end if;
+									end if;
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "100001" then -- set opa for ",p33" patch
-							if laststep = '1' then
-								null; -- opa already set to XR1 in zaddc.s
-							elsif laststep = '0' then
-								if r.ctrl.kapp = '0' then
-									v.decode.patch.opax0 := '1';
-								elsif r.ctrl.kapp = '1' then
+							if not_always_add = '1' then
+								if laststep = '1' then -- actually it's necessarily the case
 									v.decode.patch.opax1 := '1';
+								end if;
+							elsif not_always_add = '0' then
+								if laststep = '1' then
+									null; -- opa already set to XR1 in zaddc.s
+								elsif laststep = '0' then
+									if no_collision_cr = '1' then
+										v.decode.patch.opax1 := '1';
+									elsif no_collision_cr = '0' then
+										if r.ctrl.kapp = '0' then
+											v.decode.patch.opax0 := '1';
+										elsif r.ctrl.kapp = '1' then
+											v.decode.patch.opax1 := '1';
+										end if;
+									end if;
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "100010" then -- set opa for ",p34" patch
-							if laststep = '1' then
-								null; -- opa already set to YR0 in zaddc.s
-							elsif laststep = '0' then
-								if r.ctrl.kapp = '0' then
-									v.decode.patch.opay1 := '1';
-								elsif r.ctrl.kapp = '1' then
+							if not_always_add = '1' then
+								if laststep = '1' then -- actually it's necessarily the case
 									v.decode.patch.opay0 := '1';
+								end if;
+							elsif not_always_add = '0' then
+								if laststep = '1' then
+									null; -- opa already set to YR0 in zaddc.s
+								elsif laststep = '0' then
+									if no_collision_cr = '1' then
+										v.decode.patch.opay0 := '1';
+									elsif no_collision_cr = '0' then
+										if r.ctrl.kapp = '0' then
+											v.decode.patch.opay1 := '1';
+										elsif r.ctrl.kapp = '1' then
+											v.decode.patch.opay0 := '1';
+										end if;
+									end if;
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "100011" then -- set opa & opc for ",p35" patch (in .zadduL)
@@ -1579,27 +1886,31 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opay1det := '1';
 							elsif ptadd = '0' then
-								if firstzaddu = '1' and r.ctrl.first2pz = '1' then
-									-- .zadduL called by .setupL and initial point P is a
-									-- 2-torsion point ([2]P = 0)
+								if not_always_add = '1' then
 									v.decode.patch.opay1 := '1';
-								elsif r0z = '0' and r1z = '0' and pts_are_oppos = '1' then
-									if r.ctrl.kapp = '0' then
+								elsif not_always_add = '0' then
+									if firstzaddu = '1' and r.ctrl.first2pz = '1' then
+										-- .zadduL called by .setupL and initial point P is a
+										-- 2-torsion point ([2]P = 0)
 										v.decode.patch.opay1 := '1';
-									elsif r.ctrl.kapp = '1' then
+									elsif r0z = '0' and r1z = '0' and pts_are_oppos = '1' then
+										if r.ctrl.kapp = '0' then
+											v.decode.patch.opay1 := '1';
+										elsif r.ctrl.kapp = '1' then
+											v.decode.patch.opay0 := '1';
+										end if;
+									elsif r0z = '0' and r1z = '1' then
 										v.decode.patch.opay0 := '1';
-									end if;
-								elsif r0z = '0' and r1z = '1' then
-									v.decode.patch.opay0 := '1';
-								elsif r0z = '1' and r1z = '0' then
-									v.decode.patch.opay1 := '1';
-								else
-									-- default case
-									-- (including firstzaddu = 1 and .first2pz = 0 thx to (s56))
-									if r.ctrl.kapp = '0' then -- (s56), see (s45)
+									elsif r0z = '1' and r1z = '0' then
 										v.decode.patch.opay1 := '1';
-									elsif r.ctrl.kapp = '1' then
-										v.decode.patch.opay0 := '1';
+									else
+										-- default case
+										-- (including firstzaddu = 1 and .first2pz = 0 thx to (s56))
+										if r.ctrl.kapp = '0' then -- (s56), see (s45)
+											v.decode.patch.opay1 := '1';
+										elsif r.ctrl.kapp = '1' then
+											v.decode.patch.opay0 := '1';
+										end if;
 									end if;
 								end if;
 							end if;
@@ -1611,27 +1922,31 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opax1det := '1';
 							elsif ptadd = '0' then
-								if firstzaddu = '1' and r.ctrl.first2pz = '1' then
-									-- .zadduL called by .setupL and initial point P is a
-									-- 2-torsion point ([2]P = 0)
+								if not_always_add = '1' then
 									v.decode.patch.opax1 := '1';
-								elsif r0z = '0' and r1z = '0' and pts_are_oppos = '1' then
-									if r.ctrl.kapp = '0' then
+								elsif not_always_add = '0' then
+									if firstzaddu = '1' and r.ctrl.first2pz = '1' then
+										-- .zadduL called by .setupL and initial point P is a
+										-- 2-torsion point ([2]P = 0)
 										v.decode.patch.opax1 := '1';
-									elsif r.ctrl.kapp = '1' then
+									elsif r0z = '0' and r1z = '0' and pts_are_oppos = '1' then
+										if r.ctrl.kapp = '0' then
+											v.decode.patch.opax1 := '1';
+										elsif r.ctrl.kapp = '1' then
+											v.decode.patch.opax0 := '1';
+										end if;
+									elsif r0z = '0' and r1z = '1' then
 										v.decode.patch.opax0 := '1';
-									end if;
-								elsif r0z = '0' and r1z = '1' then
-									v.decode.patch.opax0 := '1';
-								elsif r0z = '1' and r1z = '0' then
-									v.decode.patch.opax1 := '1';
-								else
-									-- default case
-									-- (including firstzaddu = 1 and .first2pz = 0 thx to (s57))
-									if r.ctrl.kapp = '0' then -- (s57), see (s45)
+									elsif r0z = '1' and r1z = '0' then
 										v.decode.patch.opax1 := '1';
-									elsif r.ctrl.kapp = '1' then
-										v.decode.patch.opax0 := '1';
+									else
+										-- default case
+										-- (including firstzaddu = 1 and .first2pz = 0 thx to (s57))
+										if r.ctrl.kapp = '0' then -- (s57), see (s45)
+											v.decode.patch.opax1 := '1';
+										elsif r.ctrl.kapp = '1' then
+											v.decode.patch.opax0 := '1';
+										end if;
 									end if;
 								end if;
 							end if;
@@ -1643,19 +1958,35 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opbx0det := '1';
 							elsif ptadd = '0' then
-								if firstzaddu = '1' then
-									if r.ctrl.kap = '0' then
-										-- kappa_1 = 0 (R0 & R1 must switch places)
-										v.decode.patch.opbx0next := '1';
-									elsif r.ctrl.kap = '1' then
-										-- kappa_1 = 1
+								if not_always_add = '1' then
+									if firstzaddu = '1' then
+										if r.ctrl.kap = '0' then
+											v.decode.patch.opbx0next := '1';
+										elsif r.ctrl.kap = '1' then
+											v.decode.patch.opbx1next := '1';
+										end if;
+									elsif firstzaddu = '0' then
 										v.decode.patch.opbx1next := '1';
 									end if;
-								elsif firstzaddu = '0' then
-									if r.ctrl.kapp = '0' then
-										v.decode.patch.opbx0next := '1';
-									elsif r.ctrl.kapp = '1' then
-										v.decode.patch.opbx1next := '1';
+								elsif not_always_add = '0' then
+									if firstzaddu = '1' then
+										if r.ctrl.kap = '0' then
+											-- kappa_1 = 0 (R0 & R1 must switch places)
+											v.decode.patch.opbx0next := '1';
+										elsif r.ctrl.kap = '1' then
+											-- kappa_1 = 1
+											v.decode.patch.opbx1next := '1';
+										end if;
+									elsif firstzaddu = '0' then
+										if r.ctrl.kapp = '0' then
+											if no_collision_cr = '1' then
+												v.decode.patch.opbx1next := '1';
+											elsif no_collision_cr = '0' then
+												v.decode.patch.opbx0next := '1';
+											end if;
+										elsif r.ctrl.kapp = '1' then
+											v.decode.patch.opbx1next := '1';
+										end if;
 									end if;
 								end if;
 							end if;
@@ -1673,61 +2004,84 @@ begin
 								v.decode.patch.opcx1det := '1';
 								v.decode.patch.as := '1'; -- same as ,p5 patch
 							elsif ptadd = '0' then
-								if firstzaddu = '1' and first3pz = '1' then
-									if r.ctrl.kap = '0' then
-										-- kappa_1 = 0 (R0 & R1 must switch places)
-										v.decode.patch.opaz := '1';
-										v.decode.patch.opbz := '1';
-										v.decode.patch.opcx1next := '1';
-									elsif r.ctrl.kap = '1' then
-										-- kappa_1 = 1
-										v.decode.patch.opaz := '1';
-										v.decode.patch.opbz := '1';
-										v.decode.patch.opcx0next := '1';
-									end if;
-								elsif firstzaddu = '1' and r.ctrl.first2pz = '1' then
-									-- .zadduL called by .setupL and initial point P is a
-									-- 2-torsion point ([2]P = 0)
-									v.decode.patch.as := '1'; -- same as ,p5 patch
-									v.decode.patch.opax1next := '1';
-									v.decode.patch.opcx1next := '1';
-								elsif r0z = '0' and r1z = '1' then
-									v.decode.patch.opbz := '1';
-									if r.ctrl.kapp = '0' then
-										v.decode.patch.opax1next := '1';
-										v.decode.patch.opcx0next := '1';
-									elsif r.ctrl.kapp = '1' then
-										v.decode.patch.opaxtmp := '1';
-										v.decode.patch.opcx1next := '1';
-									end if;
-								elsif r0z = '1' and r1z = '0' then
-									v.decode.patch.opbz := '1';
-									if r.ctrl.kapp = '0' then
-										v.decode.patch.opaxtmp := '1';
-										v.decode.patch.opcx0next := '1';
-									elsif r.ctrl.kapp = '1' then
-										v.decode.patch.opax0next := '1';
-										v.decode.patch.opcx1next := '1';
-									end if;
-								else -- default case (including r0z = r1z = 0 and pts opposed)
-									v.decode.patch.as := '1'; -- same as ,p5 patch
+								if not_always_add = '1' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
-											-- kappa_1 = 0 (R0 & R1 must switch places)
+											v.decode.patch.as := '1';
 											v.decode.patch.opax1next := '1';
 											v.decode.patch.opcx1next := '1';
 										elsif r.ctrl.kap = '1' then
-											-- kappa_1 = 1
+											v.decode.patch.as := '1';
 											v.decode.patch.opax0next := '1';
 											v.decode.patch.opcx0next := '1';
 										end if;
 									elsif firstzaddu = '0' then
-										if r.ctrl.kapp = '0' then -- (s59), see (s45)
-											v.decode.patch.opax1next := '1';
+										v.decode.patch.as := '1';
+										v.decode.patch.opax0next := '1';
+										v.decode.patch.opcx0next := '1';
+									end if;
+								elsif not_always_add = '0' then
+									if firstzaddu = '1' and first3pz = '1' then
+										if r.ctrl.kap = '0' then
+											-- kappa_1 = 0 (R0 & R1 must switch places)
+											v.decode.patch.opaz := '1';
+											v.decode.patch.opbz := '1';
 											v.decode.patch.opcx1next := '1';
+										elsif r.ctrl.kap = '1' then
+											-- kappa_1 = 1
+											v.decode.patch.opaz := '1';
+											v.decode.patch.opbz := '1';
+											v.decode.patch.opcx0next := '1';
+										end if;
+									elsif firstzaddu = '1' and r.ctrl.first2pz = '1' then
+										-- .zadduL called by .setupL and initial point P is a
+										-- 2-torsion point ([2]P = 0)
+										v.decode.patch.as := '1'; -- same as ,p5 patch
+										v.decode.patch.opax1next := '1';
+										v.decode.patch.opcx1next := '1';
+									elsif r0z = '0' and r1z = '1' then
+										v.decode.patch.opbz := '1';
+										if r.ctrl.kapp = '0' then
+											v.decode.patch.opax1next := '1';
+											v.decode.patch.opcx0next := '1';
+										elsif r.ctrl.kapp = '1' then
+											v.decode.patch.opaxtmp := '1';
+											v.decode.patch.opcx1next := '1';
+										end if;
+									elsif r0z = '1' and r1z = '0' then
+										v.decode.patch.opbz := '1';
+										if r.ctrl.kapp = '0' then
+											v.decode.patch.opaxtmp := '1';
+											v.decode.patch.opcx0next := '1';
 										elsif r.ctrl.kapp = '1' then
 											v.decode.patch.opax0next := '1';
-											v.decode.patch.opcx0next := '1';
+											v.decode.patch.opcx1next := '1';
+										end if;
+									else -- default case (including r0z = r1z = 0 and pts opposed)
+										v.decode.patch.as := '1'; -- same as ,p5 patch
+										if firstzaddu = '1' then
+											if r.ctrl.kap = '0' then
+												-- kappa_1 = 0 (R0 & R1 must switch places)
+												v.decode.patch.opax1next := '1';
+												v.decode.patch.opcx1next := '1';
+											elsif r.ctrl.kap = '1' then
+												-- kappa_1 = 1
+												v.decode.patch.opax0next := '1';
+												v.decode.patch.opcx0next := '1';
+											end if;
+										elsif firstzaddu = '0' then
+											if r.ctrl.kapp = '0' then -- (s59), see (s45)
+												if no_collision_cr = '1' then
+													v.decode.patch.opax0next := '1';
+													v.decode.patch.opcx0next := '1';
+												elsif no_collision_cr = '0' then
+													v.decode.patch.opax1next := '1';
+													v.decode.patch.opcx1next := '1';
+												end if;
+											elsif r.ctrl.kapp = '1' then
+												v.decode.patch.opax0next := '1';
+												v.decode.patch.opcx0next := '1';
+											end if;
 										end if;
 									end if;
 								end if;
@@ -1745,81 +2099,114 @@ begin
 								v.decode.patch.opcy1det := '1';
 								v.decode.patch.as := '1'; -- same as ,p5 patch
 							elsif ptadd = '0' then
-								if firstzaddu = '1' and first3pz = '1' then
-									if r.ctrl.kap = '0' then
-										-- kappa_1 = 0 (R0 & R1 must switch places)
-										v.decode.patch.opaz := '1';
-										v.decode.patch.opbz := '1';
-										v.decode.patch.opcy1next := '1';
-									elsif r.ctrl.kap = '1' then
-										-- kappa_1 = 1
-										v.decode.patch.opaz := '1';
-										v.decode.patch.opbz := '1';
-										v.decode.patch.opcy0next := '1';
-									end if;
-								elsif firstzaddu = '1' and r.ctrl.first2pz = '1' then
-										v.decode.patch.as := '1'; -- same as ,p5 patch
-										v.decode.patch.opay1next := '1';
-										v.decode.patch.opcy1next := '1';
-								elsif r0z = '0' and r1z = '1' then
-									v.decode.patch.opbz := '1';
-									if r.ctrl.kapp = '0' then
-										v.decode.patch.opay1next := '1';
-										v.decode.patch.opcy0next := '1';
-									elsif r.ctrl.kapp = '1' then
-										v.decode.patch.opaytmp := '1';
-										v.decode.patch.opcy1next := '1';
-									end if;
-								elsif r0z = '1' and r1z = '0' then
-									v.decode.patch.opbz := '1';
-									if r.ctrl.kapp = '0' then
-										v.decode.patch.opaytmp := '1';
-										v.decode.patch.opcy0next := '1';
-									elsif r.ctrl.kapp = '1' then
-										v.decode.patch.opay0next := '1';
-										v.decode.patch.opcy1next := '1';
-									end if;
-								else
-									-- default case, including:
-									--  - r0z = r1z = 0 and pts opposed)
-									--  - firstzaddu = 1 and r.ctrl.first2pz = 0
-									v.decode.patch.as := '1'; -- same as ,p5 patch
+								if not_always_add = '1' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
-											-- kappa_1 = 0 (R0 & R1 must switch places)
+											v.decode.patch.as := '1'; -- same as ,p5 patch
 											v.decode.patch.opay1next := '1';
 											v.decode.patch.opcy1next := '1';
 										elsif r.ctrl.kap = '1' then
-											-- kappa_1 = 1
+											v.decode.patch.as := '1'; -- same as ,p5 patch
 											v.decode.patch.opay0next := '1';
 											v.decode.patch.opcy0next := '1';
 										end if;
 									elsif firstzaddu = '0' then
-										if r.ctrl.kapp = '0' then -- (s60), see (s45)
+										v.decode.patch.as := '1'; -- same as ,p5 patch
+										v.decode.patch.opay0next := '1';
+										v.decode.patch.opcy0next := '1';
+									end if;
+								elsif not_always_add = '0' then
+									if firstzaddu = '1' and first3pz = '1' then
+										if r.ctrl.kap = '0' then
+											-- kappa_1 = 0 (R0 & R1 must switch places)
+											v.decode.patch.opaz := '1';
+											v.decode.patch.opbz := '1';
+											v.decode.patch.opcy1next := '1';
+										elsif r.ctrl.kap = '1' then
+											-- kappa_1 = 1
+											v.decode.patch.opaz := '1';
+											v.decode.patch.opbz := '1';
+											v.decode.patch.opcy0next := '1';
+										end if;
+									elsif firstzaddu = '1' and r.ctrl.first2pz = '1' then
+											v.decode.patch.as := '1'; -- same as ,p5 patch
 											v.decode.patch.opay1next := '1';
 											v.decode.patch.opcy1next := '1';
+									elsif r0z = '0' and r1z = '1' then
+										v.decode.patch.opbz := '1';
+										if r.ctrl.kapp = '0' then
+											v.decode.patch.opay1next := '1';
+											v.decode.patch.opcy0next := '1';
+										elsif r.ctrl.kapp = '1' then
+											v.decode.patch.opaytmp := '1';
+											v.decode.patch.opcy1next := '1';
+										end if;
+									elsif r0z = '1' and r1z = '0' then
+										v.decode.patch.opbz := '1';
+										if r.ctrl.kapp = '0' then
+											v.decode.patch.opaytmp := '1';
+											v.decode.patch.opcy0next := '1';
 										elsif r.ctrl.kapp = '1' then
 											v.decode.patch.opay0next := '1';
-											v.decode.patch.opcy0next := '1';
+											v.decode.patch.opcy1next := '1';
+										end if;
+									else
+										-- default case, including:
+										--  - r0z = r1z = 0 and pts opposed
+										--  - firstzaddu = 1 and r.ctrl.first2pz = 0
+										v.decode.patch.as := '1'; -- same as ,p5 patch
+										if firstzaddu = '1' then
+											if r.ctrl.kap = '0' then
+												-- kappa_1 = 0 (R0 & R1 must switch places)
+												v.decode.patch.opay1next := '1';
+												v.decode.patch.opcy1next := '1';
+											elsif r.ctrl.kap = '1' then
+												-- kappa_1 = 1
+												v.decode.patch.opay0next := '1';
+												v.decode.patch.opcy0next := '1';
+											end if;
+										elsif firstzaddu = '0' then
+											if r.ctrl.kapp = '0' then -- (s60), see (s45)
+												if no_collision_cr = '1' then
+													v.decode.patch.opay0next := '1';
+													v.decode.patch.opcy0next := '1';
+												elsif no_collision_cr = '0' then
+													v.decode.patch.opay1next := '1';
+													v.decode.patch.opcy1next := '1';
+												end if;
+											elsif r.ctrl.kapp = '1' then
+												v.decode.patch.opay0next := '1';
+												v.decode.patch.opcy0next := '1';
+											end if;
 										end if;
 									end if;
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "101000" then -- set opa for ",p40" patch
-							if r.ctrl.par = '0' then
-								-- result of the scalar loop is in R0
+							if not_always_add = '1' then
+								-- With naive Joye, "correct" result is always in R0
 								v.decode.patch.opax0 := '1';
-							elsif r.ctrl.par = '1' then
-								-- result of the scalar loop is in R1
-								v.decode.patch.opax1 := '1';
+							elsif not_always_add = '0' then
+								if r.ctrl.par = '0' then
+									-- result of the scalar loop is in R0
+									v.decode.patch.opax0 := '1';
+								elsif r.ctrl.par = '1' then
+									-- result of the scalar loop is in R1
+									v.decode.patch.opax1 := '1';
+								end if;
 							end if;
 						elsif r.decode.c.patchid = "101001" then -- set opa for ",p41" patch
-							if r.ctrl.par = '0' then
-								-- result of the scalar loop is in R0
+							if not_always_add = '1' then
+								-- With naive Joye, "correct" result is always in R0
 								v.decode.patch.opay0 := '1';
-							elsif r.ctrl.par = '1' then
-								-- result of the scalar loop is in R1
-								v.decode.patch.opay1 := '1';
+							elsif not_always_add = '0' then
+								if r.ctrl.par = '0' then
+									-- result of the scalar loop is in R0
+									v.decode.patch.opay0 := '1';
+								elsif r.ctrl.par = '1' then
+									-- result of the scalar loop is in R1
+									v.decode.patch.opay1 := '1';
+								end if;
 							end if;
 						--when "101010" => -- ",p42" patch (patch ,p42 no longer used)
 						--	if r.ctrl.xmxz = '1' and r.ctrl.ymyz = '0' then
@@ -2071,223 +2458,247 @@ begin
 							end if;
 							v.decode.patch.p := '1';
 						elsif r.decode.c.patchid = "111001" then -- patch ",p57" (in .zdblL)
-							if ptadd = '0' then
-								if firstzdbl = '1' then
-									null; -- opc already set to deterministic XR1 in zdbl.s
-								elsif laststep = '1' then
-									if (doblinding = '0' and (r.ctrl.kb0 xor masklsb) = '1')
-										or (doblinding = '1' and (r.ctrl.kb0 xor r.ctrl.mu0)='1')
-									then
-										-- original scalar is actually ODD
-										v.decode.patch.opcx1det := '1';
-									else -- (r.ctrl.kb0 xor "LSB of approp. mask") = '0'
-										-- original scalar is actually EVEN
-										if pts_are_equal = '1' then
-											v.decode.patch.opaz := '1';
-											v.decode.patch.opcx1det := '1';
-										elsif pts_are_oppos = '1' then
-											v.decode.patch.opaz := '1';
-											v.decode.patch.opcx0det := '1';
-										end if;
-									end if;
-								elsif laststep = '0' then
-									if zu = '1' and zc = '0' then
-										-- ZDBLU
-										if r0z = '0' and r1z = '0' and pts_are_equal = '1' then
-											if r.ctrl.kapp = '1' then
-												v.decode.patch.opcx1next := '1';
-												--v.decode.patch.opax1 := '1';
-											elsif r.ctrl.kapp = '0' then
-												v.decode.patch.opcx0next := '1';
-												--v.decode.patch.opax1 := '1';
-											end if;
-										end if;
-									elsif zu = '0' and zc = '1' then
-										-- ZDBLC
-										if r0z = '0' and r1z = '0' and pts_are_equal = '1' then
-											--v.decode.patch.opax1 := '1';
-											if r.ctrl.kap = '0' then
-												v.decode.patch.opcx0next := '1';
-											elsif r.ctrl.kap = '1' then
-												v.decode.patch.opcx1next := '1';
-											end if;
-										elsif r0z = '0' and r1z = '0' and pts_are_oppos = '1' then
-											--v.decode.patch.opax1 := '1';
-											if r.ctrl.kap = '0' and r.ctrl.kapp = '0' then
-												v.decode.patch.opcx1next := '1';
-											elsif r.ctrl.kap = '0' and r.ctrl.kapp = '1' then
-												v.decode.patch.opcx1next := '1';
-											elsif r.ctrl.kap = '1' and r.ctrl.kapp = '0' then
-												v.decode.patch.opcx0next := '1';
-											elsif r.ctrl.kap = '1' and r.ctrl.kapp = '1' then
-												v.decode.patch.opcx0next := '1';
-											end if;
-										end if;
-									end if;
+							if not_always_add = '1' then
+								if firstzdbl = '1' then -- it can't but necessarily be the case
+									v.decode.patch.opcx1det := '1';
 								end if;
-							end if; -- ptadd
+							elsif not_always_add = '0' then
+								if ptadd = '0' then
+									if firstzdbl = '1' then
+										null; -- opc already set to deterministic XR1 in zdbl.s
+									elsif laststep = '1' then
+										if (doblinding = '0' and (r.ctrl.kb0 xor masklsb) = '1')
+											or (doblinding = '1' and (r.ctrl.kb0 xor r.ctrl.mu0)='1')
+										then
+											-- original scalar is actually ODD
+											v.decode.patch.opcx1det := '1';
+										else -- (r.ctrl.kb0 xor "LSB of approp. mask") = '0'
+											-- original scalar is actually EVEN
+											if pts_are_equal = '1' then
+												v.decode.patch.opaz := '1';
+												v.decode.patch.opcx1det := '1';
+											elsif pts_are_oppos = '1' then
+												v.decode.patch.opaz := '1';
+												v.decode.patch.opcx0det := '1';
+											end if;
+										end if;
+									elsif laststep = '0' then
+										if zu = '1' and zc = '0' then
+											-- ZDBLU
+											if r0z = '0' and r1z = '0' and pts_are_equal = '1' then
+												if r.ctrl.kapp = '1' then
+													v.decode.patch.opcx1next := '1';
+													--v.decode.patch.opax1 := '1';
+												elsif r.ctrl.kapp = '0' then
+													v.decode.patch.opcx0next := '1';
+													--v.decode.patch.opax1 := '1';
+												end if;
+											end if;
+										elsif zu = '0' and zc = '1' then
+											-- ZDBLC
+											if r0z = '0' and r1z = '0' and pts_are_equal = '1' then
+												--v.decode.patch.opax1 := '1';
+												if r.ctrl.kap = '0' then
+													v.decode.patch.opcx0next := '1';
+												elsif r.ctrl.kap = '1' then
+													v.decode.patch.opcx1next := '1';
+												end if;
+											elsif r0z = '0' and r1z = '0' and pts_are_oppos = '1' then
+												--v.decode.patch.opax1 := '1';
+												if r.ctrl.kap = '0' and r.ctrl.kapp = '0' then
+													v.decode.patch.opcx1next := '1';
+												elsif r.ctrl.kap = '0' and r.ctrl.kapp = '1' then
+													v.decode.patch.opcx1next := '1';
+												elsif r.ctrl.kap = '1' and r.ctrl.kapp = '0' then
+													v.decode.patch.opcx0next := '1';
+												elsif r.ctrl.kap = '1' and r.ctrl.kapp = '1' then
+													v.decode.patch.opcx0next := '1';
+												end if;
+											end if;
+										end if;
+									end if;
+								end if; -- ptadd
+							end if;
 						elsif r.decode.c.patchid = "111010" then -- patch ",p58" (in .zdblL)
-							if ptadd = '0' then
-								if firstzdbl = '1' then
-									null; -- opc already set to deterministic YR1 in zdbl.s
-								elsif laststep = '1' then
-									if (doblinding = '0' and (r.ctrl.kb0 xor masklsb) = '1')
-										or (doblinding = '1' and (r.ctrl.kb0 xor r.ctrl.mu0)='1')
-									then
-										-- original scalar is actually ODD
-										v.decode.patch.opcy1det := '1';
-									else -- (r.ctrl.kb0 xor "LSB of approp. mask") = '0'
-										-- original scalar is actually EVEN
-										if pts_are_equal = '1' then
-											v.decode.patch.opaz := '1';
-											v.decode.patch.opcy1det := '1';
-										elsif pts_are_oppos = '1' then
-											v.decode.patch.opaz := '1';
-											v.decode.patch.opcy0det := '1';
-										end if;
-									end if;
-								elsif laststep = '0' then
-									if zu = '1' and zc = '0' then
-										-- ZDBLU
-										if r0z = '0' and r1z = '0' and pts_are_equal = '1' then
-											if r.ctrl.kapp = '1' then
-												v.decode.patch.opcy1next := '1';
-												--v.decode.patch.opay1 := '1';
-											elsif r.ctrl.kapp = '0' then
-												v.decode.patch.opcy0next := '1';
-												--v.decode.patch.opay1 := '1';
-											end if;
-										end if;
-									elsif zu = '0' and zc = '1' then
-										-- ZDBLC
-										if r0z = '0' and r1z = '0' and pts_are_equal = '1' then
-											--v.decode.patch.opay1 := '1';
-											if r.ctrl.kap = '0' then
-												v.decode.patch.opcy0next := '1';
-											elsif r.ctrl.kap = '1' then
-												v.decode.patch.opcy1next := '1';
-											end if;
-										elsif r0z = '0' and r1z = '0' and pts_are_oppos = '1' then
-											--v.decode.patch.opay1 := '1';
-											if r.ctrl.kap = '0' and r.ctrl.kapp = '0' then
-												v.decode.patch.opcy1next := '1';
-											elsif r.ctrl.kap = '0' and r.ctrl.kapp = '1' then
-												v.decode.patch.opcy1next := '1';
-											elsif r.ctrl.kap = '1' and r.ctrl.kapp = '0' then
-												v.decode.patch.opcy0next := '1';
-											elsif r.ctrl.kap = '1' and r.ctrl.kapp = '1' then
-												v.decode.patch.opcy0next := '1';
-											end if;
-										end if;
-									end if;
+							if not_always_add = '1' then
+								if firstzdbl = '1' then -- it can't but necessarily be the case
+									v.decode.patch.opcy1det := '1';
 								end if;
-							end if; -- ptadd
+							elsif not_always_add = '0' then
+								if ptadd = '0' then
+									if firstzdbl = '1' then
+										null; -- opc already set to deterministic YR1 in zdbl.s
+									elsif laststep = '1' then
+										if (doblinding = '0' and (r.ctrl.kb0 xor masklsb) = '1')
+											or (doblinding = '1' and (r.ctrl.kb0 xor r.ctrl.mu0)='1')
+										then
+											-- original scalar is actually ODD
+											v.decode.patch.opcy1det := '1';
+										else -- (r.ctrl.kb0 xor "LSB of approp. mask") = '0'
+											-- original scalar is actually EVEN
+											if pts_are_equal = '1' then
+												v.decode.patch.opaz := '1';
+												v.decode.patch.opcy1det := '1';
+											elsif pts_are_oppos = '1' then
+												v.decode.patch.opaz := '1';
+												v.decode.patch.opcy0det := '1';
+											end if;
+										end if;
+									elsif laststep = '0' then
+										if zu = '1' and zc = '0' then
+											-- ZDBLU
+											if r0z = '0' and r1z = '0' and pts_are_equal = '1' then
+												if r.ctrl.kapp = '1' then
+													v.decode.patch.opcy1next := '1';
+													--v.decode.patch.opay1 := '1';
+												elsif r.ctrl.kapp = '0' then
+													v.decode.patch.opcy0next := '1';
+													--v.decode.patch.opay1 := '1';
+												end if;
+											end if;
+										elsif zu = '0' and zc = '1' then
+											-- ZDBLC
+											if r0z = '0' and r1z = '0' and pts_are_equal = '1' then
+												--v.decode.patch.opay1 := '1';
+												if r.ctrl.kap = '0' then
+													v.decode.patch.opcy0next := '1';
+												elsif r.ctrl.kap = '1' then
+													v.decode.patch.opcy1next := '1';
+												end if;
+											elsif r0z = '0' and r1z = '0' and pts_are_oppos = '1' then
+												--v.decode.patch.opay1 := '1';
+												if r.ctrl.kap = '0' and r.ctrl.kapp = '0' then
+													v.decode.patch.opcy1next := '1';
+												elsif r.ctrl.kap = '0' and r.ctrl.kapp = '1' then
+													v.decode.patch.opcy1next := '1';
+												elsif r.ctrl.kap = '1' and r.ctrl.kapp = '0' then
+													v.decode.patch.opcy0next := '1';
+												elsif r.ctrl.kap = '1' and r.ctrl.kapp = '1' then
+													v.decode.patch.opcy0next := '1';
+												end if;
+											end if;
+										end if;
+									end if;
+								end if; -- ptadd
+							end if;
 						elsif r.decode.c.patchid = "111011" then -- patch ",p59" (in .zdblL)
-							if ptadd = '0' then
-								if firstzdbl = '1' then
-									v.decode.patch.opaz := r.ctrl.first2pz;
-									-- opc already set to deterministic XR0 in zdbl.s
-								elsif laststep = '1' then
-									if (doblinding = '0' and (r.ctrl.kb0 xor masklsb) = '1')
-										or (doblinding = '1' and (r.ctrl.kb0 xor r.ctrl.mu0)='1')
-									then
-										-- original scalar is actually ODD
-										v.decode.patch.opaz := '1';
-										v.decode.patch.opcx0det := '1';
-									else -- (r.ctrl.kb0 xor "LSB of approp. mask") = '0'
-										-- original scalar is actually EVEN
-										if pts_are_equal = '1' then
+							if not_always_add = '1' then
+								if firstzdbl = '1' then -- it can't but necessarily be the case
+									v.decode.patch.opcx0det := '1';
+								end if;
+							elsif not_always_add = '0' then
+								if ptadd = '0' then
+									if firstzdbl = '1' then
+										v.decode.patch.opaz := r.ctrl.first2pz;
+										-- opc already set to deterministic XR0 in zdbl.s
+									elsif laststep = '1' then
+										if (doblinding = '0' and (r.ctrl.kb0 xor masklsb) = '1')
+											or (doblinding = '1' and (r.ctrl.kb0 xor r.ctrl.mu0)='1')
+										then
+											-- original scalar is actually ODD
 											v.decode.patch.opaz := '1';
 											v.decode.patch.opcx0det := '1';
-										elsif pts_are_oppos = '1' then
-											v.decode.patch.opcx1det := '1';
+										else -- (r.ctrl.kb0 xor "LSB of approp. mask") = '0'
+											-- original scalar is actually EVEN
+											if pts_are_equal = '1' then
+												v.decode.patch.opaz := '1';
+												v.decode.patch.opcx0det := '1';
+											elsif pts_are_oppos = '1' then
+												v.decode.patch.opcx1det := '1';
+											end if;
+										end if;
+									elsif laststep = '0' then
+										if zu = '1' and zc = '0' then
+											-- ZDBLU
+											if r0z = '0' and r1z = '0' and pts_are_equal = '1' then
+												if r.ctrl.kapp = '1' then
+													v.decode.patch.opcx0next := '1';
+												elsif r.ctrl.kapp = '0' then
+													v.decode.patch.opcx1next := '1';
+												end if;
+											end if;
+										elsif zu = '0' and zc = '1' then
+											-- ZDBLC
+											if r0z = '0' and r1z = '0' and pts_are_equal = '1' then
+												if r.ctrl.kap = '0' then
+													v.decode.patch.opcx1next := '1';
+												elsif r.ctrl.kap = '1' then
+													v.decode.patch.opcx0next := '1';
+												end if;
+											elsif r0z = '0' and r1z = '0' and pts_are_oppos = '1' then
+												if r.ctrl.kap = '0' and r.ctrl.kapp = '0' then
+													v.decode.patch.opcx0next := '1';
+												elsif r.ctrl.kap = '0' and r.ctrl.kapp = '1' then
+													v.decode.patch.opcx0next := '1';
+												elsif r.ctrl.kap = '1' and r.ctrl.kapp = '0' then
+													v.decode.patch.opcx1next := '1';
+												elsif r.ctrl.kap = '1' and r.ctrl.kapp = '1' then
+													v.decode.patch.opcx1next := '1';
+												end if;
+											end if;
 										end if;
 									end if;
-								elsif laststep = '0' then
-									if zu = '1' and zc = '0' then
-										-- ZDBLU
-										if r0z = '0' and r1z = '0' and pts_are_equal = '1' then
-											if r.ctrl.kapp = '1' then
-												v.decode.patch.opcx0next := '1';
-											elsif r.ctrl.kapp = '0' then
-												v.decode.patch.opcx1next := '1';
-											end if;
-										end if;
-									elsif zu = '0' and zc = '1' then
-										-- ZDBLC
-										if r0z = '0' and r1z = '0' and pts_are_equal = '1' then
-											if r.ctrl.kap = '0' then
-												v.decode.patch.opcx1next := '1';
-											elsif r.ctrl.kap = '1' then
-												v.decode.patch.opcx0next := '1';
-											end if;
-										elsif r0z = '0' and r1z = '0' and pts_are_oppos = '1' then
-											if r.ctrl.kap = '0' and r.ctrl.kapp = '0' then
-												v.decode.patch.opcx0next := '1';
-											elsif r.ctrl.kap = '0' and r.ctrl.kapp = '1' then
-												v.decode.patch.opcx0next := '1';
-											elsif r.ctrl.kap = '1' and r.ctrl.kapp = '0' then
-												v.decode.patch.opcx1next := '1';
-											elsif r.ctrl.kap = '1' and r.ctrl.kapp = '1' then
-												v.decode.patch.opcx1next := '1';
-											end if;
-										end if;
-									end if;
-								end if;
-							end if; -- ptadd
+								end if; -- ptadd
+							end if;
 						elsif r.decode.c.patchid = "111100" then -- patch ",p60" (in .zdblL)
-							if ptadd = '0' then
-								if firstzdbl = '1' then
-									v.decode.patch.opaz := r.ctrl.first2pz;
-									-- opc already set to deterministic YR0 in zdbl.s
-								elsif laststep = '1' then
-									if (doblinding = '0' and (r.ctrl.kb0 xor masklsb) = '1')
-										or (doblinding = '1' and (r.ctrl.kb0 xor r.ctrl.mu0)='1')
-									then
-										-- original scalar is actually ODD
-										v.decode.patch.opaz := '1';
-										v.decode.patch.opcy0det := '1';
-									else -- (r.ctrl.kb0 xor "LSB of approp. mask") = '0'
-										-- original scalar is actually EVEN
-										if pts_are_equal = '1' then
+							if not_always_add = '1' then
+								if firstzdbl = '1' then -- it can't but necessarily be the case
+									v.decode.patch.opcy0det := '1';
+								end if;
+							elsif not_always_add = '0' then
+								if ptadd = '0' then
+									if firstzdbl = '1' then
+										v.decode.patch.opaz := r.ctrl.first2pz;
+										-- opc already set to deterministic YR0 in zdbl.s
+									elsif laststep = '1' then
+										if (doblinding = '0' and (r.ctrl.kb0 xor masklsb) = '1')
+											or (doblinding = '1' and (r.ctrl.kb0 xor r.ctrl.mu0)='1')
+										then
+											-- original scalar is actually ODD
 											v.decode.patch.opaz := '1';
 											v.decode.patch.opcy0det := '1';
-										elsif pts_are_oppos = '1' then
-											v.decode.patch.opcy1det := '1';
+										else -- (r.ctrl.kb0 xor "LSB of approp. mask") = '0'
+											-- original scalar is actually EVEN
+											if pts_are_equal = '1' then
+												v.decode.patch.opaz := '1';
+												v.decode.patch.opcy0det := '1';
+											elsif pts_are_oppos = '1' then
+												v.decode.patch.opcy1det := '1';
+											end if;
+										end if;
+									elsif laststep = '0' then
+										if zu = '1' and zc = '0' then
+											-- ZDBLU
+											if r0z = '0' and r1z = '0' and pts_are_equal = '1' then
+												if r.ctrl.kapp = '1' then
+													v.decode.patch.opcy0next := '1';
+												elsif r.ctrl.kapp = '0' then
+													v.decode.patch.opcy1next := '1';
+												end if;
+											end if;
+										elsif zu = '0' and zc = '1' then
+											-- ZDBLC
+											if r0z = '0' and r1z = '0' and pts_are_equal = '1' then
+												if r.ctrl.kap = '0' then
+													v.decode.patch.opcy1next := '1';
+												elsif r.ctrl.kap = '1' then
+													v.decode.patch.opcy0next := '1';
+												end if;
+											elsif r0z = '0' and r1z = '0' and pts_are_oppos = '1' then
+												if r.ctrl.kap = '0' and r.ctrl.kapp = '0' then
+													v.decode.patch.opcy0next := '1';
+												elsif r.ctrl.kap = '0' and r.ctrl.kapp = '1' then
+													v.decode.patch.opcy0next := '1';
+												elsif r.ctrl.kap = '1' and r.ctrl.kapp = '0' then
+													v.decode.patch.opcy1next := '1';
+												elsif r.ctrl.kap = '1' and r.ctrl.kapp = '1' then
+													v.decode.patch.opcy1next := '1';
+												end if;
+											end if;
 										end if;
 									end if;
-								elsif laststep = '0' then
-									if zu = '1' and zc = '0' then
-										-- ZDBLU
-										if r0z = '0' and r1z = '0' and pts_are_equal = '1' then
-											if r.ctrl.kapp = '1' then
-												v.decode.patch.opcy0next := '1';
-											elsif r.ctrl.kapp = '0' then
-												v.decode.patch.opcy1next := '1';
-											end if;
-										end if;
-									elsif zu = '0' and zc = '1' then
-										-- ZDBLC
-										if r0z = '0' and r1z = '0' and pts_are_equal = '1' then
-											if r.ctrl.kap = '0' then
-												v.decode.patch.opcy1next := '1';
-											elsif r.ctrl.kap = '1' then
-												v.decode.patch.opcy0next := '1';
-											end if;
-										elsif r0z = '0' and r1z = '0' and pts_are_oppos = '1' then
-											if r.ctrl.kap = '0' and r.ctrl.kapp = '0' then
-												v.decode.patch.opcy0next := '1';
-											elsif r.ctrl.kap = '0' and r.ctrl.kapp = '1' then
-												v.decode.patch.opcy0next := '1';
-											elsif r.ctrl.kap = '1' and r.ctrl.kapp = '0' then
-												v.decode.patch.opcy1next := '1';
-											elsif r.ctrl.kap = '1' and r.ctrl.kapp = '1' then
-												v.decode.patch.opcy1next := '1';
-											end if;
-										end if;
-									end if;
-								end if;
-							end if; -- ptadd
+								end if; -- ptadd
+							end if;
 						elsif r.decode.c.patchid = "111101" then -- patch ",p61" (in .zdblL)
 							if ptadd = '1' or firstzdbl = '0' then
 								v.decode.patch.opcvoid := r.ctrl.torsion2;
@@ -3235,6 +3646,35 @@ begin
 	patching <= r.decode.c.patch;
 	patchid <= to_integer(unsigned(
 						 r.fetch.opcode(OP_PATCH_MSB downto OP_PATCH_LSB)));
+	-- pragma translate_on
+
+	-- pragma translate_off
+	-- Logging the shuffling permutations of [XY]R[01] variables
+	process(clk)
+		file output : TEXT open write_mode is simxyshuflogfile;
+		variable lineout : line;
+		variable vnb : integer := 0;
+	begin
+		if clk'event and clk = '1' then
+			if r.shuffle.state(0) = '1' and iterate_shuffle_valid = '1' then
+				write(lineout, integer'image(vnb) & " ");
+				write(lineout, integer'image(to_integer(unsigned(r.shuffle.next_adr_x0))) & " ");
+				write(lineout, integer'image(to_integer(unsigned(r.shuffle.next_adr_y0))) & " ");
+				write(lineout, integer'image(to_integer(unsigned(r.shuffle.next_adr_x1))) & " ");
+				write(lineout, integer'image(to_integer(unsigned(r.shuffle.next_adr_y1))));
+				writeline(output, lineout);
+				vnb := vnb + 1;
+			elsif iterate_shuffle_force = '1' then
+				write(lineout, integer'image(vnb) & " ");
+				write(lineout, integer'image(to_integer(unsigned(r.shuffle.next_adr_x0))) & " ");
+				write(lineout, integer'image(to_integer(unsigned(r.shuffle.next_adr_y0))) & " ");
+				write(lineout, integer'image(to_integer(unsigned(r.shuffle.next_adr_x1))) & " ");
+				write(lineout, integer'image(to_integer(unsigned(r.shuffle.next_adr_y1))) & " (FORCED)");
+				writeline(output, lineout);
+				vnb := vnb + 1;
+			end if;
+		end if;
+	end process;
 	-- pragma translate_on
 
 end architecture rtl;

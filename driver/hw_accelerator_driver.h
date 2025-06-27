@@ -81,7 +81,7 @@ int hw_driver_disable_zremask(void);
 /* Debug feature: disable the XY-shuffling countermeasure */
 int hw_driver_disable_xyshuf_DBG(void);
 
-/* Debug feature: re-enble the XY-shuffling countermeasure */
+/* Debug feature: re-enable the XY-shuffling countermeasure */
 int hw_driver_enable_xyshuf(void);
 
 /* Check if an affine point (x, y) is on the curve that has been previously set in the hardware */
@@ -156,6 +156,18 @@ typedef struct {
 	bool phi1_valid;
 	uint32_t* alpha;
 	bool alpha_valid;
+	uint32_t* kap0msk;
+	bool kap0msk_valid;
+	uint32_t* kap1msk;
+	bool kap1msk_valid;
+	uint32_t* kapP0msk;
+	bool kapP0msk_valid;
+	uint32_t* kapP1msk;
+	bool kapP1msk_valid;
+	uint32_t* phi0msk;
+	bool phi0msk_valid;
+	uint32_t* phi1msk;
+	bool phi1msk_valid;
 	/* Nb of trace steps (roughly the nb of opcodes for this [k]P run) */
 	uint32_t nb_steps;
 	/* Temporary value of XR0, YR0, XR1 and YR1 */
@@ -207,7 +219,7 @@ typedef struct {
 int hw_driver_mul(const uint8_t *x, uint32_t x_sz, const uint8_t *y, uint32_t y_sz,
 		  const uint8_t *scalar, uint32_t scalar_sz,
 		  uint8_t *out_x, uint32_t *out_x_sz, uint8_t *out_y, uint32_t *out_y_sz,
-			kp_trace_info_t* ktrc);
+			kp_trace_info_t* ktrc, uint32_t* zmask);
 
 /* Set the small scalar size in the hardware */
 int hw_driver_set_small_scalar_size(uint32_t bit_sz);
@@ -457,6 +469,18 @@ int hw_driver_get_hw_config_DBG(uint32_t* nn, bool* nn_dynamic, uint32_t* nbmult
 		uint32_t* board, uint32_t* test, uint32_t* random,
 		/* TODO: REMOVE THAT! DON'T KEEP EVEN IN DEBUG MODE! */
 		uint32_t* ww);
+
+/* Attack features: set a specific level of side-channel resistance */
+int hw_driver_attack_set_level(int level);
+
+/* Attack features: enable countermeasure using hardware shift-regs to mask kappa & kappa' */
+int hw_driver_attack_enable_nnrndsf(void);
+
+/* Attack features: disable countermeasure using hardware shift-regs to mask kappa & kappa' */
+int hw_driver_attack_disable_nnrndsf(void);
+
+/* Attack features: clocks division & out feature */
+int hw_driver_attack_set_clock_div_out(int, int);
 
 /*
  * Error/printf formating

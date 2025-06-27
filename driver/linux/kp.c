@@ -28,6 +28,15 @@ int ip_test_set_pt_and_run_kp(ipecc_test_t* t)
 #ifdef KP_TRACE
 	unsigned int i;
 #endif
+
+#ifdef KP_SET_ZMASK
+	uint32_t zmask[17] = {
+		0x84a2, 0x5234, 0xc519, 0x7e50,
+		0x59df, 0x6ce0, 0x31bb, 0xbf69,
+		0xedfc, 0xc4a3, 0x406d, 0xc9c2,
+		0xf7d7, 0x5eb0, 0xf140, 0x39b0
+	};
+#endif
 	/*
 	 * Sanity check.
 	 * Verify that curve is is set.
@@ -113,6 +122,18 @@ int ip_test_set_pt_and_run_kp(ipecc_test_t* t)
 		t->ktrc->phi1_valid = false;
 		t->ktrc->alpha[i] = 0;
 		t->ktrc->alpha_valid = false;
+		t->ktrc->kap0msk[i] = 0;
+		t->ktrc->kap0msk_valid = false;
+		t->ktrc->kap1msk[i] = 0;
+		t->ktrc->kap1msk_valid = false;
+		t->ktrc->kapP0msk[i] = 0;
+		t->ktrc->kapP0msk_valid = false;
+		t->ktrc->kapP1msk[i] = 0;
+		t->ktrc->kapP1msk_valid = false;
+		t->ktrc->phi0msk[i] = 0;
+		t->ktrc->phi0msk_valid = false;
+		t->ktrc->phi1msk[i] = 0;
+		t->ktrc->phi1msk_valid = false;
 	}
 	t->ktrc->nb_steps = 0;
 	t->ktrc->msgsz = 0;
@@ -126,7 +147,7 @@ int ip_test_set_pt_and_run_kp(ipecc_test_t* t)
 
 	/* Run [k]P command */
 	if (hw_driver_mul(t->ptp.x.val, t->ptp.x.sz, t->ptp.y.val, t->ptp.y.sz, t->k.val, t->k.sz,
-			t->pt_hw_res.x.val, &(t->pt_hw_res.x.sz), t->pt_hw_res.y.val, &(t->pt_hw_res.y.sz), t->ktrc))
+			t->pt_hw_res.x.val, &(t->pt_hw_res.x.sz), t->pt_hw_res.y.val, &(t->pt_hw_res.y.sz), t->ktrc, zmask))
 	{
 		printf("%sError: [k]P computation by hardware triggered an error.%s\n\r", KERR, KNRM);
 		goto err;
@@ -259,6 +280,8 @@ int kp_error_log(ipecc_test_t* t)
 	print_large_number("k=0x", &(t->k));
 	print_large_number("Expected kPx=0x", &(t->pt_sw_res.x));
 	print_large_number("Expected kPy=0x", &(t->pt_sw_res.y));
+	print_large_number("Hardware kPx=0x", &(t->pt_hw_res.x));
+	print_large_number("Hardware kPy=0x", &(t->pt_hw_res.y));
 #ifdef KP_TRACE
 	printf("%s<DEBUG START [k]P TRACE LOG:%s\n\r", KRED, KNRM);
 	printf("%s%s%s", KWHT, t->ktrc->msg, KNRM);
