@@ -889,7 +889,7 @@ begin
 						v.decode.valid := '0'; -- (s18) bypass of (s17)
 						-- decode patch flags
 						if r.decode.c.patchid = "000000" then -- set opa for ",p0" patch
-							if not_always_add = '1' then
+							if debug and not_always_add = '1' then
 								if laststep = '1' then -- actually it's necessarily the case
 									if (doblinding = '0' and (r.ctrl.kb0 xor masklsb) = '1')
 										or (doblinding = '1' and (r.ctrl.kb0 xor r.ctrl.mu0)='1')
@@ -904,7 +904,7 @@ begin
 										null; -- opa by default to XSUB in zaddc.s for this opcode
 									end if;
 								end if;
-							elsif not_always_add = '0' then
+							elsif (not debug) or not_always_add = '0' then
 								if laststep = '1' then
 									if (doblinding = '0' and (r.ctrl.kb0 xor masklsb) = '1')
 										or (doblinding = '1' and (r.ctrl.kb0 xor r.ctrl.mu0)='1')
@@ -927,7 +927,7 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "000001" then -- set opa for ",p1" patch
-							if not_always_add = '1' then
+							if debug and not_always_add = '1' then
 								if laststep = '1' then -- actually it's necessarily the case
 									if (doblinding = '0' and (r.ctrl.kb0 xor masklsb) = '1')
 										or (doblinding = '1' and (r.ctrl.kb0 xor r.ctrl.mu0)='1')
@@ -942,7 +942,7 @@ begin
 										null; -- opa by default to YSUB in zaddc.s for this opcode
 									end if;
 								end if;
-							elsif not_always_add = '0' then
+							elsif (not debug) or not_always_add = '0' then
 								if laststep = '1' then
 									if (doblinding = '0' and (r.ctrl.kb0 xor masklsb) = '1')
 										or (doblinding = '1' and (r.ctrl.kb0 xor r.ctrl.mu0)='1')
@@ -965,7 +965,7 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "000010" then -- set opc for ",p2"
-							if not_always_add = '1' then
+							if debug and not_always_add = '1' then
 								if laststep = '1' then -- actually it's necessarily the case
 									if ((doblinding = '0' and ((r.ctrl.kb0 xor masklsb) = '1'))
 										or
@@ -979,7 +979,7 @@ begin
 										null; -- opc by default to ZR01 in zaddc.s for this opcode
 									end if;
 								end if;
-							elsif not_always_add = '0' then
+							elsif (not debug) or not_always_add = '0' then
 								if laststep = '1' then
 									if ((doblinding = '0' and ((r.ctrl.kb0 xor masklsb) = '1'))
 										or
@@ -1030,10 +1030,10 @@ begin
 								v.decode.patch.opax0det := '1';
 								v.decode.patch.opbx1det := '1';
 							elsif ptadd = '0' then
-								if not_always_add = '1' then
+								if debug and not_always_add = '1' then
 									v.decode.patch.opax0 := '1';
 									v.decode.patch.opbx1 := '1';
-								elsif not_always_add = '0' then
+								elsif (not debug) or not_always_add = '0' then
 									-- firstzaddu is not used here because it is equivalent
 									-- to kapp = 0 (see (s46) just below)
 									if r.ctrl.kapp = '1' then
@@ -1056,10 +1056,10 @@ begin
 								v.decode.patch.opay0det := '1';
 								v.decode.patch.opby1det := '1';
 							elsif ptadd = '0' then
-								if not_always_add = '1' then
+								if debug and not_always_add = '1' then
 									v.decode.patch.opay0 := '1';
 									v.decode.patch.opby1 := '1';
-								elsif not_always_add = '0' then
+								elsif (not debug) or not_always_add = '0' then
 									if r.ctrl.kapp = '0' -- or firstzaddu = 1 (s47), see (s45)
 									then
 										v.decode.patch.opay0 := '1';
@@ -1089,9 +1089,9 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opax0det := '1';
 							elsif ptadd = '0' then
-								if not_always_add = '1' then
+								if debug and not_always_add = '1' then
 									v.decode.patch.opax0 := '1';
-								elsif not_always_add = '0' then
+								elsif (not debug) or not_always_add = '0' then
 									if r.ctrl.kapp = '0' then -- (s48), see (s45)
 										v.decode.patch.opax0 := '1';
 									elsif r.ctrl.kapp = '1' then
@@ -1108,7 +1108,7 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opcx0det := '1';
 							elsif ptadd = '0' then
-								if not_always_add = '1' then
+								if debug and not_always_add = '1' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											v.decode.patch.opcx0next := '1';
@@ -1118,7 +1118,7 @@ begin
 									elsif firstzaddu = '0' then
 										v.decode.patch.opcx1next := '1';
 									end if;
-								elsif not_always_add = '0' then
+								elsif (not debug) or not_always_add = '0' then
 									if firstzaddu = '1' and r.ctrl.first2pz = '1' then
 										-- .zadduL called by .setupL and initial point P is a
 										-- 2-torsion point ([2]P = 0)
@@ -1168,9 +1168,9 @@ begin
 											end if;
 										elsif firstzaddu = '0' then
 											if r.ctrl.kapp = '0' then -- (s49), see (s45)
-												if no_collision_cr = '1' then
+												if debug and no_collision_cr = '1' then
 													v.decode.patch.opcx1next := '1';
-												elsif no_collision_cr = '0' then
+												elsif (not debug) or no_collision_cr = '0' then
 													v.decode.patch.opcx0next := '1';
 												end if;
 											elsif r.ctrl.kapp = '1' then
@@ -1189,7 +1189,7 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opcy0det := '1';
 							elsif ptadd = '0' then
-								if not_always_add = '1' then
+								if debug and not_always_add = '1' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											v.decode.patch.opcy0next := '1';
@@ -1199,7 +1199,7 @@ begin
 									elsif firstzaddu = '0' then
 										v.decode.patch.opcy1next := '1';
 									end if;
-								elsif not_always_add = '0' then
+								elsif (not debug) or not_always_add = '0' then
 									if firstzaddu = '1' and r.ctrl.first2pz = '1' then
 										-- .zadduL called by .setupL and initial point P is a
 										-- 2-torsion point ([2]P = 0)
@@ -1247,9 +1247,9 @@ begin
 											end if;
 										elsif firstzaddu = '0' then
 											if r.ctrl.kapp = '0' then -- (s50), see (s45)
-												if no_collision_cr = '1' then
+												if debug and no_collision_cr = '1' then
 													v.decode.patch.opcy1next := '1';
-												elsif no_collision_cr = '0' then
+												elsif (not debug) or no_collision_cr = '0' then
 													v.decode.patch.opcy0next := '1';
 												end if;
 											elsif r.ctrl.kapp = '1' then
@@ -1260,7 +1260,7 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "001101" then -- set opc for ",p13" patch
-							if not_always_add = '1' then
+							if debug and not_always_add = '1' then
 								if laststep = '1' then -- actually it's necessarily the case
 									if ((doblinding='0' and ((r.ctrl.kb0 xor masklsb) = '1'))
 										or
@@ -1280,7 +1280,7 @@ begin
 										null;
 									end if;
 								end if;
-							elsif not_always_add = '0' then
+							elsif (not debug) or not_always_add = '0' then
 								if laststep = '1' then
 									if ((doblinding='0' and ((r.ctrl.kb0 xor masklsb) = '1'))
 										or
@@ -1303,10 +1303,10 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "001110" then -- set opb for ",p14" patch
-							if not_always_add = '1' then
+							if debug and not_always_add = '1' then
 								-- behaviour is indifferent here.
 								null;
-							elsif not_always_add = '0' then
+							elsif (not debug) or not_always_add = '0' then
 								if laststep = '1' then
 									null; -- opb by default to XR0 in zaddc.s for this opcode
 								elsif r.ctrl.kap = '1' then
@@ -1316,7 +1316,7 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "001111" then -- set opc for ",p15" patch
-							if not_always_add = '1' then
+							if debug and not_always_add = '1' then
 								if laststep = '1' then -- actually it's necessarily the case
 									if ((doblinding='0' and ((r.ctrl.kb0 xor masklsb) = '1'))
 										or
@@ -1336,7 +1336,7 @@ begin
 										null;
 									end if;
 								end if;
-							elsif not_always_add = '0' then
+							elsif (not debug) or not_always_add = '0' then
 								if laststep = '1' then
 									if ((doblinding='0' and ((r.ctrl.kb0 xor masklsb) = '1'))
 										or
@@ -1485,7 +1485,7 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opcx1det := '1';
 							elsif ptadd = '0' then
-								if not_always_add = '1' then
+								if debug and not_always_add = '1' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											v.decode.patch.opcx1next := '1';
@@ -1495,7 +1495,7 @@ begin
 									elsif firstzaddu = '0' then
 										v.decode.patch.opcx0next := '1';
 									end if;
-								elsif not_always_add = '0' then
+								elsif (not debug) or not_always_add = '0' then
 									if firstzaddu = '1' then
 										if r.ctrl.first2pz = '1' then
 											-- .zadduL called by .setupL and initial point P is a
@@ -1517,9 +1517,9 @@ begin
 											v.decode.patch.opcvoid := '1';
 										elsif (r0z xor r1z) = '0' then
 											if r.ctrl.kapp = '0' then -- (s51), see (s45)
-												if no_collision_cr = '1' then
+												if debug and no_collision_cr = '1' then
 													v.decode.patch.opcx0next := '1';
-												elsif no_collision_cr = '0' then
+												elsif (not debug) or no_collision_cr = '0' then
 													v.decode.patch.opcx1next := '1';
 												end if;
 											elsif r.ctrl.kapp = '1' then
@@ -1537,7 +1537,7 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opbx0det := '1';
 							elsif ptadd = '0' then
-								if not_always_add = '1' then
+								if debug and not_always_add = '1' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											v.decode.patch.opbx0next := '1';
@@ -1547,7 +1547,7 @@ begin
 									elsif firstzaddu = '0' then
 										v.decode.patch.opbx1next := '1';
 									end if;
-								elsif not_always_add = '0' then
+								elsif (not debug) or not_always_add = '0' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											-- kappa_1 = 0 (R0 & R1 must switch places)
@@ -1558,9 +1558,9 @@ begin
 										end if;
 									elsif firstzaddu = '0' then
 										if r.ctrl.kapp = '0' then -- (s52), see (s45)
-											if no_collision_cr = '1' then
+											if debug and no_collision_cr = '1' then
 												v.decode.patch.opbx1next := '1';
-											elsif no_collision_cr = '0' then
+											elsif (not debug) or no_collision_cr = '0' then
 												v.decode.patch.opbx0next := '1';
 											end if;
 										elsif r.ctrl.kapp = '1' then
@@ -1579,7 +1579,7 @@ begin
 								v.decode.patch.opax0det := '1';
 								v.decode.patch.opbx1det := '1';
 							elsif ptadd = '0' then
-								if not_always_add = '1' then
+								if debug and not_always_add = '1' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											v.decode.patch.opax0next := '1';
@@ -1592,7 +1592,7 @@ begin
 										v.decode.patch.opax1next := '1';
 										v.decode.patch.opbx0next := '1';
 									end if;
-								elsif not_always_add = '0' then
+								elsif (not debug) or not_always_add = '0' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											-- kappa_1 = 0 (R0 & R1 must switch places)
@@ -1605,10 +1605,10 @@ begin
 										end if;
 									elsif firstzaddu = '0' then
 										if r.ctrl.kapp = '0' then -- (s53), see (s45)
-											if no_collision_cr = '1' then
+											if debug and no_collision_cr = '1' then
 												v.decode.patch.opax1next := '1';
 												v.decode.patch.opbx0next := '1';
-											elsif no_collision_cr = '0' then
+											elsif (not debug) or no_collision_cr = '0' then
 												v.decode.patch.opax0next := '1';
 												v.decode.patch.opbx1next := '1';
 											end if;
@@ -1628,7 +1628,7 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opcy1det := '1';
 							elsif ptadd = '0' then
-								if not_always_add = '1' then
+								if debug and not_always_add = '1' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											v.decode.patch.opcy1next := '1';
@@ -1638,7 +1638,7 @@ begin
 									elsif firstzaddu = '0' then
 										v.decode.patch.opcy0next := '1';
 									end if;
-								elsif not_always_add = '0' then
+								elsif (not debug) or not_always_add = '0' then
 									if firstzaddu = '1' then
 										if r.ctrl.first2pz = '1' then
 											-- .zadduL called by .setupL and initial point P is a
@@ -1658,9 +1658,9 @@ begin
 											v.decode.patch.opcvoid := '1';
 										elsif (r0z xor r1z) = '0' then
 											if r.ctrl.kapp = '0' then -- (s54), see (s45)
-												if no_collision_cr = '1' then
+												if debug and no_collision_cr = '1' then
 													v.decode.patch.opcy0next := '1';
-												elsif no_collision_cr = '0' then
+												elsif (not debug) or no_collision_cr = '0' then
 													v.decode.patch.opcy1next := '1';
 												end if;
 											elsif r.ctrl.kapp = '1' then
@@ -1686,7 +1686,7 @@ begin
 								v.decode.patch.opby0det := '1';
 								v.decode.patch.opcy1det := '1';
 							elsif ptadd = '0' then
-								if not_always_add = '1' then
+								if debug and not_always_add = '1' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											v.decode.patch.opay1next := '1';
@@ -1702,7 +1702,7 @@ begin
 										v.decode.patch.opby1next := '1';
 										v.decode.patch.opcy0next := '1';
 									end if;
-								elsif not_always_add = '0' then
+								elsif (not debug) or not_always_add = '0' then
 									if firstzaddu = '1' then
 										if r.ctrl.first2pz = '1' then
 											-- .zadduL called by .setupL and initial point P is a
@@ -1728,11 +1728,11 @@ begin
 											v.decode.patch.opcvoid := '1';
 										elsif (r0z xor r1z) = '0' then
 											if r.ctrl.kapp = '0' then -- (s55), see (s45)
-												if no_collision_cr = '1' then
+												if debug and no_collision_cr = '1' then
 													v.decode.patch.opay0next := '1';
 													v.decode.patch.opby1next := '1';
 													v.decode.patch.opcy0next := '1';
-												elsif no_collision_cr = '0' then
+												elsif (not debug) or no_collision_cr = '0' then
 													v.decode.patch.opay1next := '1';
 													v.decode.patch.opby0next := '1';
 													v.decode.patch.opcy1next := '1';
@@ -1747,19 +1747,19 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "011101" then -- set opa & opb for ",p29" patch
-							if not_always_add = '1' then
+							if debug and not_always_add = '1' then
 								if laststep = '1' then -- actually it's necessarily the case
 									v.decode.patch.opax1 := '1';
 									v.decode.patch.opbx0 := '1';
 								end if;
-							elsif not_always_add = '0' then
+							elsif (not debug) or not_always_add = '0' then
 								if laststep = '1' then
 									null; -- opa/opb already set to XR1/XR0 in zaddc.s
 								elsif laststep = '0' then
-									if no_collision_cr = '1' then
+									if debug and no_collision_cr = '1' then
 										v.decode.patch.opax1 := '1';
 										v.decode.patch.opbx0 := '1';
-									elsif no_collision_cr = '0' then
+									elsif (not debug) or no_collision_cr = '0' then
 										if r.ctrl.kapp = '0' then
 											v.decode.patch.opax0 := '1';
 											v.decode.patch.opbx1 := '1';
@@ -1771,19 +1771,19 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "011110" then -- set opa & opb for ",p30" patch
-							if not_always_add = '1' then
+							if debug and not_always_add = '1' then
 								if laststep = '1' then -- actually it's necessarily the case
 									v.decode.patch.opay1 := '1';
 									v.decode.patch.opby0 := '1';
 								end if;
-							elsif not_always_add = '0' then
+							elsif (not debug) or not_always_add = '0' then
 								if laststep = '1' then
 									null; -- opa/opb already set to YR1/YR0 in zaddc.s
 								elsif laststep = '0' then
-									if no_collision_cr = '1' then
+									if debug and no_collision_cr = '1' then
 										v.decode.patch.opay1 := '1';
 										v.decode.patch.opby0 := '1';
-									elsif no_collision_cr = '0' then
+									elsif (not debug) or no_collision_cr = '0' then
 										if r.ctrl.kapp = '0' then
 											v.decode.patch.opay0 := '1';
 											v.decode.patch.opby1 := '1';
@@ -1795,19 +1795,19 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "011111" then -- set opa & opb for ",p31" patch
-							if not_always_add = '1' then
+							if debug and not_always_add = '1' then
 								if laststep = '1' then -- actually it's necessarily the case
 									v.decode.patch.opay0 := '1';
 									v.decode.patch.opby1 := '1';
 								end if;
-							elsif not_always_add = '0' then
+							elsif (not debug) or not_always_add = '0' then
 								if laststep = '1' then
 									null; -- opa/opb already set to YR0/YR1 in zaddc.s
 								elsif laststep = '0' then
-									if no_collision_cr = '1' then
+									if debug and no_collision_cr = '1' then
 										v.decode.patch.opay0 := '1';
 										v.decode.patch.opby1 := '1';
-									elsif no_collision_cr = '0' then
+									elsif (not debug) or no_collision_cr = '0' then
 										if r.ctrl.kapp = '0' then
 											v.decode.patch.opay1 := '1';
 											v.decode.patch.opby0 := '1';
@@ -1819,17 +1819,17 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "100000" then -- set opa for ",p32" patch
-							if not_always_add = '1' then
+							if debug and not_always_add = '1' then
 								if laststep = '1' then -- actually it's necessarily the case
 									v.decode.patch.opax0 := '1';
 								end if;
-							elsif not_always_add = '0' then
+							elsif (not debug) or not_always_add = '0' then
 								if laststep = '1' then
 									null; -- opa already set to XR0 in zaddc.s
 								elsif laststep = '0' then
-									if no_collision_cr = '1' then
+									if debug and no_collision_cr = '1' then
 										v.decode.patch.opax0 := '1';
-									elsif no_collision_cr = '0' then
+									elsif (not debug) or no_collision_cr = '0' then
 										if r.ctrl.kapp = '0' then
 											v.decode.patch.opax1 := '1';
 										elsif r.ctrl.kapp = '1' then
@@ -1839,17 +1839,17 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "100001" then -- set opa for ",p33" patch
-							if not_always_add = '1' then
+							if debug and not_always_add = '1' then
 								if laststep = '1' then -- actually it's necessarily the case
 									v.decode.patch.opax1 := '1';
 								end if;
-							elsif not_always_add = '0' then
+							elsif (not debug) or not_always_add = '0' then
 								if laststep = '1' then
 									null; -- opa already set to XR1 in zaddc.s
 								elsif laststep = '0' then
-									if no_collision_cr = '1' then
+									if debug and no_collision_cr = '1' then
 										v.decode.patch.opax1 := '1';
-									elsif no_collision_cr = '0' then
+									elsif (not debug) or no_collision_cr = '0' then
 										if r.ctrl.kapp = '0' then
 											v.decode.patch.opax0 := '1';
 										elsif r.ctrl.kapp = '1' then
@@ -1859,17 +1859,17 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "100010" then -- set opa for ",p34" patch
-							if not_always_add = '1' then
+							if debug and not_always_add = '1' then
 								if laststep = '1' then -- actually it's necessarily the case
 									v.decode.patch.opay0 := '1';
 								end if;
-							elsif not_always_add = '0' then
+							elsif (not debug) or not_always_add = '0' then
 								if laststep = '1' then
 									null; -- opa already set to YR0 in zaddc.s
 								elsif laststep = '0' then
-									if no_collision_cr = '1' then
+									if debug and no_collision_cr = '1' then
 										v.decode.patch.opay0 := '1';
-									elsif no_collision_cr = '0' then
+									elsif (not debug) or no_collision_cr = '0' then
 										if r.ctrl.kapp = '0' then
 											v.decode.patch.opay1 := '1';
 										elsif r.ctrl.kapp = '1' then
@@ -1886,9 +1886,9 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opay1det := '1';
 							elsif ptadd = '0' then
-								if not_always_add = '1' then
+								if debug and not_always_add = '1' then
 									v.decode.patch.opay1 := '1';
-								elsif not_always_add = '0' then
+								elsif (not debug) or not_always_add = '0' then
 									if firstzaddu = '1' and r.ctrl.first2pz = '1' then
 										-- .zadduL called by .setupL and initial point P is a
 										-- 2-torsion point ([2]P = 0)
@@ -1922,9 +1922,9 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opax1det := '1';
 							elsif ptadd = '0' then
-								if not_always_add = '1' then
+								if debug and not_always_add = '1' then
 									v.decode.patch.opax1 := '1';
-								elsif not_always_add = '0' then
+								elsif (not debug) or not_always_add = '0' then
 									if firstzaddu = '1' and r.ctrl.first2pz = '1' then
 										-- .zadduL called by .setupL and initial point P is a
 										-- 2-torsion point ([2]P = 0)
@@ -1958,7 +1958,7 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opbx0det := '1';
 							elsif ptadd = '0' then
-								if not_always_add = '1' then
+								if debug and not_always_add = '1' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											v.decode.patch.opbx0next := '1';
@@ -1968,7 +1968,7 @@ begin
 									elsif firstzaddu = '0' then
 										v.decode.patch.opbx1next := '1';
 									end if;
-								elsif not_always_add = '0' then
+								elsif (not debug) or not_always_add = '0' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											-- kappa_1 = 0 (R0 & R1 must switch places)
@@ -1979,9 +1979,9 @@ begin
 										end if;
 									elsif firstzaddu = '0' then
 										if r.ctrl.kapp = '0' then
-											if no_collision_cr = '1' then
+											if debug and no_collision_cr = '1' then
 												v.decode.patch.opbx1next := '1';
-											elsif no_collision_cr = '0' then
+											elsif (not debug) or no_collision_cr = '0' then
 												v.decode.patch.opbx0next := '1';
 											end if;
 										elsif r.ctrl.kapp = '1' then
@@ -2004,7 +2004,7 @@ begin
 								v.decode.patch.opcx1det := '1';
 								v.decode.patch.as := '1'; -- same as ,p5 patch
 							elsif ptadd = '0' then
-								if not_always_add = '1' then
+								if debug and not_always_add = '1' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											v.decode.patch.as := '1';
@@ -2020,7 +2020,7 @@ begin
 										v.decode.patch.opax0next := '1';
 										v.decode.patch.opcx0next := '1';
 									end if;
-								elsif not_always_add = '0' then
+								elsif (not debug) or not_always_add = '0' then
 									if firstzaddu = '1' and first3pz = '1' then
 										if r.ctrl.kap = '0' then
 											-- kappa_1 = 0 (R0 & R1 must switch places)
@@ -2071,10 +2071,10 @@ begin
 											end if;
 										elsif firstzaddu = '0' then
 											if r.ctrl.kapp = '0' then -- (s59), see (s45)
-												if no_collision_cr = '1' then
+												if debug and no_collision_cr = '1' then
 													v.decode.patch.opax0next := '1';
 													v.decode.patch.opcx0next := '1';
-												elsif no_collision_cr = '0' then
+												elsif (not debug) or no_collision_cr = '0' then
 													v.decode.patch.opax1next := '1';
 													v.decode.patch.opcx1next := '1';
 												end if;
@@ -2099,7 +2099,7 @@ begin
 								v.decode.patch.opcy1det := '1';
 								v.decode.patch.as := '1'; -- same as ,p5 patch
 							elsif ptadd = '0' then
-								if not_always_add = '1' then
+								if debug and not_always_add = '1' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											v.decode.patch.as := '1'; -- same as ,p5 patch
@@ -2115,7 +2115,7 @@ begin
 										v.decode.patch.opay0next := '1';
 										v.decode.patch.opcy0next := '1';
 									end if;
-								elsif not_always_add = '0' then
+								elsif (not debug) or not_always_add = '0' then
 									if firstzaddu = '1' and first3pz = '1' then
 										if r.ctrl.kap = '0' then
 											-- kappa_1 = 0 (R0 & R1 must switch places)
@@ -2167,10 +2167,10 @@ begin
 											end if;
 										elsif firstzaddu = '0' then
 											if r.ctrl.kapp = '0' then -- (s60), see (s45)
-												if no_collision_cr = '1' then
+												if debug and no_collision_cr = '1' then
 													v.decode.patch.opay0next := '1';
 													v.decode.patch.opcy0next := '1';
-												elsif no_collision_cr = '0' then
+												elsif (not debug) or no_collision_cr = '0' then
 													v.decode.patch.opay1next := '1';
 													v.decode.patch.opcy1next := '1';
 												end if;
@@ -2183,10 +2183,10 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "101000" then -- set opa for ",p40" patch
-							if not_always_add = '1' then
+							if debug and not_always_add = '1' then
 								-- With naive Joye, "correct" result is always in R0
 								v.decode.patch.opax0 := '1';
-							elsif not_always_add = '0' then
+							elsif (not debug) or not_always_add = '0' then
 								if r.ctrl.par = '0' then
 									-- result of the scalar loop is in R0
 									v.decode.patch.opax0 := '1';
@@ -2196,10 +2196,10 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "101001" then -- set opa for ",p41" patch
-							if not_always_add = '1' then
+							if debug and not_always_add = '1' then
 								-- With naive Joye, "correct" result is always in R0
 								v.decode.patch.opay0 := '1';
-							elsif not_always_add = '0' then
+							elsif (not debug) or not_always_add = '0' then
 								if r.ctrl.par = '0' then
 									-- result of the scalar loop is in R0
 									v.decode.patch.opay0 := '1';
@@ -2458,11 +2458,11 @@ begin
 							end if;
 							v.decode.patch.p := '1';
 						elsif r.decode.c.patchid = "111001" then -- patch ",p57" (in .zdblL)
-							if not_always_add = '1' then
+							if debug and not_always_add = '1' then
 								if firstzdbl = '1' then -- it can't but necessarily be the case
 									v.decode.patch.opcx1det := '1';
 								end if;
-							elsif not_always_add = '0' then
+							elsif (not debug) or not_always_add = '0' then
 								if ptadd = '0' then
 									if firstzdbl = '1' then
 										null; -- opc already set to deterministic XR1 in zdbl.s
@@ -2520,11 +2520,11 @@ begin
 								end if; -- ptadd
 							end if;
 						elsif r.decode.c.patchid = "111010" then -- patch ",p58" (in .zdblL)
-							if not_always_add = '1' then
+							if debug and not_always_add = '1' then
 								if firstzdbl = '1' then -- it can't but necessarily be the case
 									v.decode.patch.opcy1det := '1';
 								end if;
-							elsif not_always_add = '0' then
+							elsif (not debug) or not_always_add = '0' then
 								if ptadd = '0' then
 									if firstzdbl = '1' then
 										null; -- opc already set to deterministic YR1 in zdbl.s
@@ -2582,11 +2582,11 @@ begin
 								end if; -- ptadd
 							end if;
 						elsif r.decode.c.patchid = "111011" then -- patch ",p59" (in .zdblL)
-							if not_always_add = '1' then
+							if debug and not_always_add = '1' then
 								if firstzdbl = '1' then -- it can't but necessarily be the case
 									v.decode.patch.opcx0det := '1';
 								end if;
-							elsif not_always_add = '0' then
+							elsif (not debug) or not_always_add = '0' then
 								if ptadd = '0' then
 									if firstzdbl = '1' then
 										v.decode.patch.opaz := r.ctrl.first2pz;
@@ -2641,11 +2641,11 @@ begin
 								end if; -- ptadd
 							end if;
 						elsif r.decode.c.patchid = "111100" then -- patch ",p60" (in .zdblL)
-							if not_always_add = '1' then
+							if debug and not_always_add = '1' then
 								if firstzdbl = '1' then -- it can't but necessarily be the case
 									v.decode.patch.opcy0det := '1';
 								end if;
-							elsif not_always_add = '0' then
+							elsif (not debug) or not_always_add = '0' then
 								if ptadd = '0' then
 									if firstzdbl = '1' then
 										v.decode.patch.opaz := r.ctrl.first2pz;

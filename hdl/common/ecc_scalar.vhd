@@ -531,19 +531,19 @@ begin
 					v.ctrl.small_k_sz_en := '0';
 				elsif doblinding = '1' then
 					v.kp.blind_nbbits := unsigned(blindbits);
-					if not_always_add = '0' then
+					if (not debug) or not_always_add = '0' then
 						v.kp.joye.nbbits :=
 								resize(unsigned(blindbits), log2(nn) + 1)
 							+ resize(nndyn_nnm3, log2(nn) + 1);
-					elsif not_always_add = '1' then
+					elsif debug and not_always_add = '1' then
 						v.kp.joye.nbbits :=
 								resize(unsigned(blindbits), log2(nn) + 1)
 							+ resize(nndyn_nnm2, log2(nn) + 1);
 					end if;
 				else
-					if not_always_add = '0' then
+					if (not debug) or not_always_add = '0' then
 						v.kp.joye.nbbits := resize(nndyn_nnm3, log2(nn) + 1);
-					elsif not_always_add = '1' then
+					elsif debug and not_always_add = '1' then
 						v.kp.joye.nbbits := resize(nndyn_nnm2, log2(nn) + 1);
 					end if;
 				end if;
@@ -1098,9 +1098,9 @@ begin
 							-- Mont. & Jacobian domains, including a call to .pre_zaddU routine
 							-- in order to prepare the 3rd & last step) is enforced by asserting
 							-- .kp.ssetup_step to "01"
-							if not_always_add = '0' then
+							if (not debug) or not_always_add = '0' then
 								v.kp.ssetup_step := "01";
-							elsif not_always_add = '1' then
+							elsif debug and not_always_add = '1' then
 								-- In naive implementation, we musn't perform the first zaddu
 								-- (the one computing (2P,P) -> (3P,P) or (P,3P). The microcode
 								-- of .setupL has been changed:
@@ -1223,7 +1223,7 @@ begin
 						--                 end of ITOH
 						-- -------------------------------------------
 						v.int.faddr := EXEC_ADDR(PRE_ZADDU_ROUTINE); -- (s10)
-						if not_always_add = '1' then
+						if debug and not_always_add = '1' then
 							-- Naive implem (double and add not always): we only call ZADDU
 							-- if the scalar bit is 1 here
 							if kap = '1' then
@@ -1308,7 +1308,7 @@ begin
 						-- -------------------------------------------
 						--                end of ZADDU
 						-- -------------------------------------------
-						if not_always_add = '1' then
+						if debug and not_always_add = '1' then
 							v.int.faddr := EXEC_ADDR(ZDBL_NOT_ALWAYS_ROUTINE);
 							v.kp.joye.state :=  zdblnotalways;
 							v.int.fgo := '1';
@@ -1316,7 +1316,7 @@ begin
 							v.sim.logr0r1 := '1';
 							v.sim.logr0r1step := 2;
 							-- pragma translate_on
-						elsif not_always_add = '0' then
+						elsif (not debug) or not_always_add = '0' then
 							v.int.faddr := EXEC_ADDR(PRE_ZADDC_ROUTINE); -- (s11)
 							if iterate_shuffle_rdy = '1' then
 								v.kp.joye.state := prezaddc; -- (s17)

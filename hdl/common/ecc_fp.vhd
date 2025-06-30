@@ -2091,7 +2091,7 @@ begin
 
 		-- In naive implem we force r.rnd.data to all 0's whenever the opcode
 		-- which is executed is either an NNRNDs or an NNRNDf.
-		if no_nnrnd_sf = '1' then
+		if debug and no_nnrnd_sf = '1' then
 			if r.rnd.shift = '1' or r.rnd.shiftf = '1' then
 				v.rnd.data := (others => '0');
 			end if;
