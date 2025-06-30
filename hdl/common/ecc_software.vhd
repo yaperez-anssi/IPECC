@@ -59,7 +59,7 @@ package ecc_software is
 	constant W_SMALL_SCALAR : rat := std_nat(11, ADB);       -- 0x058
 	constant W_SOFT_RESET : rat := std_nat(12, ADB);         -- 0x060
 	-- reserved                                              -- 0x060...0x0f8
-	-- (0x100: start of write DEBUG registers)
+	-- (0x100: start of write HW unsecure/SCA features registers)
 	constant W_DBG_HALT : rat := std_nat(32, ADB);           -- 0x100
 	constant W_DBG_BKPT : rat := std_nat(33, ADB);           -- 0x108
 	constant W_DBG_STEPS : rat := std_nat(34, ADB);          -- 0x110
@@ -94,7 +94,7 @@ package ecc_software is
 	constant R_HW_VERSION : rat := std_nat(3, ADB);          -- 0x018
 	constant R_PRIME_SIZE : rat := std_nat(4, ADB);          -- 0x020
 	-- reserved                                              -- 0x028...0x0f8
-	-- (0x100: start of read DEBUG registers)
+	-- (0x100: start of read HW unsecure/SCA features registers)
 	constant R_DBG_CAPABILITIES_0 : rat := std_nat(32, ADB); -- 0x100
 	constant R_DBG_CAPABILITIES_1 : rat := std_nat(33, ADB); -- 0x108
 	constant R_DBG_CAPABILITIES_2 : rat := std_nat(34, ADB); -- 0x110

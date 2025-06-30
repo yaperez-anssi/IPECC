@@ -91,7 +91,7 @@ package ecc_tb_pkg is
 		constant addr : in natural range 0 to nblargenb - 1;
 		constant bignb : in std_logic_vector);
 
-	-- Identical to write_big, except that here debug mode
+	-- Identical to write_big, except that here HW unsecure mode
 	-- is assumed, hence we do not poll the BUSY bit in R_STATUS register
 	-- (otherwise we would be creating a deadlock)
 	procedure debug_write_big(
@@ -198,7 +198,7 @@ package ecc_tb_pkg is
 		constant addr : in natural range 0 to nblargenb - 1;
 		variable bignb: inout std_logic_vector);
 
-	-- Identical to read_big, except that here debug mode is assumed,
+	-- Identical to read_big, except that here HW unsecure mode is assumed,
 	-- hence we do not poll the BUSY bit in R_STATUS register
 	-- (otherwise we would be creating a deadlock).
 	procedure debug_read_big(
@@ -454,7 +454,7 @@ package ecc_tb_pkg is
 		signal axo: in axi_out_type;
 		constant valnn: in positive);
 
-	-- Emulate software driver setting a breakpoint (debug feature)
+	-- Emulate software driver setting a breakpoint (HW unsecure feature)
 	procedure set_breakpoint(
 		signal clk: in std_logic;
 		signal axi: out axi_in_type;
@@ -464,7 +464,7 @@ package ecc_tb_pkg is
 		constant state: in std_logic_vector(3 downto 0);
 		constant nbbits: in natural);
 
-	-- Emulate software driver unsetting a breakpoint (debug feature)
+	-- Emulate software driver unsetting a breakpoint (HW unsecure feature)
 	procedure remove_breakpoint(
 		signal clk: in std_logic;
 		signal axi: out axi_in_type;
@@ -472,7 +472,7 @@ package ecc_tb_pkg is
 		constant id: in natural);
 
 	-- Emulate software driver polling R_DBG_STATUS until it shows
-	-- IP is halted (debug feat.)
+	-- IP is halted (HW unsecure feat.)
 	procedure poll_until_debug_halted(
 		signal clk: in std_logic;
 		signal axi: out axi_in_type;
@@ -485,7 +485,7 @@ package ecc_tb_pkg is
 		signal axo: in axi_out_type;
 		variable dbgstatus : inout std_logic_vector);
 
-	-- Emulate software driver resuming execution of microcode (debug feature)
+	-- Emulate software driver resuming execution of microcode (HW unsecure feature)
 	procedure resume_execution(
 		signal clk: in std_logic;
 		signal axi: out axi_in_type;
@@ -514,7 +514,7 @@ package ecc_tb_pkg is
 		constant valnn: in positive;
 		constant addr: in natural range 0 to nblargenb - 1);
 
-	-- Identical to read_and_display_one_large_nb, except that here debug mode
+	-- Identical to read_and_display_one_large_nb, except that here HW unsecure mode
 	-- is assumed, hence we do not poll the BUSY bit in R_STATUS register
 	-- (otherwise we'd create a deadlock if the IP was halted)
 	procedure debug_read_and_display_one_large_nb(
@@ -566,7 +566,7 @@ package ecc_tb_pkg is
 
 	-- Emulate software driver writing a specific ww-bit word at a specific
 	-- location of ecc_fp_dram
-	-- (assumes IP is already halted in debug mode)
+	-- (assumes IP is already debug-halted)
 	procedure dbgwrite_one_limb_into_ecc_fp_dram(
 		signal clk: in std_logic;
 		signal axi: out axi_in_type;
@@ -577,7 +577,7 @@ package ecc_tb_pkg is
 		constant val: in std_logic_ww);
 
 	-- Emulate software driver clearing an entire large number in ecc_fp_dram
-	-- (assumes IP is already halted in debug mode)
+	-- (assumes IP is already debug-halted)
 	procedure clear_one_lgnb_hw_ecc_fp_dram(
 		signal clk: in std_logic;
 		signal axi: out axi_in_type;
@@ -587,7 +587,7 @@ package ecc_tb_pkg is
 
 	-- Emulate software driver reading one ww-bit limb of a large number
 	-- from ecc_fp_dram
-	-- (assumes IP is already halted in debug mode)
+	-- (assumes IP is already debug-halted)
 	procedure dbgread_one_limb_from_ecc_fp_dram(
 		signal clk: in std_logic;
 		signal axi: out axi_in_type;
@@ -598,7 +598,7 @@ package ecc_tb_pkg is
 		variable val : inout std_logic_ww);
 
 	-- Emulate software driver disabling the token feature
-	-- (only possible in debug mode)
+	-- (only possible in HW unsecure mode)
 	procedure debug_disable_token(
 		signal clk: in std_logic;
 		signal axi: out axi_in_type;
@@ -621,7 +621,7 @@ package ecc_tb_pkg is
 
 	-- Emulate software driver setting the IP to use the pseudo TRNG feed
 	-- as the random source instead of the real one
-	-- (only possible in debug mode)
+	-- (only possible in HW unsecure mode)
 	procedure debug_trng_use_pseudo(
 		signal clk: in std_logic;
 		signal axi: out axi_in_type;
@@ -629,7 +629,7 @@ package ecc_tb_pkg is
 
 	-- Emulate software driver setting the IP to use the real TRNG internal
 	-- component as the random source instead of the pseudo one
-	-- (only possible in debug mode)
+	-- (only possible in HW unsecure mode)
 	procedure debug_trng_use_real(
 		signal clk: in std_logic;
 		signal axi: out axi_in_type;
@@ -638,7 +638,7 @@ package ecc_tb_pkg is
 	-- Emulate software driver disabling TRNG post-processing unit from pulling
 	-- bytes out of the raw random source (whether it is currently the real
 	-- internal source or the pseudo external one).
-	-- (only possible in debug mode)
+	-- (only possible in HW unsecure mode)
 	procedure debug_trng_pp_stop_pulling_raw(
 		signal clk: in std_logic;
 		signal axi: out axi_in_type;
@@ -647,7 +647,7 @@ package ecc_tb_pkg is
 	-- Emulate software driver (re)enaling TRNG post-processing unit from pulling
 	-- bytes out of the raw random source (whether it is currently the real
 	-- internal source or the pseudo external one).
-	-- (only possible in debug mode)
+	-- (only possible in HW unsecure mode)
 	procedure debug_trng_pp_start_pulling_raw(
 		signal clk: in std_logic;
 		signal axi: out axi_in_type;

@@ -10,7 +10,7 @@ CFLAGS += -DWITH_EC_HW_DEBUG
 # Comment the following line if your terminal doesn'ot support ANSI Escape Codes
 # (to colorize and control cursor movement on screen)
 CFLAGS += -DTERM_CTRL_AND_COLORS
-# Uncomment the following line to get [k]P trace debug feature
+# Uncomment the following line to get [k]P trace debug feature (highly unsecure feature)
 #CFLAGS += -DKP_TRACE
 
 C_FILES = hw_accelerator_driver_ipecc_platform.c hw_accelerator_driver_ipecc.c

@@ -71,7 +71,7 @@ entity ecc is
 		irq : out std_logic;
 		-- busy signal for [k]P computation
 		busy : out std_logic;
-		-- debug features
+		-- HW unsecure/Side-Channel analysis features
 		--   off-chip trigger
 		dbgtrigger : out std_logic;
 		dbghalted : out std_logic;
@@ -175,7 +175,7 @@ architecture struct of ecc is
 			--   token
 			gentoken : out std_logic;
 			tokendone : in std_logic;
-			--   /debug only
+			--   /HW unsecure only
 			laststep : in std_logic;
 			firstzdbl : in std_logic;
 			firstzaddu : in std_logic;
@@ -192,7 +192,7 @@ architecture struct of ecc is
 			pts_are_oppos : in std_logic;
 			phimsb : in std_logic;
 			kb0end : in std_logic;
-			--   debug only/
+			--   HW unsecure only/
 			-- interface with ecc_curve
 			masklsb : out std_logic;
 			-- interface with ecc_fp (access to ecc_fp_dram)
@@ -228,11 +228,13 @@ architecture struct of ecc is
 			kppending : out std_logic;
 			-- software reset (to other components of the IP)
 			swrst : out std_logic;
-			-- debug features (interface with ecc_scalar shared w/ ecc_curve)
+			-- HW unsecure/Side-Channel analysis features
+			--   (interface with ecc_scalar shared w/ ecc_curve)
 			dbgpgmstate : in std_logic_vector(3 downto 0);
 			dbgnbbits : in std_logic_vector(15 downto 0);
 			dbgjoyebit : in std_logic_vector(log2(2*nn - 1) - 1 downto 0);
-			-- debug features (interface with ecc_curve)
+			-- HW unsecure/Side-Channel analysis features
+			--   (interface with ecc_curve)
 			dbgbreakpoints : out breakpoints_type;
 			dbgnbopcodes : out std_logic_vector(15 downto 0);
 			dbgdosomeopcodes : out std_logic;
@@ -243,13 +245,14 @@ architecture struct of ecc is
 			dbgdecodepc : in std_logic_vector(IRAM_ADDR_SZ - 1 downto 0);
 			dbgbreakpointid : in std_logic_vector(1 downto 0);
 			dbgbreakpointhit : in std_logic;
-			-- debug features (interface with ecc_curve_iram)
+			-- HW unsecure/Side-Channel analysis features
+			--    (interface with ecc_curve_iram)
 			dbgiwaddr : out std_logic_vector(IRAM_ADDR_SZ - 1 downto 0);
 			dbgiwdata : out std_logic_vector(OPCODE_SZ - 1 downto 0);
 			dbgiwe : out std_logic;
-			-- debug features (interface with ecc_fp)
+			-- HW unsecure/Side-Channel analysis features (interface with ecc_fp)
 			dbgtrngnnrnddet : out std_logic;
-			-- debug features (interface with ecc_trng)
+			-- HW unsecure/Side-Channel analysis features (interface with ecc_trng)
 			dbgtrngta : out unsigned(15 downto 0);
 			dbgtrngrawreset : out std_logic;
 			dbgtrngirnreset : out std_logic;
@@ -270,7 +273,7 @@ architecture struct of ecc is
 			dbgtrngusepseudosource : out std_logic;
 			dbgtrngrawpullppdis : out std_logic;
 			-- handshake signals between entropy server ecc_trng
-			-- and the different clients (for debug diagnostics)
+			-- and the different clients (for HW unsecure diagnostics)
 			dbgtrngaxirdy : in std_logic;
 			dbgtrngaxivalid : in std_logic;
 			dbgtrngefprdy : in std_logic;
@@ -281,7 +284,7 @@ architecture struct of ecc is
 			dbgtrngshfvalid : in std_logic;
 			dbgtrngrawrdy : in std_logic;
 			dbgtrngrawvalid : in std_logic;
-			-- debug feature (off-chip trigger)
+			-- HW unsecure/Side-Channel analysis feature (off-chip trigger)
 			dbgtrigger : out std_logic;
 			-- Signals specific to attack feature
 			not_always_add : out std_logic;
@@ -383,7 +386,7 @@ architecture struct of ecc is
 			permute : out std_logic;
 			permuterdy : in std_logic;
 			permuteundo : out std_logic;
-			-- debug features
+			-- HW unsecure/Side-Channel analysis features
 			dbgpgmstate : out std_logic_vector(3 downto 0);
 			dbgnbbits : out std_logic_vector(15 downto 0);
 			dbgjoyebit : out std_logic_vector(log2(2*nn - 1) - 1 downto 0);
@@ -451,7 +454,7 @@ architecture struct of ecc is
 			trng_data : in std_logic_vector(1 downto 0);
 			trng_valid : in std_logic;
 			trng_rdy : out std_logic;
-			-- debug features (interface with ecc_axi)
+			-- HW unsecure/Side-Channel analysis features (interface with ecc_axi)
 			dbgbreakpoints : in breakpoints_type;
 			dbgnbopcodes : in std_logic_vector(15 downto 0);
 			dbgdosomeopcodes : in std_logic;
@@ -463,7 +466,8 @@ architecture struct of ecc is
 			dbgbreakpointid : out std_logic_vector(1 downto 0);
 			dbgbreakpointhit : out std_logic;
 			dbgtrngcompletebypass : in std_logic;
-			-- debug features (interface with ecc_scalar shared w/ ecc_axi)
+			-- HW unsecure/Side-Channel analysis features
+			--   (interface with ecc_scalar shared w/ ecc_axi)
 			dbgpgmstate : in std_logic_vector(3 downto 0);
 			dbgnbbits : in std_logic_vector(15 downto 0)
 			-- pragma translate_off
@@ -560,11 +564,11 @@ architecture struct of ecc is
 			compcstmty : in std_logic;
 			comppop : in std_logic;
 			token_generating : in std_logic;
-			-- debug features (interface with ecc_axi)
+			-- HW unsecure/Side-Channel analysis features (interface with ecc_axi)
 			dbgtrngnnrnddet : in std_logic;
 			dbgtrngcompletebypass : in std_logic;
 			dbgtrngcompletebypassbit : in std_logic;
-			-- debug feature (ecc_scalar)
+			-- HW unsecure/Side-Channel analysis feature (ecc_scalar)
 			dbghalted : in std_logic
 			-- pragma translate_off
 			-- interface with ecc_scalar (simu only)
@@ -633,7 +637,7 @@ architecture struct of ecc is
 			valid3 : out std_logic;
 			data3 : out std_logic_vector(irn_width_sh - 1 downto 0);
 			irncount3 : out std_logic_vector(log2(irn_fifo_size_shf) - 1 downto 0);
-			-- interface with ecc_axi (only usable in debug mode)
+			-- interface with ecc_axi (only usable in HW unsecure mode)
 			dbgtrngta : in unsigned(15 downto 0);
 			dbgtrngrawreset : in std_logic;
 			dbgtrngrawfull : out std_logic;
@@ -961,7 +965,7 @@ architecture struct of ecc is
 	signal trng_valid_axi : std_logic;
 	signal trng_data_axi : std_logic_vector(ww - 1 downto 0);
 	signal trngaxiirncount : std_logic_vector(log2(irn_fifo_size_axi) - 1 downto 0);
-	--   debug
+	--   HW unsecure/Side-Channel analysis
 	signal dbgtrngrawrdy : std_logic;
 	signal dbgtrngrawvalid : std_logic;
 	-- signals between ecc_trng & entropy user ecc_fp
@@ -976,16 +980,16 @@ architecture struct of ecc is
 	signal trng_rdy_sh : std_logic;
 	signal trng_valid_sh : std_logic;
 	signal trng_data_sh : std_logic_vector(irn_width_sh - 1 downto 0);
-	-- debug features (signals between ecc_axi & ecc_scalar)
+	-- HW unsecure/Side-Channel analysis features (signals between ecc_axi & ecc_scalar)
 	signal dbgpgmstate : std_logic_vector(3 downto 0);
 	signal dbgnbbits : std_logic_vector(15 downto 0);
 	signal dbgjoyebit : std_logic_vector(log2(2*nn - 1) - 1 downto 0);
 	signal dbghalted_s : std_logic;
-	-- debug features (signals between ecc_axi & ecc_curve_iram)
+	-- HW unsecure/Side-Channel analysis features (signals between ecc_axi & ecc_curve_iram)
 	signal dbgiwaddr : std_logic_vector(IRAM_ADDR_SZ - 1 downto 0);
 	signal dbgiwdata : std_logic_vector(OPCODE_SZ - 1 downto 0);
 	signal dbgiwe : std_logic;
-	-- debug features (signals between ecc_axi & ecc_curve)
+	-- HW unsecure/Side-Channel analysis features (signals between ecc_axi & ecc_curve)
 	signal dbgbreakpoints : breakpoints_type;
 	signal dbgnbopcodes : std_logic_vector(15 downto 0);
 	signal dbgdosomeopcodes : std_logic;
@@ -995,9 +999,9 @@ architecture struct of ecc is
 	signal dbgdecodepc : std_logic_vector(IRAM_ADDR_SZ - 1 downto 0);
 	signal dbgbreakpointid : std_logic_vector(1 downto 0);
 	signal dbgbreakpointhit : std_logic;
-	-- debug features (signals between ecc_axi & ecc_fp)
+	-- HW unsecure/Side-Channel analysis features (signals between ecc_axi & ecc_fp)
 	signal dbgtrngnnrnddet : std_logic;
-	-- debug features (signals between ecc_axi & ecc_trng)
+	-- HW unsecure/Side-Channel analysis features (signals between ecc_axi & ecc_trng)
 	signal dbgtrngta : unsigned(15 downto 0);
 	signal dbgtrngrawreset : std_logic;
 	signal dbgtrngirnreset : std_logic;
@@ -1148,7 +1152,7 @@ begin
 			--   token
 			gentoken => gentoken,
 			tokendone => tokendone,
-			--   /debug only
+			--   /HW unsecure only
 			laststep => laststep,
 			firstzdbl => firstzdbl,
 			firstzaddu => firstzaddu,
@@ -1165,7 +1169,7 @@ begin
 			pts_are_oppos => pts_are_oppos,
 			phimsb => phimsb,
 			kb0end => kb0end,
-			--   debug only/
+			--   HW unsecure only/
 			-- interface with ecc_curve
 			masklsb => masklsb,
 			-- interface with ecc_fp (access to ecc_fp_dram)
@@ -1204,11 +1208,11 @@ begin
 			kppending => busy,
 			-- software reset (to other components of the IP)
 			swrst => swrst,
-			-- debug features (interface with ecc_scalar)
+			-- HW unsecure features (interface with ecc_scalar)
 			dbgpgmstate => dbgpgmstate,
 			dbgnbbits => dbgnbbits,
 			dbgjoyebit => dbgjoyebit,
-			-- debug features (interface with ecc_curve)
+			-- HW unsecure features (interface with ecc_curve)
 			dbgbreakpoints => dbgbreakpoints,
 			dbgnbopcodes => dbgnbopcodes,
 			dbgdosomeopcodes => dbgdosomeopcodes,
@@ -1219,13 +1223,13 @@ begin
 			dbgdecodepc => dbgdecodepc,
 			dbgbreakpointid => dbgbreakpointid,
 			dbgbreakpointhit => dbgbreakpointhit,
-			-- debug features (interface with ecc_curve_iram)
+			-- HW unsecure features (interface with ecc_curve_iram)
 			dbgiwaddr => dbgiwaddr,
 			dbgiwdata => dbgiwdata,
 			dbgiwe => dbgiwe,
-			-- debug features (interface with ecc_fp)
+			-- HW unsecure features (interface with ecc_fp)
 			dbgtrngnnrnddet => dbgtrngnnrnddet,
-			-- debug features (interface with ecc_trng)
+			-- HW unsecure features (interface with ecc_trng)
 			dbgtrngta => dbgtrngta,
 			dbgtrngrawreset => dbgtrngrawreset,
 			dbgtrngirnreset => dbgtrngirnreset,
@@ -1243,7 +1247,7 @@ begin
 			dbgtrngusepseudosource => dbgtrngusepseudosource,
 			dbgtrngrawpullppdis => dbgtrngrawpullppdis,
 			-- handshake signals between entropy server ecc_trng
-			-- and the different clients (for debug diagnostics)
+			-- and the different clients (for HW unsecure diagnostics)
 			dbgtrngaxirdy => trng_rdy_axi,
 			dbgtrngaxivalid => trng_valid_axi,
 			dbgtrngefprdy => trng_rdy_fp,
@@ -1254,7 +1258,7 @@ begin
 			dbgtrngshfvalid => trng_valid_sh,
 			dbgtrngrawrdy => dbgtrngrawrdy,
 			dbgtrngrawvalid => dbgtrngrawvalid,
-			-- debug feature (off-chip trigger)
+			-- HW unsecure/Side-Channel analysis feature (off-chip trigger)
 			dbgtrigger => dbgtrigger,
 			-- Signals specific to attack feature
 			not_always_add => not_always_add,
@@ -1355,7 +1359,7 @@ begin
 			permute => permute,
 			permuterdy => permuterdy,
 			permuteundo => permuteundo,
-			-- debug features (interface with ecc_axi)
+			-- HW unsecure/Side-Channel analysis features (interface with ecc_axi)
 			dbgpgmstate => dbgpgmstate,
 			dbgnbbits => dbgnbbits,
 			dbgjoyebit => dbgjoyebit,
@@ -1422,7 +1426,7 @@ begin
 			trng_rdy => trng_rdy_curve,
 			trng_valid => trng_valid_curve,
 			trng_data => trng_data_curve,
-			-- debug features (interface with ecc_axi)
+			-- HW unsecure/Side-Channel analysis features (interface with ecc_axi)
 			dbgbreakpoints => dbgbreakpoints,
 			dbgnbopcodes => dbgnbopcodes,
 			dbgdosomeopcodes => dbgdosomeopcodes,
@@ -1434,7 +1438,7 @@ begin
 			dbgbreakpointid => dbgbreakpointid,
 			dbgbreakpointhit => dbgbreakpointhit,
 			dbgtrngcompletebypass => dbgtrngcompletebypass,
-			-- debug features (interface with ecc_scalar)
+			-- HW unsecure/Side-Channel analysis features (interface with ecc_scalar)
 			dbgpgmstate => dbgpgmstate,
 			dbgnbbits => dbgnbbits
 			-- pragma translate_off
@@ -1523,11 +1527,11 @@ begin
 			compcstmty => compcstmty,
 			comppop => comppop,
 			token_generating => token_generating,
-			-- debug feature (ecc_axi)
+			-- HW unsecure/Side-Channel analysis feature (ecc_axi)
 			dbgtrngnnrnddet => dbgtrngnnrnddet,
 			dbgtrngcompletebypass => dbgtrngcompletebypass,
 			dbgtrngcompletebypassbit => dbgtrngcompletebypassbit,
-			-- debug feature (ecc_scalar)
+			-- HW unsecure/Side-Channel analysis feature (ecc_scalar)
 			dbghalted => dbghalted_s
 			-- pragma translate_off
 			-- interface with ecc_scalar (simu only)
@@ -1595,7 +1599,7 @@ begin
 			valid3 => trng_valid_sh,
 			data3 => trng_data_sh,
 			irncount3 => dbgtrngshfirncount,
-			-- interface with ecc_axi (only usable in debug mode)
+			-- interface with ecc_axi (only usable in HW unsecure mode)
 			dbgtrngta => dbgtrngta,
 			dbgtrngrawreset => dbgtrngrawreset,
 			dbgtrngrawfull => dbgtrngrawfull,
@@ -1838,11 +1842,10 @@ begin
 		else
 			echo(", no shuffle avail");
 		end if;
-		echo(", debug ");
-		if debug then
-			echo("ON");
+		if hwsecure then
+			echo(", HW secured");
 		else
-			echo("OFF");
+			echo(", HW unsecure");
 		end if;
 		if (simkb > 0) then
 			echo(", simu only ");

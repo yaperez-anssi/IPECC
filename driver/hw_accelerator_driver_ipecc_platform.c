@@ -125,8 +125,8 @@ int hw_driver_setup(volatile uint8_t **base_addr_p, volatile uint8_t **pseudotrn
 		if (pseudotrng_base_addr_p != NULL) {
 
 			/* Now handle the pseudo-TRNG device. If the device does not exist (e.g the IP
-			 * was not synthesized in debug mode, then the device simply won't exist, in which
-			 * case we set *pseudotrng_base_addr_p = NULL.
+			 * was not synthesized in HW unsecure mode, then the device simply won't exist,
+			 * in which case we set *pseudotrng_base_addr_p = NULL.
 			 */
 			/* Open our UIO device
 			 * NOTE: O_SYNC here to avoid caching
@@ -181,8 +181,8 @@ int hw_driver_setup(volatile uint8_t **base_addr_p, volatile uint8_t **pseudotrn
 		if (pseudotrng_base_addr_p != NULL) {
 
 			/* Now handle the pseudo-TRNG device. If the device does not exist (e.g the IP
-			 * was not synthesized in debug mode, then the device simply won't exist, in which
-			 * case we set *pseudotrng_base_addr_p = NULL.
+			 * was not synthesized in HW unsecure mode, then the device simply won't exist,
+			 * in which case we set *pseudotrng_base_addr_p = NULL.
 			 */
 			devmem_size = IPECC_PHYS_SZ;
 			/* Map the pseudo TRNG source device */

@@ -454,7 +454,7 @@ int main(int argc, char *argv[])
 	line_t line_type_expected = EXPECT_NONE;
 	size_t len = 0;
 	ssize_t nread;
-	bool debug_not_prod;
+	bool hw_unsecure;
 	uint32_t vmajor, vminor, vpatch;
 
 	/* HW capabilities */
@@ -479,21 +479,21 @@ int main(int argc, char *argv[])
 #endif
 
 #if 1
-	/* Is it a 'debug' or a 'production' version of the IP? */
-	if (hw_driver_is_debug(&debug_not_prod)) {
-		printf("%sError: Probing 'debug or production mode' triggered an error.%s\n\r", KERR, KNRM);
+	/* Is it a 'HW secure' or a 'HW usnecure' version of the IP? */
+	if (hw_driver_is_hw_unsecure(&hw_unsecure)) {
+		printf("%sError: Probing 'HW secure/unsecure mode' triggered an error.%s\n\r", KERR, KNRM);
 		exit(EXIT_FAILURE);
 	}
 
-	if (debug_not_prod){
+	if (hw_unsecure){
 		if (hw_driver_get_version_tags(&vmajor, &vminor, &vpatch)){
 			printf("%sError: Probing revision numbers triggered an error.%s\n\r", KERR, KNRM);
 			exit(EXIT_FAILURE);
 		}
-		log_print("IP in debug mode (HW version %d.%d.%d)\n\r", vmajor, vminor, vpatch);
+		log_print("IP in HW unsecure mode (HW version %d.%d.%d)\n\r", vmajor, vminor, vpatch);
 		/*
 		 * We must activate, in the TRNG, the pulling of raw random bytes by the
-		 * post-processing function (because in debug mode it is disabled upon
+		 * post-processing function (because in HW unsecure mode it is disabled upon
 		 * reset).
 		 */
 		if (hw_driver_trng_post_proc_enable_DBG()){
@@ -509,7 +509,6 @@ int main(int argc, char *argv[])
 	}
 #endif
 
-	/* REMOVE THAT! DON'T KEEP EVEN IN DEBUG MODE! */
 	/* Get whole capabilities from hardware
 	 */
 	if (hw_driver_get_capabilities(&secure, &shuffle, &nndyn, &axi64, &nnmax))
@@ -522,10 +521,10 @@ int main(int argc, char *argv[])
 	 * ************************************************
 	 *
 	 * (e.g if you want to disable shuffling or enable periodic Z-remask
-	 *  when in debug mode, etc)
+	 *  when in HW unsecure mode, etc)
 	 */
 #if 0
-	/* Example of how to disable XY-shuffling (if DEBUG mode) */
+	/* Example of how to disable XY-shuffling (if HW unsecure mode) */
 	if (hw_driver_disable_xyshuf_DBG()) {
 		printf("Error: hw_driver_disable_xyshuf() returned exception\n\r");
 		exit(EXIT_FAILURE);
@@ -534,7 +533,7 @@ int main(int argc, char *argv[])
 #endif
 
 #if 0
-	/* Example of how to disable shuffling of large-nb memory (if DEBUG mode) */
+	/* Example of how to disable shuffling of large-nb memory (if HW unsecure mode) */
 	if (hw_driver_disable_shuffling()) {
 		printf("Error: hw_driver_disable_shuffling() returned exception\n\r");
 		exit(EXIT_FAILURE);
@@ -543,7 +542,7 @@ int main(int argc, char *argv[])
 #endif
 
 #if 0
-	/* Example of how to disable periodic Z-remask (if DEBUG mode) */
+	/* Example of how to disable periodic Z-remask (if HW unsecure mode) */
 	if (hw_driver_disable_zremask()) {
 		printf("Error: hw_driver_disable_zremask() returned exception\n\r");
 		exit(EXIT_FAILURE);

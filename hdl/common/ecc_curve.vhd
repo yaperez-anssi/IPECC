@@ -76,7 +76,7 @@ entity ecc_curve is
 		trng_data : in std_logic_vector(1 downto 0);
 		trng_valid : in std_logic;
 		trng_rdy : out std_logic;
-		-- debug features (interface with ecc_axi)
+		-- HW unsecure/Side-Channel analysis features (interface with ecc_axi)
 		dbgbreakpoints : in breakpoints_type;
 		dbgnbopcodes : in std_logic_vector(15 downto 0);
 		dbgdosomeopcodes : in std_logic;
@@ -88,7 +88,7 @@ entity ecc_curve is
 		dbgbreakpointid : out std_logic_vector(1 downto 0);
 		dbgbreakpointhit : out std_logic;
 		dbgtrngcompletebypass : in std_logic;
-		-- debug features (interface with ecc_scalar)
+		-- HW unsecure/Side-Channel analysis features (interface with ecc_scalar)
 		dbgpgmstate : in std_logic_vector(3 downto 0);
 		dbgnbbits : in std_logic_vector(15 downto 0)
 		-- pragma translate_off
@@ -280,7 +280,7 @@ architecture rtl of ecc_curve is
 		start : std_logic;
 	end record;
 
-	-- debug features
+	-- HW unsecure/Side-Channel analysis features
 	type debug_reg_type is record
 		breakpointid : std_logic_vector(1 downto 0);
 		severalopcodes : std_logic;
@@ -302,7 +302,7 @@ architecture rtl of ecc_curve is
 		err : std_logic;
 		err_flags: std_logic_vector(NB_ERR_FLAGS - 1 downto 0);
 		shuffle : shuffle_reg_type;
-		-- debug features
+		-- HW unsecure/Side-Channel analysis features
 		debug : debug_reg_type;
 		-- pragma translate_off
 		shuffle_adr_x0 : std_logic_vector(1 downto 0);
@@ -470,7 +470,7 @@ begin
 			v.ctrl.phimsb := '0'; -- do not give info before it's needed
 		end if;
 
-		-- catch a possible debug halt order coming from software
+		-- Catch a possible debug halt order coming from software
 		v.debug.halt_b := dbghalt;
 		if (dbghalt = '1' and r.debug.halt_b = '0') then
 			v.debug.halt_pending := '1';
@@ -479,12 +479,13 @@ begin
 		-- (s40) breakpoints (generation of v_breakpointhit & v_breakpointnb
 		--       which are used in (s41) below)
 		-- TODO: condition the following logic (for breakpoints)  w/ regard to
-		--       whether or not debug features are present (unless it would
-		--       naturally be trimmed by synthesizer when they are not)
+		--       whether or not HW unsecure/Side-Channel analysis features are
+		--       present (unless it would naturally be trimmed by synthesizer
+		--       when they are not)
 		v_breakpointhit := FALSE;
 		v_breakpointnb := 0; -- to avoid inference of latches
 		for i in 0 to 3 loop
-			if debug
+			if (not hwsecure)
 				and dbgbreakpoints(i).act = '1'
 				and r.fetch.pc = dbgbreakpoints(i).addr
 				and (dbgbreakpoints(i).state = DEBUG_STATE_ANY_OR_IDLE
@@ -660,7 +661,7 @@ begin
 
 					-- ----------------- /DEBUG BREAKPOINTS/ -----------------------
 					-- (s41) breakpoint detection & step-by-step execution
-					if debug then
+					if (not hwsecure) then
 						if v_breakpointhit or r.debug.halt_pending = '1' then
 							-- (s100)
 							-- if there is an asynchronous operation pending (an FPREDC)
@@ -668,7 +669,7 @@ begin
 							-- in which we'll wait until all pending ops are completed
 							-- before actualy entering the 'breakpoint' state and setting
 							-- r.debug.halted to 1.
-							-- This is for consistancy towards the debug driver software.
+							-- This is for consistancy towards the driver software.
 							-- Furthermore, it is absolutely necessary not to raise
 							-- r.debug.halted before all pending ops are over, for two
 							-- reasons:
@@ -889,7 +890,7 @@ begin
 						v.decode.valid := '0'; -- (s18) bypass of (s17)
 						-- decode patch flags
 						if r.decode.c.patchid = "000000" then -- set opa for ",p0" patch
-							if debug and not_always_add = '1' then
+							if (not hwsecure) and not_always_add = '1' then
 								if laststep = '1' then -- actually it's necessarily the case
 									if (doblinding = '0' and (r.ctrl.kb0 xor masklsb) = '1')
 										or (doblinding = '1' and (r.ctrl.kb0 xor r.ctrl.mu0)='1')
@@ -904,7 +905,7 @@ begin
 										null; -- opa by default to XSUB in zaddc.s for this opcode
 									end if;
 								end if;
-							elsif (not debug) or not_always_add = '0' then
+							elsif (hwsecure) or not_always_add = '0' then
 								if laststep = '1' then
 									if (doblinding = '0' and (r.ctrl.kb0 xor masklsb) = '1')
 										or (doblinding = '1' and (r.ctrl.kb0 xor r.ctrl.mu0)='1')
@@ -927,7 +928,7 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "000001" then -- set opa for ",p1" patch
-							if debug and not_always_add = '1' then
+							if (not hwsecure) and not_always_add = '1' then
 								if laststep = '1' then -- actually it's necessarily the case
 									if (doblinding = '0' and (r.ctrl.kb0 xor masklsb) = '1')
 										or (doblinding = '1' and (r.ctrl.kb0 xor r.ctrl.mu0)='1')
@@ -942,7 +943,7 @@ begin
 										null; -- opa by default to YSUB in zaddc.s for this opcode
 									end if;
 								end if;
-							elsif (not debug) or not_always_add = '0' then
+							elsif (hwsecure) or not_always_add = '0' then
 								if laststep = '1' then
 									if (doblinding = '0' and (r.ctrl.kb0 xor masklsb) = '1')
 										or (doblinding = '1' and (r.ctrl.kb0 xor r.ctrl.mu0)='1')
@@ -965,7 +966,7 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "000010" then -- set opc for ",p2"
-							if debug and not_always_add = '1' then
+							if (not hwsecure) and not_always_add = '1' then
 								if laststep = '1' then -- actually it's necessarily the case
 									if ((doblinding = '0' and ((r.ctrl.kb0 xor masklsb) = '1'))
 										or
@@ -979,7 +980,7 @@ begin
 										null; -- opc by default to ZR01 in zaddc.s for this opcode
 									end if;
 								end if;
-							elsif (not debug) or not_always_add = '0' then
+							elsif (hwsecure) or not_always_add = '0' then
 								if laststep = '1' then
 									if ((doblinding = '0' and ((r.ctrl.kb0 xor masklsb) = '1'))
 										or
@@ -1030,10 +1031,10 @@ begin
 								v.decode.patch.opax0det := '1';
 								v.decode.patch.opbx1det := '1';
 							elsif ptadd = '0' then
-								if debug and not_always_add = '1' then
+								if (not hwsecure) and not_always_add = '1' then
 									v.decode.patch.opax0 := '1';
 									v.decode.patch.opbx1 := '1';
-								elsif (not debug) or not_always_add = '0' then
+								elsif (hwsecure) or not_always_add = '0' then
 									-- firstzaddu is not used here because it is equivalent
 									-- to kapp = 0 (see (s46) just below)
 									if r.ctrl.kapp = '1' then
@@ -1056,10 +1057,10 @@ begin
 								v.decode.patch.opay0det := '1';
 								v.decode.patch.opby1det := '1';
 							elsif ptadd = '0' then
-								if debug and not_always_add = '1' then
+								if (not hwsecure) and not_always_add = '1' then
 									v.decode.patch.opay0 := '1';
 									v.decode.patch.opby1 := '1';
-								elsif (not debug) or not_always_add = '0' then
+								elsif (hwsecure) or not_always_add = '0' then
 									if r.ctrl.kapp = '0' -- or firstzaddu = 1 (s47), see (s45)
 									then
 										v.decode.patch.opay0 := '1';
@@ -1089,9 +1090,9 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opax0det := '1';
 							elsif ptadd = '0' then
-								if debug and not_always_add = '1' then
+								if (not hwsecure) and not_always_add = '1' then
 									v.decode.patch.opax0 := '1';
-								elsif (not debug) or not_always_add = '0' then
+								elsif (hwsecure) or not_always_add = '0' then
 									if r.ctrl.kapp = '0' then -- (s48), see (s45)
 										v.decode.patch.opax0 := '1';
 									elsif r.ctrl.kapp = '1' then
@@ -1108,7 +1109,7 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opcx0det := '1';
 							elsif ptadd = '0' then
-								if debug and not_always_add = '1' then
+								if (not hwsecure) and not_always_add = '1' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											v.decode.patch.opcx0next := '1';
@@ -1118,7 +1119,7 @@ begin
 									elsif firstzaddu = '0' then
 										v.decode.patch.opcx1next := '1';
 									end if;
-								elsif (not debug) or not_always_add = '0' then
+								elsif (hwsecure) or not_always_add = '0' then
 									if firstzaddu = '1' and r.ctrl.first2pz = '1' then
 										-- .zadduL called by .setupL and initial point P is a
 										-- 2-torsion point ([2]P = 0)
@@ -1168,9 +1169,9 @@ begin
 											end if;
 										elsif firstzaddu = '0' then
 											if r.ctrl.kapp = '0' then -- (s49), see (s45)
-												if debug and no_collision_cr = '1' then
+												if (not hwsecure) and no_collision_cr = '1' then
 													v.decode.patch.opcx1next := '1';
-												elsif (not debug) or no_collision_cr = '0' then
+												elsif (hwsecure) or no_collision_cr = '0' then
 													v.decode.patch.opcx0next := '1';
 												end if;
 											elsif r.ctrl.kapp = '1' then
@@ -1189,7 +1190,7 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opcy0det := '1';
 							elsif ptadd = '0' then
-								if debug and not_always_add = '1' then
+								if (not hwsecure) and not_always_add = '1' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											v.decode.patch.opcy0next := '1';
@@ -1199,7 +1200,7 @@ begin
 									elsif firstzaddu = '0' then
 										v.decode.patch.opcy1next := '1';
 									end if;
-								elsif (not debug) or not_always_add = '0' then
+								elsif (hwsecure) or not_always_add = '0' then
 									if firstzaddu = '1' and r.ctrl.first2pz = '1' then
 										-- .zadduL called by .setupL and initial point P is a
 										-- 2-torsion point ([2]P = 0)
@@ -1247,9 +1248,9 @@ begin
 											end if;
 										elsif firstzaddu = '0' then
 											if r.ctrl.kapp = '0' then -- (s50), see (s45)
-												if debug and no_collision_cr = '1' then
+												if (not hwsecure) and no_collision_cr = '1' then
 													v.decode.patch.opcy1next := '1';
-												elsif (not debug) or no_collision_cr = '0' then
+												elsif (hwsecure) or no_collision_cr = '0' then
 													v.decode.patch.opcy0next := '1';
 												end if;
 											elsif r.ctrl.kapp = '1' then
@@ -1260,7 +1261,7 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "001101" then -- set opc for ",p13" patch
-							if debug and not_always_add = '1' then
+							if (not hwsecure) and not_always_add = '1' then
 								if laststep = '1' then -- actually it's necessarily the case
 									if ((doblinding='0' and ((r.ctrl.kb0 xor masklsb) = '1'))
 										or
@@ -1280,7 +1281,7 @@ begin
 										null;
 									end if;
 								end if;
-							elsif (not debug) or not_always_add = '0' then
+							elsif (hwsecure) or not_always_add = '0' then
 								if laststep = '1' then
 									if ((doblinding='0' and ((r.ctrl.kb0 xor masklsb) = '1'))
 										or
@@ -1303,10 +1304,10 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "001110" then -- set opb for ",p14" patch
-							if debug and not_always_add = '1' then
+							if (not hwsecure) and not_always_add = '1' then
 								-- behaviour is indifferent here.
 								null;
-							elsif (not debug) or not_always_add = '0' then
+							elsif (hwsecure) or not_always_add = '0' then
 								if laststep = '1' then
 									null; -- opb by default to XR0 in zaddc.s for this opcode
 								elsif r.ctrl.kap = '1' then
@@ -1316,7 +1317,7 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "001111" then -- set opc for ",p15" patch
-							if debug and not_always_add = '1' then
+							if (not hwsecure) and not_always_add = '1' then
 								if laststep = '1' then -- actually it's necessarily the case
 									if ((doblinding='0' and ((r.ctrl.kb0 xor masklsb) = '1'))
 										or
@@ -1336,7 +1337,7 @@ begin
 										null;
 									end if;
 								end if;
-							elsif (not debug) or not_always_add = '0' then
+							elsif (hwsecure) or not_always_add = '0' then
 								if laststep = '1' then
 									if ((doblinding='0' and ((r.ctrl.kb0 xor masklsb) = '1'))
 										or
@@ -1485,7 +1486,7 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opcx1det := '1';
 							elsif ptadd = '0' then
-								if debug and not_always_add = '1' then
+								if (not hwsecure) and not_always_add = '1' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											v.decode.patch.opcx1next := '1';
@@ -1495,7 +1496,7 @@ begin
 									elsif firstzaddu = '0' then
 										v.decode.patch.opcx0next := '1';
 									end if;
-								elsif (not debug) or not_always_add = '0' then
+								elsif (hwsecure) or not_always_add = '0' then
 									if firstzaddu = '1' then
 										if r.ctrl.first2pz = '1' then
 											-- .zadduL called by .setupL and initial point P is a
@@ -1517,9 +1518,9 @@ begin
 											v.decode.patch.opcvoid := '1';
 										elsif (r0z xor r1z) = '0' then
 											if r.ctrl.kapp = '0' then -- (s51), see (s45)
-												if debug and no_collision_cr = '1' then
+												if (not hwsecure) and no_collision_cr = '1' then
 													v.decode.patch.opcx0next := '1';
-												elsif (not debug) or no_collision_cr = '0' then
+												elsif (hwsecure) or no_collision_cr = '0' then
 													v.decode.patch.opcx1next := '1';
 												end if;
 											elsif r.ctrl.kapp = '1' then
@@ -1537,7 +1538,7 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opbx0det := '1';
 							elsif ptadd = '0' then
-								if debug and not_always_add = '1' then
+								if (not hwsecure) and not_always_add = '1' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											v.decode.patch.opbx0next := '1';
@@ -1547,7 +1548,7 @@ begin
 									elsif firstzaddu = '0' then
 										v.decode.patch.opbx1next := '1';
 									end if;
-								elsif (not debug) or not_always_add = '0' then
+								elsif (hwsecure) or not_always_add = '0' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											-- kappa_1 = 0 (R0 & R1 must switch places)
@@ -1558,9 +1559,9 @@ begin
 										end if;
 									elsif firstzaddu = '0' then
 										if r.ctrl.kapp = '0' then -- (s52), see (s45)
-											if debug and no_collision_cr = '1' then
+											if (not hwsecure) and no_collision_cr = '1' then
 												v.decode.patch.opbx1next := '1';
-											elsif (not debug) or no_collision_cr = '0' then
+											elsif (hwsecure) or no_collision_cr = '0' then
 												v.decode.patch.opbx0next := '1';
 											end if;
 										elsif r.ctrl.kapp = '1' then
@@ -1579,7 +1580,7 @@ begin
 								v.decode.patch.opax0det := '1';
 								v.decode.patch.opbx1det := '1';
 							elsif ptadd = '0' then
-								if debug and not_always_add = '1' then
+								if (not hwsecure) and not_always_add = '1' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											v.decode.patch.opax0next := '1';
@@ -1592,7 +1593,7 @@ begin
 										v.decode.patch.opax1next := '1';
 										v.decode.patch.opbx0next := '1';
 									end if;
-								elsif (not debug) or not_always_add = '0' then
+								elsif (hwsecure) or not_always_add = '0' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											-- kappa_1 = 0 (R0 & R1 must switch places)
@@ -1605,10 +1606,10 @@ begin
 										end if;
 									elsif firstzaddu = '0' then
 										if r.ctrl.kapp = '0' then -- (s53), see (s45)
-											if debug and no_collision_cr = '1' then
+											if (not hwsecure) and no_collision_cr = '1' then
 												v.decode.patch.opax1next := '1';
 												v.decode.patch.opbx0next := '1';
-											elsif (not debug) or no_collision_cr = '0' then
+											elsif (hwsecure) or no_collision_cr = '0' then
 												v.decode.patch.opax0next := '1';
 												v.decode.patch.opbx1next := '1';
 											end if;
@@ -1628,7 +1629,7 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opcy1det := '1';
 							elsif ptadd = '0' then
-								if debug and not_always_add = '1' then
+								if (not hwsecure) and not_always_add = '1' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											v.decode.patch.opcy1next := '1';
@@ -1638,7 +1639,7 @@ begin
 									elsif firstzaddu = '0' then
 										v.decode.patch.opcy0next := '1';
 									end if;
-								elsif (not debug) or not_always_add = '0' then
+								elsif (hwsecure) or not_always_add = '0' then
 									if firstzaddu = '1' then
 										if r.ctrl.first2pz = '1' then
 											-- .zadduL called by .setupL and initial point P is a
@@ -1658,9 +1659,9 @@ begin
 											v.decode.patch.opcvoid := '1';
 										elsif (r0z xor r1z) = '0' then
 											if r.ctrl.kapp = '0' then -- (s54), see (s45)
-												if debug and no_collision_cr = '1' then
+												if (not hwsecure) and no_collision_cr = '1' then
 													v.decode.patch.opcy0next := '1';
-												elsif (not debug) or no_collision_cr = '0' then
+												elsif (hwsecure) or no_collision_cr = '0' then
 													v.decode.patch.opcy1next := '1';
 												end if;
 											elsif r.ctrl.kapp = '1' then
@@ -1686,7 +1687,7 @@ begin
 								v.decode.patch.opby0det := '1';
 								v.decode.patch.opcy1det := '1';
 							elsif ptadd = '0' then
-								if debug and not_always_add = '1' then
+								if (not hwsecure) and not_always_add = '1' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											v.decode.patch.opay1next := '1';
@@ -1702,7 +1703,7 @@ begin
 										v.decode.patch.opby1next := '1';
 										v.decode.patch.opcy0next := '1';
 									end if;
-								elsif (not debug) or not_always_add = '0' then
+								elsif (hwsecure) or not_always_add = '0' then
 									if firstzaddu = '1' then
 										if r.ctrl.first2pz = '1' then
 											-- .zadduL called by .setupL and initial point P is a
@@ -1728,11 +1729,11 @@ begin
 											v.decode.patch.opcvoid := '1';
 										elsif (r0z xor r1z) = '0' then
 											if r.ctrl.kapp = '0' then -- (s55), see (s45)
-												if debug and no_collision_cr = '1' then
+												if (not hwsecure) and no_collision_cr = '1' then
 													v.decode.patch.opay0next := '1';
 													v.decode.patch.opby1next := '1';
 													v.decode.patch.opcy0next := '1';
-												elsif (not debug) or no_collision_cr = '0' then
+												elsif (hwsecure) or no_collision_cr = '0' then
 													v.decode.patch.opay1next := '1';
 													v.decode.patch.opby0next := '1';
 													v.decode.patch.opcy1next := '1';
@@ -1747,19 +1748,19 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "011101" then -- set opa & opb for ",p29" patch
-							if debug and not_always_add = '1' then
+							if (not hwsecure) and not_always_add = '1' then
 								if laststep = '1' then -- actually it's necessarily the case
 									v.decode.patch.opax1 := '1';
 									v.decode.patch.opbx0 := '1';
 								end if;
-							elsif (not debug) or not_always_add = '0' then
+							elsif (hwsecure) or not_always_add = '0' then
 								if laststep = '1' then
 									null; -- opa/opb already set to XR1/XR0 in zaddc.s
 								elsif laststep = '0' then
-									if debug and no_collision_cr = '1' then
+									if (not hwsecure) and no_collision_cr = '1' then
 										v.decode.patch.opax1 := '1';
 										v.decode.patch.opbx0 := '1';
-									elsif (not debug) or no_collision_cr = '0' then
+									elsif (hwsecure) or no_collision_cr = '0' then
 										if r.ctrl.kapp = '0' then
 											v.decode.patch.opax0 := '1';
 											v.decode.patch.opbx1 := '1';
@@ -1771,19 +1772,19 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "011110" then -- set opa & opb for ",p30" patch
-							if debug and not_always_add = '1' then
+							if (not hwsecure) and not_always_add = '1' then
 								if laststep = '1' then -- actually it's necessarily the case
 									v.decode.patch.opay1 := '1';
 									v.decode.patch.opby0 := '1';
 								end if;
-							elsif (not debug) or not_always_add = '0' then
+							elsif (hwsecure) or not_always_add = '0' then
 								if laststep = '1' then
 									null; -- opa/opb already set to YR1/YR0 in zaddc.s
 								elsif laststep = '0' then
-									if debug and no_collision_cr = '1' then
+									if (not hwsecure) and no_collision_cr = '1' then
 										v.decode.patch.opay1 := '1';
 										v.decode.patch.opby0 := '1';
-									elsif (not debug) or no_collision_cr = '0' then
+									elsif (hwsecure) or no_collision_cr = '0' then
 										if r.ctrl.kapp = '0' then
 											v.decode.patch.opay0 := '1';
 											v.decode.patch.opby1 := '1';
@@ -1795,19 +1796,19 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "011111" then -- set opa & opb for ",p31" patch
-							if debug and not_always_add = '1' then
+							if (not hwsecure) and not_always_add = '1' then
 								if laststep = '1' then -- actually it's necessarily the case
 									v.decode.patch.opay0 := '1';
 									v.decode.patch.opby1 := '1';
 								end if;
-							elsif (not debug) or not_always_add = '0' then
+							elsif (hwsecure) or not_always_add = '0' then
 								if laststep = '1' then
 									null; -- opa/opb already set to YR0/YR1 in zaddc.s
 								elsif laststep = '0' then
-									if debug and no_collision_cr = '1' then
+									if (not hwsecure) and no_collision_cr = '1' then
 										v.decode.patch.opay0 := '1';
 										v.decode.patch.opby1 := '1';
-									elsif (not debug) or no_collision_cr = '0' then
+									elsif (hwsecure) or no_collision_cr = '0' then
 										if r.ctrl.kapp = '0' then
 											v.decode.patch.opay1 := '1';
 											v.decode.patch.opby0 := '1';
@@ -1819,17 +1820,17 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "100000" then -- set opa for ",p32" patch
-							if debug and not_always_add = '1' then
+							if (not hwsecure) and not_always_add = '1' then
 								if laststep = '1' then -- actually it's necessarily the case
 									v.decode.patch.opax0 := '1';
 								end if;
-							elsif (not debug) or not_always_add = '0' then
+							elsif (hwsecure) or not_always_add = '0' then
 								if laststep = '1' then
 									null; -- opa already set to XR0 in zaddc.s
 								elsif laststep = '0' then
-									if debug and no_collision_cr = '1' then
+									if (not hwsecure) and no_collision_cr = '1' then
 										v.decode.patch.opax0 := '1';
-									elsif (not debug) or no_collision_cr = '0' then
+									elsif (hwsecure) or no_collision_cr = '0' then
 										if r.ctrl.kapp = '0' then
 											v.decode.patch.opax1 := '1';
 										elsif r.ctrl.kapp = '1' then
@@ -1839,17 +1840,17 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "100001" then -- set opa for ",p33" patch
-							if debug and not_always_add = '1' then
+							if (not hwsecure) and not_always_add = '1' then
 								if laststep = '1' then -- actually it's necessarily the case
 									v.decode.patch.opax1 := '1';
 								end if;
-							elsif (not debug) or not_always_add = '0' then
+							elsif (hwsecure) or not_always_add = '0' then
 								if laststep = '1' then
 									null; -- opa already set to XR1 in zaddc.s
 								elsif laststep = '0' then
-									if debug and no_collision_cr = '1' then
+									if (not hwsecure) and no_collision_cr = '1' then
 										v.decode.patch.opax1 := '1';
-									elsif (not debug) or no_collision_cr = '0' then
+									elsif (hwsecure) or no_collision_cr = '0' then
 										if r.ctrl.kapp = '0' then
 											v.decode.patch.opax0 := '1';
 										elsif r.ctrl.kapp = '1' then
@@ -1859,17 +1860,17 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "100010" then -- set opa for ",p34" patch
-							if debug and not_always_add = '1' then
+							if (not hwsecure) and not_always_add = '1' then
 								if laststep = '1' then -- actually it's necessarily the case
 									v.decode.patch.opay0 := '1';
 								end if;
-							elsif (not debug) or not_always_add = '0' then
+							elsif (hwsecure) or not_always_add = '0' then
 								if laststep = '1' then
 									null; -- opa already set to YR0 in zaddc.s
 								elsif laststep = '0' then
-									if debug and no_collision_cr = '1' then
+									if (not hwsecure) and no_collision_cr = '1' then
 										v.decode.patch.opay0 := '1';
-									elsif (not debug) or no_collision_cr = '0' then
+									elsif (hwsecure) or no_collision_cr = '0' then
 										if r.ctrl.kapp = '0' then
 											v.decode.patch.opay1 := '1';
 										elsif r.ctrl.kapp = '1' then
@@ -1886,9 +1887,9 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opay1det := '1';
 							elsif ptadd = '0' then
-								if debug and not_always_add = '1' then
+								if (not hwsecure) and not_always_add = '1' then
 									v.decode.patch.opay1 := '1';
-								elsif (not debug) or not_always_add = '0' then
+								elsif (hwsecure) or not_always_add = '0' then
 									if firstzaddu = '1' and r.ctrl.first2pz = '1' then
 										-- .zadduL called by .setupL and initial point P is a
 										-- 2-torsion point ([2]P = 0)
@@ -1922,9 +1923,9 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opax1det := '1';
 							elsif ptadd = '0' then
-								if debug and not_always_add = '1' then
+								if (not hwsecure) and not_always_add = '1' then
 									v.decode.patch.opax1 := '1';
-								elsif (not debug) or not_always_add = '0' then
+								elsif (hwsecure) or not_always_add = '0' then
 									if firstzaddu = '1' and r.ctrl.first2pz = '1' then
 										-- .zadduL called by .setupL and initial point P is a
 										-- 2-torsion point ([2]P = 0)
@@ -1958,7 +1959,7 @@ begin
 								-- bypass for PT ADD operation
 								v.decode.patch.opbx0det := '1';
 							elsif ptadd = '0' then
-								if debug and not_always_add = '1' then
+								if (not hwsecure) and not_always_add = '1' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											v.decode.patch.opbx0next := '1';
@@ -1968,7 +1969,7 @@ begin
 									elsif firstzaddu = '0' then
 										v.decode.patch.opbx1next := '1';
 									end if;
-								elsif (not debug) or not_always_add = '0' then
+								elsif (hwsecure) or not_always_add = '0' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											-- kappa_1 = 0 (R0 & R1 must switch places)
@@ -1979,9 +1980,9 @@ begin
 										end if;
 									elsif firstzaddu = '0' then
 										if r.ctrl.kapp = '0' then
-											if debug and no_collision_cr = '1' then
+											if (not hwsecure) and no_collision_cr = '1' then
 												v.decode.patch.opbx1next := '1';
-											elsif (not debug) or no_collision_cr = '0' then
+											elsif (hwsecure) or no_collision_cr = '0' then
 												v.decode.patch.opbx0next := '1';
 											end if;
 										elsif r.ctrl.kapp = '1' then
@@ -2004,7 +2005,7 @@ begin
 								v.decode.patch.opcx1det := '1';
 								v.decode.patch.as := '1'; -- same as ,p5 patch
 							elsif ptadd = '0' then
-								if debug and not_always_add = '1' then
+								if (not hwsecure) and not_always_add = '1' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											v.decode.patch.as := '1';
@@ -2020,7 +2021,7 @@ begin
 										v.decode.patch.opax0next := '1';
 										v.decode.patch.opcx0next := '1';
 									end if;
-								elsif (not debug) or not_always_add = '0' then
+								elsif (hwsecure) or not_always_add = '0' then
 									if firstzaddu = '1' and first3pz = '1' then
 										if r.ctrl.kap = '0' then
 											-- kappa_1 = 0 (R0 & R1 must switch places)
@@ -2071,10 +2072,10 @@ begin
 											end if;
 										elsif firstzaddu = '0' then
 											if r.ctrl.kapp = '0' then -- (s59), see (s45)
-												if debug and no_collision_cr = '1' then
+												if (not hwsecure) and no_collision_cr = '1' then
 													v.decode.patch.opax0next := '1';
 													v.decode.patch.opcx0next := '1';
-												elsif (not debug) or no_collision_cr = '0' then
+												elsif (hwsecure) or no_collision_cr = '0' then
 													v.decode.patch.opax1next := '1';
 													v.decode.patch.opcx1next := '1';
 												end if;
@@ -2099,7 +2100,7 @@ begin
 								v.decode.patch.opcy1det := '1';
 								v.decode.patch.as := '1'; -- same as ,p5 patch
 							elsif ptadd = '0' then
-								if debug and not_always_add = '1' then
+								if (not hwsecure) and not_always_add = '1' then
 									if firstzaddu = '1' then
 										if r.ctrl.kap = '0' then
 											v.decode.patch.as := '1'; -- same as ,p5 patch
@@ -2115,7 +2116,7 @@ begin
 										v.decode.patch.opay0next := '1';
 										v.decode.patch.opcy0next := '1';
 									end if;
-								elsif (not debug) or not_always_add = '0' then
+								elsif (hwsecure) or not_always_add = '0' then
 									if firstzaddu = '1' and first3pz = '1' then
 										if r.ctrl.kap = '0' then
 											-- kappa_1 = 0 (R0 & R1 must switch places)
@@ -2167,10 +2168,10 @@ begin
 											end if;
 										elsif firstzaddu = '0' then
 											if r.ctrl.kapp = '0' then -- (s60), see (s45)
-												if debug and no_collision_cr = '1' then
+												if (not hwsecure) and no_collision_cr = '1' then
 													v.decode.patch.opay0next := '1';
 													v.decode.patch.opcy0next := '1';
-												elsif (not debug) or no_collision_cr = '0' then
+												elsif (hwsecure) or no_collision_cr = '0' then
 													v.decode.patch.opay1next := '1';
 													v.decode.patch.opcy1next := '1';
 												end if;
@@ -2183,10 +2184,10 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "101000" then -- set opa for ",p40" patch
-							if debug and not_always_add = '1' then
+							if (not hwsecure) and not_always_add = '1' then
 								-- With naive Joye, "correct" result is always in R0
 								v.decode.patch.opax0 := '1';
-							elsif (not debug) or not_always_add = '0' then
+							elsif (hwsecure) or not_always_add = '0' then
 								if r.ctrl.par = '0' then
 									-- result of the scalar loop is in R0
 									v.decode.patch.opax0 := '1';
@@ -2196,10 +2197,10 @@ begin
 								end if;
 							end if;
 						elsif r.decode.c.patchid = "101001" then -- set opa for ",p41" patch
-							if debug and not_always_add = '1' then
+							if (not hwsecure) and not_always_add = '1' then
 								-- With naive Joye, "correct" result is always in R0
 								v.decode.patch.opay0 := '1';
-							elsif (not debug) or not_always_add = '0' then
+							elsif (hwsecure) or not_always_add = '0' then
 								if r.ctrl.par = '0' then
 									-- result of the scalar loop is in R0
 									v.decode.patch.opay0 := '1';
@@ -2458,11 +2459,11 @@ begin
 							end if;
 							v.decode.patch.p := '1';
 						elsif r.decode.c.patchid = "111001" then -- patch ",p57" (in .zdblL)
-							if debug and not_always_add = '1' then
+							if (not hwsecure) and not_always_add = '1' then
 								if firstzdbl = '1' then -- it can't but necessarily be the case
 									v.decode.patch.opcx1det := '1';
 								end if;
-							elsif (not debug) or not_always_add = '0' then
+							elsif (hwsecure) or not_always_add = '0' then
 								if ptadd = '0' then
 									if firstzdbl = '1' then
 										null; -- opc already set to deterministic XR1 in zdbl.s
@@ -2520,11 +2521,11 @@ begin
 								end if; -- ptadd
 							end if;
 						elsif r.decode.c.patchid = "111010" then -- patch ",p58" (in .zdblL)
-							if debug and not_always_add = '1' then
+							if (not hwsecure) and not_always_add = '1' then
 								if firstzdbl = '1' then -- it can't but necessarily be the case
 									v.decode.patch.opcy1det := '1';
 								end if;
-							elsif (not debug) or not_always_add = '0' then
+							elsif (hwsecure) or not_always_add = '0' then
 								if ptadd = '0' then
 									if firstzdbl = '1' then
 										null; -- opc already set to deterministic YR1 in zdbl.s
@@ -2582,11 +2583,11 @@ begin
 								end if; -- ptadd
 							end if;
 						elsif r.decode.c.patchid = "111011" then -- patch ",p59" (in .zdblL)
-							if debug and not_always_add = '1' then
+							if (not hwsecure) and not_always_add = '1' then
 								if firstzdbl = '1' then -- it can't but necessarily be the case
 									v.decode.patch.opcx0det := '1';
 								end if;
-							elsif (not debug) or not_always_add = '0' then
+							elsif (hwsecure) or not_always_add = '0' then
 								if ptadd = '0' then
 									if firstzdbl = '1' then
 										v.decode.patch.opaz := r.ctrl.first2pz;
@@ -2641,11 +2642,11 @@ begin
 								end if; -- ptadd
 							end if;
 						elsif r.decode.c.patchid = "111100" then -- patch ",p60" (in .zdblL)
-							if debug and not_always_add = '1' then
+							if (not hwsecure) and not_always_add = '1' then
 								if firstzdbl = '1' then -- it can't but necessarily be the case
 									v.decode.patch.opcy0det := '1';
 								end if;
-							elsif (not debug) or not_always_add = '0' then
+							elsif (hwsecure) or not_always_add = '0' then
 								if ptadd = '0' then
 									if firstzdbl = '1' then
 										v.decode.patch.opaz := r.ctrl.first2pz;
@@ -3109,7 +3110,7 @@ begin
 				v.decode.state := idle; -- (s27)
 				v.decode.rdy := '1';
 			-- ----------------
-			-- breakpoint state (debug)
+			-- breakpoint state (HW unsecure/Side-Channel analysis feature)
 			-- ----------------
 			when breakpoint =>
 				if dbgresume = '1' then
@@ -3127,9 +3128,10 @@ begin
 					end if;
 					v.debug.breakpointhit := '0';
 				end if;
-			-- -------------------------------------
-			-- state to wait for an FPREDC to finish before breakpoint halt (debug)
-			-- -------------------------------------
+			-- ----------------------------------------------
+			-- state to wait for an FPREDC to finishz
+			--   before breakpoint halt (HW unsecure feature)
+			-- ----------------------------------------------
 			when waitb4bkpt =>
 				-- we stall until the balance between pending requests sent to
 				-- ecc_fp and the ones it has completed is reached again, that
@@ -3194,7 +3196,7 @@ begin
 			if r.shuffle.step = 3 then
 				-- in this step all possible 2-bit values can be used (no TRNG data
 				-- shall be lost)
-				if debug and dbgtrngcompletebypass = '1' then
+				if (not hwsecure) and dbgtrngcompletebypass = '1' then
 					v.shuffle.sw3 := "11";
 				else
 					v.shuffle.sw3 := r.shuffle.trng_data;
@@ -3208,7 +3210,7 @@ begin
 			elsif r.shuffle.step = 2 then
 				-- in this step only 2-bit values 00, 01 and 10 are acceptable
 				-- (TRNG data 11 is useless and must be discarded)
-				if debug and dbgtrngcompletebypass = '1' then
+				if (not hwsecure) and dbgtrngcompletebypass = '1' then
 					v.shuffle.sw2 := "10";
 					v.shuffle.step := 1;
 				else
@@ -3226,7 +3228,7 @@ begin
 				-- but we can avoid losing TRNG data by regrouping 00 and 10
 				-- as one single element and doing the same for 10 and 11
 				-- values
-				if debug and dbgtrngcompletebypass = '1' then
+				if (not hwsecure) and dbgtrngcompletebypass = '1' then
 					v.shuffle.sw1 := "01";
 				else
 					v.shuffle.sw1 := '0' & r.shuffle.trng_data(0);
@@ -3476,9 +3478,9 @@ begin
 			v.shuffle.adr_y1 := r.shuffle.next_adr_y1;
 		end if;
 
-		-- in debug mode, shuffled addresses can be bypassed with deterministic
+		-- In HW unsecure mode, shuffled addresses can be bypassed with deterministic
 		-- constants of coordinates [XY]R[01]
-		if debug then
+		if (not hwsecure) then
 			if dbgnoxyshuf = '1' --or dbgtrngcompletebypass = '1'
 			then
 				v.shuffle.adr_x0 := "00";
@@ -3526,7 +3528,7 @@ begin
 			v.shuffle.trng_valid := '0';
 			-- no need to reset the r.shuffle.next_ registers
 			-- no need to reset the r.shuffle.sw[321] registers
-			-- debug features
+			-- HW unsecure/Side-Channel analysis features
 			v.debug.severalopcodes := '0';
 			v.debug.halted := '0';
 			-- no need tot reset r.debug.breakpointid
@@ -3616,7 +3618,7 @@ begin
 	ppen <= r.decode.a.redcm;
 	--   to ecc_trng
 	trng_rdy <= r.shuffle.trng_rdy;
-	--   to ecc_axi (debug features)
+	--   to ecc_axi (HW unsecure/Side-Channel analysis features)
 	dbghalted <= r.debug.halted;
 	dbgdecodepc <= r.decode.pc;
 	dbgbreakpointid <= r.debug.breakpointid;

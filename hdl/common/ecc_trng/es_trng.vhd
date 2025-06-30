@@ -37,7 +37,7 @@ entity es_trng is
 		data_t : out std_logic_vector(7 downto 0);
 		valid_t : out std_logic;
 		rdy_t : in std_logic;
-		-- following signals are for debug & statistics
+		-- following signals are for HW unsecure mode
 		dbgtrngta : in unsigned(15 downto 0);
 		dbgtrngrawreset : in std_logic;
 		dbgtrngrawfull : out std_logic;
@@ -64,7 +64,7 @@ architecture struct of es_trng is
 			raw : out std_logic;
 			valid : out std_logic;
 			rdy : in std_logic;
-			-- following signals are for debug & statistics
+			-- following signals are for HW unsecure mode
 			dbgtrngrawreset : in std_logic;
 			dbgtrngta : in unsigned(15 downto 0);
 			dbgtrngvonneuman : in std_logic;
@@ -89,7 +89,7 @@ architecture struct of es_trng is
 			raw1 : in std_logic;
 			valid1 : in std_logic;
 			rdy1 : out std_logic;
-			-- following signal is for debug
+			-- following signal is for HW unsecure mode
 			dbgtrngrawreset : in std_logic
 		);
 	end component es_trng_aggreg;
@@ -140,6 +140,8 @@ architecture struct of es_trng is
 	signal r_raw3 : std_logic_vector((2*(5+log2(n)-1)) - 1 downto 0);
 	-- pragma translate_on
 
+	constant hwunsecure : boolean := not hwsecure;
+
 begin
 
 	b: if nbtrng = 1 generate
@@ -153,7 +155,7 @@ begin
 				raw => rawi,
 				valid => validi,
 				rdy => r.rdyi,
-				-- following signals are for debug & statistics
+				-- following signals are for HW unsecure mode
 				dbgtrngrawreset => dbgtrngrawreset,
 				dbgtrngta => dbgtrngta,
 				dbgtrngvonneuman => dbgtrngvonneuman,
@@ -174,7 +176,7 @@ begin
 					raw => raw0(i),
 					valid => valid0(i),
 					rdy => rdy0(i),
-					-- following signals are for debug & statistics
+					-- following signals are for HW unsecure mode
 					dbgtrngrawreset => dbgtrngrawreset,
 					dbgtrngta => dbgtrngta,
 					dbgtrngvonneuman => dbgtrngvonneuman,
@@ -200,7 +202,7 @@ begin
 					raw1 => raw1(i + 1),
 					valid1 => valid1(i + 1),
 					rdy1 => rdy1(i + 1),
-					-- debug
+					-- HW unsecure mode
 					dbgtrngrawreset => dbgtrngrawreset
 				);
 		end generate; -- i
@@ -219,7 +221,7 @@ begin
 	f0: fifo
 		generic map(
 			datawidth => 1, datadepth => raw_ram_size,
-			debug => debug)
+			debug => hwunsecure)
 		port map(
 			clk => clk,
 			rstn => rstn,
@@ -277,7 +279,7 @@ begin
 		-- ------------------------
 
 		-- Continuously empty the bits from the FIFO as long as it does not
-		-- show an EMPTY state (and as long as we're not in debug deactivation
+		-- show an EMPTY state (and as long as we're not in HW unsecure disabled
 		-- mode (which is indicated by input port 'dbgtrngrawfiforeaddis'
 		-- asserted high).
 
@@ -286,7 +288,7 @@ begin
 		-- Condition dbgtrngrawfiforeaddis = '0' below ensures that r.re will stay
 		-- low whenever dbgtrngrawfiforeaddis = 1.
 		if empty = '0' and r.recnt /= to_unsigned(8, 4) and r.react = '1'
-			and ((not debug) or dbgtrngrawfiforeaddis = '0')
+			and (hwsecure or dbgtrngrawfiforeaddis = '0')
 		then
 			v.re := '1';
 		end if;
@@ -328,12 +330,12 @@ begin
 
 		-- As soon as the FIFO becomes FULL for the first time following last
 		-- reset, we stop counting cycles.
-		-- This allows any debug software to know the time it took to
-		-- completely fill the FIFO, and hence to estimate the random
+		-- This allows any Side-Channel analysis software to know the time it
+		-- took to completely fill the FIFO, and hence to estimate the random
 		-- production throughput of es_trng.
-		-- Of course this requires to first set the FIFO into debug
-		-- deactivation mode (by asserting 'dbgtrngrawfiforeaddis' high) so that the
-		-- FIFO can no longer be accessed (emptied) by ecc_trng_pp component.
+		-- Of course this requires to first set the FIFO into debug disabled
+		-- mode (by asserting 'dbgtrngrawfiforeaddis' high) so that the FIFO
+		-- can no longer be accessed (emptied) by ecc_trng_pp component.
 		if full = '1' and r.ffdelaydocnt = '0' then -- (s0), see (s1)
 			v.fifodocnt := '0';
 		end if;

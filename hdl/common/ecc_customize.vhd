@@ -39,10 +39,11 @@ package ecc_customize is
 	constant nbdsp : positive range 2 to positive'high := 6;
 	constant sramlat : positive range 1 to 2 := 1;
 	constant async : boolean := TRUE;
-	-- -----------------------------------------------
-	-- Side-channel countermeasures related parameters
-	-- -----------------------------------------------
-	constant debug : boolean := FALSE; -- FALSE = highly secure, TRUE = highly not
+	-- -------------------------------------------------------------
+	-- Side-channel countermeasures & HW security related parameters
+	-- -------------------------------------------------------------
+	constant hwsecure : boolean := TRUE; -- TRUE = highly secure, FALSE = highly not
+	-- hwsecure replaces the old 'debug' mode (hwsecure = TRUE <=> debug = FALSE)
 	constant blinding : integer := 96; -- 96 seems fair for size of blinding rnd
 	constant shuffle : boolean := TRUE; -- memory shuffling
 	type shuftype is (none, linear, permute_lgnb, permute_limbs);
@@ -472,21 +473,22 @@ end package ecc_customize;
 --
 -- ============================================================================
 -- NAME
---       'debug'
+--       'hwsecure'
 --
 -- DEFINITION
---       To choose between 'debug mode' versus 'production mode' of the IP.
---       In a nutshell, debug mode means any tampering with the IP is made
---       easy to the software driver. On the contrary production mode means
+--       To choose between 'HW secure mode' versus 'HW unsecure mode' of the IP.
+--
+--       In a nutshell, Hw unsecure mode means any tampering with the IP is made
+--       easy to the software driver. On the contrary HW secure mode means
 --       hardware security is at its max.
 --
---       Setting 'debug' to TRUE is very dangerous and should not apply to
---       production purposes, as this mode allows software driver to tamper
---       in any possible way with the IP, making it possible for each secu-
---       rity feature and countermeasure to be disengaged at runtime at the
+--       Setting 'hwsecure' to FALSE is very dangerous in a product and should
+--       not apply to production purposes, as this mode allows software driver
+--       to tamper in any possible way with the IP, making it possible for each
+--       security feature and countermeasure to be disengaged at runtime at the
 --       software initiative.
 --
---       Setting 'debug' to FALSE is what you wish if you're targeting pro-
+--       Setting 'hwsecure' to TRUE is what you wish if you're targeting pro-
 --       duction mode and you aim at disposing of a true hardware secure
 --       element for your application.
 --
@@ -495,17 +497,18 @@ end package ecc_customize;
 --
 -- DESCRIPTION
 --       The IP can be used in two different modes which are exclusive of one
---       another: either the IP is configured in production mode or it is confi-
---       gured in debug mode. This configuration is static and can’t be modified
---       at runtime. Setting 'debug' to TRUE naturally means setting the IP in
---       the debug mode, and in production mode otherwise.
+--       another: either the IP is configured in HW secure mode or it is confi-
+--       gured in HW unsecure/Side-Channel analysis mode (HW unsecure mode for
+--       short). This configuration is static and can’t be modified at runtime.
+--       Setting 'hwsecure' to FALSE naturally means setting the IP in the
+--       HW unsecure mode, and in HW secure mode otherwise.
 --
---       Debug mode means that interacting with the IP through software driver
---       is made very permissive, so as to allow pre-production analysis of the
---       IP and of its side-channel leakages. Software driver can then tamper
---       freely with almost any security feature implemented in the IP.
+--       HW unsecure mode means that interacting with the IP through software
+--       driver is made very permissive, so as to allow pre-production analysis
+--       of the IP and of its side-channel leakages. Software driver can then
+--       tamper freely with almost any security feature implemented in the IP.
 --
---       In debug mode, software-driver can:
+--       In HW unsecure mode, software-driver can:
 --         - read or write the value of any large number in memory, at any time
 --         - insert breakpoints into microcode to interrupt scalar multiplica-
 --           tion and perform step by step execution (e.g to allow time iso-
@@ -525,7 +528,7 @@ end package ecc_customize;
 --           evaluate different curve formulae or different countermeasures.
 --         - enable or disable almost any of the countermeasures.
 --
---       In production mode:
+--       In HW secure mode:
 --         - the only large numbers software driver is allowed to WRITE in
 --           memory are the first eight ones (large number address 0 to 7).
 --           These are: prime number p, curve parameters a, b and q, scalar k
@@ -571,11 +574,11 @@ end package ecc_customize;
 --           designer, to lock the corresponding countermeasure as always
 --           applicable to each [k]P computation, and it is important to keep
 --           in mind that these locks are effective only if you also set at
---           the same time parameter 'debug' to FALSE.
---           Setting 'debug' parameter to TRUE instead would actually maintain
---           the possibility to engage each of these countermeasures, but at the
---           discretion of the software driver and on a [k]P-computation per
---           [k]P-computation basis.
+--           the same time parameter 'hwsecure' to TRUE.
+--           Setting 'hwsecure' parameter to FALSE instead would actually
+--           maintain the possibility to engage each of these countermeasures,
+--           but at the discretion of the software driver and on a [k]P-compu-
+--           tation per [k]P-computation basis.
 --           Note that 'blinding', 'shuffle' & 'zremask' features are not the
 --           only side-channel countermeasures provided with the IP, but only
 --           those that you can choose to statically hardlock. This is because
@@ -594,6 +597,18 @@ end package ecc_customize;
 --       TRUE (in the latter case, you may consider to "logic-lock" all
 --       the portion of the design that will remain when you eventually
 --       turn the parameter to FALSE and send it to foundry).
+--
+-- REMARK
+-- 
+--       'hwsecure' has replaced paremeter 'debug' starting from v1.4.6,
+--       with the equivalence hwsecure = not debug (hwsecure = TRUE is
+--       equivalent to old 'debug' parameter = FALSE, and hwsecure = FALSE
+--       is equivalent to old 'debug' parameter = TRUE).
+--
+--       Some parts of the code have kept the debug_/_debug/_debug_/_dbg/
+--       or _DBG token in a few signal names, driver API functions, etc,
+--       but it doesn't change anything to their definition. When you see
+--       "debug" in the code/comments, it means "HW unsecure".
 --
 -- SEE ALSO
 --       'blinding', 'shuffle', 'zremask'
@@ -632,14 +647,14 @@ end package ecc_customize;
 --
 -- IMPORTANT NOTE:
 --       Setting a non-0 value to 'blinding' only makes sense if you also set
---       'debug' to FALSE.
---       If you set 'debug' to TRUE, the value set for 'blinding' won't make
+--       'hwsecure' to TRUE.
+--       If you set 'hwsecure' to FALSE, the value set for 'blinding' won't make
 --       a difference as software driver will then be considered legitimate
 --       in modifying the blinding settings at runtime, including the possi-
 --       bility to completely disable blinding.
 --
 -- SEE ALSO
---       'debug', 'shuffle', 'zremask'
+--       'hwsecure', 'shuffle', 'zremask'
 --
 -- ============================================================================
 -- NAME
@@ -681,14 +696,14 @@ end package ecc_customize;
 --       can be implemented at synthesis time, among 'linear', 'permute_lgnb'
 --       and 'permute_limbs' (see parameter 'shuffle_type' below).
 --
---       Setting 'shuffle' to TRUE only makes sense if you also set 'debug' to
---       FALSE. If you set 'debug' to TRUE, the value set for 'shuffle' won't
---       make a difference, as software driver will then be considered legiti-
---       mate in modifying the shuffle settings at runtime, including the pos-
---       sibility to completely disable it.
+--       Setting 'shuffle' to TRUE only makes sense if you also set 'hwsecure'
+--       to TRUE. If you set 'hwsecure' to FALSE, the value set for 'shuffle'
+--       won't make a difference, as software driver will then be considered
+--       legitimate in modifying the shuffle settings at runtime, including
+--       the possibility to completely disable it.
 --
 -- SEE ALSO
---       'shuffle_type', 'debug', 'blinding', 'zremask'
+--       'shuffle_type', 'hwsecure', 'blinding', 'zremask'
 --
 -- ============================================================================
 -- NAME
@@ -819,15 +834,15 @@ end package ecc_customize;
 --
 --       If 'shuffle' = TRUE, then only one shuffling method will be synthe-
 --       sized and present in the hardware, according to the value of parame-
---       ter 'shuffle_type'. If moreover 'debug' = TRUE, then software driver
---       will be able to enable or disable the shuffling.
+--       ter 'shuffle_type'. If moreover 'hwsecure' = FALSE, then software
+--       driver will be able to enable or disable the shuffling.
 --
 --       Now if 'shuffle' = FALSE, software driver won't be able to activate
 --       it. This is because the hardware implementing the shuffling of memory
 --       won't be present in the circuit to begin with.
 -- 
 -- SEE ALSO
---       'shuffle', 'nblargenb', 'debug', 'blinding', 'zremask'
+--       'shuffle', 'nblargenb', 'hwsecure', 'blinding', 'zremask'
 --
 -- ============================================================================
 -- NAME
@@ -895,7 +910,7 @@ end package ecc_customize;
 --       at each [k]P computation.
 --
 --       Setting a non-0 value to 'zremask' only makes sense if you also set
---       'debug' to FALSE (if you set 'debug' to TRUE, the value set for
+--       'hwsecure' to TRUE (if you set 'hwsecure' to FALSE, the value set for
 --       'zremask' won't make a difference as software driver will then be
 --       considered legitimate in modifying the 'zremask' settings at runtime
 --       or simply disabling it).
@@ -918,7 +933,7 @@ end package ecc_customize;
 --       [k]P operation).
 --
 -- SEE ALSO
---       'debug'
+--       'hwsecure'
 --
 -- ============================================================================
 -- NAME
@@ -1075,9 +1090,9 @@ end package ecc_customize;
 --       to customize the amount of random data equired for each of the 4
 --       features in your application, you may do it in this file.
 --
---       In debug mode, diagnostic features allow you to read the content
---       of the raw random bit memory through the AXI interface in order
---       to perform statisticial tests and estimate the entropy of each
+--       In HW unsecure mode, diagnostic features allow you to read the
+--       content of the raw random bit memory through the AXI interface in
+--       order to perform statisticial tests and estimate the entropy of each
 --       TRNG instances (the entropy performance of each instance directly
 --       relies on its floorplan realization, therefore they won't be
 --       necessarily the same for all instances).

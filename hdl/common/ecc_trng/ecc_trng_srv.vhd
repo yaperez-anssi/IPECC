@@ -58,7 +58,7 @@ entity ecc_trng_srv is
 		valid3 : out std_logic;
 		data3 : out std_logic_vector(irn_width_sh - 1 downto 0);
 		irncount3 : out std_logic_vector(log2(irn_fifo_size_shf) - 1 downto 0);
-		-- interface with ecc_axi (only usable in debug mode)
+		-- interface with ecc_axi (only usable in HW unsecure mode)
 		dbgtrngcompletebypassbit : in std_logic;
 		dbgtrngcompletebypass : in std_logic
 	);
@@ -130,6 +130,8 @@ architecture struct of ecc_trng_srv is
 	signal rdy : std_logic_vector(0 to 3);
 	signal dbgrsti : std_logic;
 
+	constant hwunsecure : boolean := not hwsecure;
+
 begin
 
 	gnd <= '0';
@@ -144,7 +146,7 @@ begin
 	f0: fifo
 		generic map(
 			datawidth => ww, datadepth => irn_fifo_size_axi,
-			debug => debug)
+			debug => hwunsecure)
 		port map(
 			clk => clk,
 			rstn => rstn,
@@ -169,7 +171,7 @@ begin
 	f1: fifo
 		generic map(
 			datawidth => ww, datadepth => irn_fifo_size_efp,
-			debug => debug)
+			debug => hwunsecure)
 		port map(
 			clk => clk,
 			rstn => rstn,
@@ -194,7 +196,7 @@ begin
 	f2: fifo
 		generic map(
 			datawidth => 2, datadepth => irn_fifo_size_crv,
-			debug => debug)
+			debug => hwunsecure)
 		port map(
 			clk => clk,
 			rstn => rstn,
@@ -219,7 +221,7 @@ begin
 	f3: fifo
 		generic map(
 			datawidth => irn_width_sh, datadepth => irn_fifo_size_shf,
-			debug => debug)
+			debug => hwunsecure)
 		port map(
 			clk => clk,
 			rstn => rstn,
@@ -579,11 +581,11 @@ begin
 			end if;
 		end loop;
 
-		-- If complete bypass of TRNG wasn't a debug feature, we could set
-		-- a multi-cycle constraint on paths:
+		-- If complete bypass of TRNG wasn't a HW unsecure/Side-Channel analysis
+		-- feature, we could set a multi-cycle constraint on paths:
 		--     dbgtrngcompletebypass -> r.valid
 		--     dbgtrngcompletebypass[bit] -> r.data[0-3]
-		if debug then -- statically resolved by synthesizer
+		if not hwsecure then -- statically resolved by synthesizer
 			if dbgtrngcompletebypass = '1' then
 				v.valid(0) := '1';
 				v.valid(1) := '1';
@@ -597,7 +599,7 @@ begin
 		end if;
 
 		-- synchronous reset
-		if rstn = '0' or (debug and irn_reset = '1') or swrst = '1' then
+		if rstn = '0' or ((not hwsecure) and irn_reset = '1') or swrst = '1' then
 			v.ppdatain_can_be_emptied := '0';
 			v.priority := 0;
 			v.valid(0) := '0'; -- on reset, nothing to serve to client 0
@@ -632,8 +634,8 @@ begin
 		end if;
 	end process regs;
 
-	-- FIFOs can only be emptied using their 'dbgrst' port if in debug mode
-	dbgrsti <= irn_reset when debug else gnd; -- statically resolved by synthesizer
+	-- FIFOs can only be emptied using their 'dbgrst' port if in HW unsecure mode
+	dbgrsti <= irn_reset when not hwsecure else gnd; -- statically resolved by synthesizer
 
 	-- -------------
 	-- drive outputs

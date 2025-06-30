@@ -457,20 +457,20 @@ package ecc_pkg is
 	--                                        in read mode.
 	--
 	-- Note that address decoding is not the same depending on the value of
-	-- parameter 'debug' in ecc_customize.vhd:
+	-- parameter 'hwsecure' in ecc_customize.vhd:
 	--
-	--   if debug = TRUE:  the complete ADB (= 6) bits are decoded, allowing
-	--                     software driver to access the complete bank of 64
-	--                     registers - both the nominal lower half, the one
-	--                     with address offsets 0x000-0x0f8) and the debug
-	--                     upper half, the one with address offsets 0x100-0x1f8 
+	--   if hwsecure = FALSE: the complete ADB (= 6) bits are decoded, allowing
+	--                        software driver to access the complete bank of 64
+	--                        registers - both the nominal lower half, the one
+	--                        with address offsets 0x000-0x0f8) and the upper,
+	--                        the one with address offsets 0x100-0x1f8 
 	--
-	--   if debug = FALSE: only the lower half of the bank made of the first
-	--                     32 registers can be accessed by the software driver.
+	--   if hwsecure = TRUE:  only the lower half of the bank made of the first
+	--                        32 registers can be accessed by the software driver.
 	--
-	-- Hence both in write & read spaces, the nominal (i.e not debug)
-	-- 32 registers, some of which are reserved, are mapped in address
-	-- offset range +0x000 to +0x0f8, while the remaining 32 debug registers,
+	-- Hence both in write & read spaces, the nominal 32 registgers,
+	-- some of which are reserved, are mapped in address offset range
+	-- +0x000 to +0x0f8, while the remaining 32 hw(un)secure registers,
 	-- some of which also are reserved, are mapped in address offset range
 	-- +0x100 to +0x1f8
 

@@ -108,7 +108,7 @@ entity ecc_axi is
 		--   token
 		gentoken : out std_logic;
 		tokendone : in std_logic;
-		--   /debug only
+		--   /HW unsecure only
 		laststep : in std_logic;
 		firstzdbl : in std_logic;
 		firstzaddu : in std_logic;
@@ -125,7 +125,7 @@ entity ecc_axi is
 		pts_are_oppos : in std_logic;
 		phimsb : in std_logic;
 		kb0end : in std_logic;
-		--   end of debug only/
+		--   end of HW unsecure only/
 		-- interface with ecc_curve
 		masklsb : out std_logic;
 		-- interface with ecc_fp (access to ecc_fp_dram)
@@ -161,11 +161,11 @@ entity ecc_axi is
 		kppending : out std_logic;
 		-- software reset (to other components of the IP)
 		swrst : out std_logic;
-		-- debug features (interface with ecc_scalar)
+		-- HW unsecure/Side-Channel analysis features (interface with ecc_scalar)
 		dbgpgmstate : in std_logic_vector(3 downto 0);
 		dbgnbbits : in std_logic_vector(15 downto 0);
 		dbgjoyebit : in std_logic_vector(log2(2*nn - 1) - 1 downto 0);
-		-- debug features (interface with ecc_curve)
+		-- HW unsecure/Side-Channel analysis features (interface with ecc_curve)
 		dbgbreakpoints : out breakpoints_type;
 		dbgnbopcodes : out std_logic_vector(15 downto 0);
 		dbgdosomeopcodes : out std_logic;
@@ -176,13 +176,13 @@ entity ecc_axi is
 		dbgdecodepc : in std_logic_vector(IRAM_ADDR_SZ - 1 downto 0);
 		dbgbreakpointid : in std_logic_vector(1 downto 0);
 		dbgbreakpointhit : in std_logic;
-		-- debug features (interface with ecc_curve_iram)
+		-- HW unsecure/Side-Channel analysis features (interface with ecc_curve_iram)
 		dbgiwaddr : out std_logic_vector(IRAM_ADDR_SZ - 1 downto 0);
 		dbgiwdata : out std_logic_vector(OPCODE_SZ - 1 downto 0);
 		dbgiwe : out std_logic;
-		-- debug features (interface with ecc_fp)
+		-- HW unsecure/Side-Channel analysis features (interface with ecc_fp)
 		dbgtrngnnrnddet : out std_logic;
-		-- debug features (interface with ecc_trng)
+		-- HW unsecure/Side-Channel analysis features (interface with ecc_trng)
 		dbgtrngta : out unsigned(15 downto 0);
 		dbgtrngrawreset : out std_logic;
 		dbgtrngirnreset : out std_logic;
@@ -203,7 +203,7 @@ entity ecc_axi is
 		dbgtrngusepseudosource : out std_logic;
 		dbgtrngrawpullppdis : out std_logic;
 		-- handshake signals between entropy server ecc_trng
-		-- and the different clients (for debug diagnostics)
+		-- and the different clients (for HW unsecure/SCA analysis diagnostics)
 		dbgtrngaxirdy : in std_logic;
 		dbgtrngaxivalid : in std_logic;
 		dbgtrngefprdy : in std_logic;
@@ -214,7 +214,7 @@ entity ecc_axi is
 		dbgtrngshfvalid : in std_logic;
 		dbgtrngrawrdy : in std_logic;
 		dbgtrngrawvalid : in std_logic;
-		-- debug feature (off-chip trigger)
+		-- HW unsecure/Side-Channel analysis features (off-chip trigger)
 		dbgtrigger : out std_logic;
 		-- Signals specific to attack feature
 		not_always_add : out std_logic;
@@ -511,7 +511,7 @@ architecture rtl of ecc_axi is
 		-- pragma translate_on
 	end record;
 
-	-- debug features
+	-- HW unsecure/Side-Channel analysis features
 	type debug_reg_type is record
 		iwaddr : std_logic_vector(IRAM_ADDR_SZ - 1 downto 0);
 		iwdata : std_logic_vector(OPCODE_SZ - 1 downto 0);
@@ -604,13 +604,13 @@ architecture rtl of ecc_axi is
 	signal rkx_on : std_logic;
 	-- pragma translate_on
 
-	-- in clkmm clock domain (debug only)
+	-- in clkmm clock domain (HW unsecure/Side-Channel analysis features only)
 	signal r_debug_clkmmcnt0 : unsigned(R_DBG_CLKMM_MHZ_PRECNT - 1 downto 0);
 	signal r_debug_clkmmcnt : unsigned(31 downto 0);
 
 begin
 
-	-- in clkmm clock domain (debug only)
+	-- in clkmm clock domain (HW unsecure/Side-Channel analysis features only)
 	process(clkmm) is
 		variable vtmp : unsigned(R_DBG_CLKMM_MHZ_PRECNT - 1 downto 0);
 	begin
@@ -636,7 +636,7 @@ begin
 			severity FAILURE;
 
 	-- (s51), see (s50)
-	assert((debug and C_S_AXI_DATA_WIDTH > ww) or (not debug))
+	assert(((not hwsecure) and C_S_AXI_DATA_WIDTH > ww) or (hwsecure))
 		report "In debug mode, ww must be smaller than C_S_AXI_DATA_WIDTH."
 			severity FAILURE;
 
@@ -651,15 +651,15 @@ begin
 			severity FAILURE;
 
 	-- (s83), see (s84) & (s85)
-	assert ( (debug and (OPCODE_SZ <= 2 * C_S_AXI_DATA_WIDTH)) or (not debug))
+	assert ( ((not hwsecure) and (OPCODE_SZ <= 2 * C_S_AXI_DATA_WIDTH)) or (hwsecure))
 		report "Value of parameter nblargenb incompatible w/ size "
-		     & "of ecc_curve_iram in debug mode."
+		     & "of ecc_curve_iram in HW unsecure mode."
 			severity FAILURE;
 
 	-- (s87), see (s88)
-	assert ( ( debug and (IRAM_ADDR_SZ <= 13)) or (not debug))
+	assert ( ( (not hwsecure) and (IRAM_ADDR_SZ <= 13)) or (hwsecure))
 		report "Value of parameter nbopcodes too large to be compatible "
-		     & "w/ debug mode (value of Program Counter read by SW in "
+		     & "w/ HW unsecure mode (value of Program Counter read by SW in "
 				 & "register R_DBG_STATUS wouldn't be correct)."
 			severity FAILURE;
 
@@ -670,53 +670,53 @@ begin
 			severity FAILURE;
 
 	-- (s144), see (s145)
-	assert ((not debug) or ww <= C_S_AXI_DATA_WIDTH)
-		report "In debug mode ww must be smaller than or equal to "
+	assert (hwsecure or ww <= C_S_AXI_DATA_WIDTH)
+		report "In HW unsecure mode ww must be smaller than or equal to "
 		     & "C_S_AXI_DATA_WIDTH."
 			severity FAILURE;
 
 	-- (s146), see (s147)
-	assert ((not debug) or (nbopcodes <= 2**DBG_CAP_SPLIT_1))
-		report "In debug mode nbopcodes must be smaller than or equal to 2**"
+	assert (hwsecure or (nbopcodes <= 2**DBG_CAP_SPLIT_1))
+		report "In HW unsecure mode nbopcodes must be smaller than or equal to 2**"
 				 & integer'image(DBG_CAP_SPLIT_1) & "."
 			severity FAILURE;
 
 	-- (s148), see (s149)
-	assert ((not debug) or (log2(OPCODE_SZ) <= 32 - DBG_CAP_SPLIT_1))
-		report "In debug mode OPCODE_SZ must be less than or equal to 2**"
+	assert (hwsecure or (log2(OPCODE_SZ) <= 32 - DBG_CAP_SPLIT_1))
+		report "In HW unsecure mode OPCODE_SZ must be less than or equal to 2**"
 		     & integer'image(32 - DBG_CAP_SPLIT_1) & "."
 			severity FAILURE;
 
 	-- (s150), see (s151)
-	assert ((not debug) or (log2(raw_ram_size) <= DBG_CAP_SPLIT_2))
-		report "In debug mode bit-width of parameter raw_ram_size must not "
+	assert (hwsecure or (log2(raw_ram_size) <= DBG_CAP_SPLIT_2))
+		report "In HW unsecure mode bit-width of parameter raw_ram_size must not "
 		     & "exceed " & integer'image(DBG_CAP_SPLIT_2) & "."
 			severity FAILURE;
 
 	-- (s152), see (s153)
 	assert (dbgdecodepc'length <= 12)
-		report "In debug mode address of instructions is limited to 12 bits "
+		report "In HW unsecure mode address of instructions is limited to 12 bits "
 				 & "(which means nbopcodes must be smaller than or equal to 4096 "
 				 & "in ecc_customize.vhd)."
 			severity FAILURE;
 
 	-- (s155), see (s156)
-	assert ( ( debug and (4 + IRAM_ADDR_SZ - 1 < 16)) or (not debug))
+	assert ( ( (not hwsecure) and (4 + IRAM_ADDR_SZ - 1 < 16)) or (hwsecure))
 		report "value of parameter nbopcodes too large to be compatible "
-		     & "w/ debug mode (address of SW breakpoints set in register "
+		     & "w/ HW unsecure mode (address of SW breakpoints set in register "
 				 & "W_DBG_BKPT wouldn't all be sampled by hardware)."
 			severity FAILURE;
 
 	-- (s234), see (s235)
-	assert (debug or ((not debug) and ( (blinding = 0) or (blinding >= 4))))
-		report "In production mode (debug = FALSE), the number of blinding bits "
+	assert ((not hwsecure) or ((hwsecure) and ( (blinding = 0) or (blinding >= 4))))
+		report "In HW secure mode (hwsecure = TRUE), the number of blinding bits "
 		     & "(parameter 'blinding' in ecc_customize.vhd) must be greater or "
 				 & "equal to 4 (the value " & integer'image(blinding) & "you set "
 				 & "for 'blinding' parameter hence will be replaced with 4)."
 			severity WARNING;
 
 	-- (s262), see (s261)
-	assert ((not debug) or
+	assert ((hwsecure) or
 			(log2(raw_ram_size) <=
 		 			(DBG_TRNG_CTRL_RAW_ADDR_MSB - DBG_TRNG_CTRL_RAW_ADDR_LSB + 1)))
 		report "The TRNG raw random FIFO is too large for its size to fit in "
@@ -725,13 +725,13 @@ begin
 			severity WARNING;
 
 	-- (s264), see (s263)
-	assert ((not debug) or log2(irn_width_sh) <= 32 - DBG_CAP_SPLIT_2)
-		report "In debug mode bit-width of parameter irn_width_sh must not "
+	assert ((hwsecure) or log2(irn_width_sh) <= 32 - DBG_CAP_SPLIT_2)
+		report "In HW unsecure mode bit-width of parameter irn_width_sh must not "
 		     & "exceed " & integer'image(32 - DBG_CAP_SPLIT_2) & "."
 			severity WARNING;
 
 	-- (s266), see (s265)
-	assert ((not debug) or log2(raw_ram_size-1) <=
+	assert ((hwsecure) or log2(raw_ram_size-1) <=
 		DBG_TRNG_STATUS_RAW_WADDR_MSB - DBG_TRNG_STATUS_RAW_WADDR_LSB + 1)
 	report "The size of the raw random FIFO is too large for its addresses "
 			 & "to fit in register R_DBG_TRNG_STATUS."
@@ -749,7 +749,7 @@ begin
 	              trngaxiirncount,
 	              dbgtrngefpirncount, dbgtrngcrvirncount, dbgtrngshfirncount,
 	              ar01zien, ar0zi, ar1zi, amtydone, tokendone,
-	              -- debug features
+	              -- HW unsecure/Side-Channel analysis features
 	              dbghalted, dbgdecodepc, dbgbreakpointid,
 	              dbgpgmstate, dbgnbbits, dbgbreakpointhit,
 	              dbgtrngrawfull, dbgtrngrawwaddr,
@@ -765,11 +765,11 @@ begin
 	              dbgtrngcrvrdy, dbgtrngcrvvalid, dbgtrngshfrdy, dbgtrngshfvalid,
 	              dbgtrngrawrdy, dbgtrngrawvalid,
 	              r_debug_clkmmcnt
-								-- /debug only
+								-- /HW unsecure only
 	              , laststep, firstzdbl, firstzaddu, first2pz, first3pz, 
 	              torsion2, kap, kapp, zu, zc, r0z, r1z, dbgjoyebit,
 	              pts_are_equal, pts_are_oppos, phimsb, kb0end
-								-- debug only/
+								-- HW unsecure only/
 							)
 		variable v : reg_type;
 		variable vbk : natural range 0 to 3;
@@ -802,7 +802,7 @@ begin
 		variable v_fpaddr0_msb : std_logic_vector(FP_ADDR_MSB - 1 downto 0);
 		variable v_read_no_error : boolean;
 		variable vtmp19, vtmp20, vtmp21 : unsigned(log2(nn - 1) downto 0);
-		-- debug (TRNG diagnostic counters)
+		-- HW unsecure/Side-Channel analysis (TRNG diagnostic counters)
 		variable vtmp22, vtmp23, vtmp24 : unsigned(log2(irn_fifo_size_axi) downto 0);
 		variable vtmp25, vtmp26, vtmp27 : unsigned(log2(irn_fifo_size_efp) downto 0);
 		variable vtmp28, vtmp29, vtmp30 : unsigned(log2(irn_fifo_size_crv) downto 0);
@@ -829,10 +829,10 @@ begin
 
 		-- (s260)
 		-- The logic below is to allow software driver to get diagnostic infos
-		-- on the TRNG throughput in debug mode. In concrete terms, for each of
-		-- the 4 sources of internal random numbers ("axi", "fp", "crv" & "sh")
-		-- provided by ecc_trng, the IP maintains two counters: a "starv" counter
-		-- and an "ok" counter.
+		-- on the TRNG throughput in HW unsecure /Side-Channel analysis mode.
+		-- In concrete terms, for each of the 4 sources of internal random numbers
+		-- ("axi", "fp", "crv" & "sh") provided by ecc_trng, the IP maintains two
+		-- counters: a "starv" counter and an "ok" counter.
 		--
 		--   - The "starv" counter is incremented in each clock cycle where
 		--     the handshake "rdy" signal is asserted by the corresponding
@@ -852,7 +852,7 @@ begin
 		-- value can then be used back to adjust the value of the related parameter
 		-- in file ecc_customize.vhd, i.e one of 'trng_ramsz_[raw|axi|fpr|crv|shf]'
 		-- (size of FIFOs) and 'nbtrng' (and, to a lesser extent, trngta).
-		if debug then
+		if (not hwsecure) then
 			-- ecc_trng/ecc_axi interface
 			if dbgtrngaxirdy = '1' then
 				if dbgtrngaxivalid = '1' then
@@ -925,10 +925,10 @@ begin
 						to_integer(r.debug.trng.rawstarv) + to_integer(r.debug.trng.rawok)));
 			end if;
 			-- pragma translate_on
-		end if; -- debug
+		end if; -- !hwsecure
 
 		-- clk division & out
-		if debug then
+		if not hwsecure then
 			if r.debug.clkdivoen = '1' then
 				v.debug.clkdivcnt := r.debug.clkdivcnt - 1;
 				if r.debug.clkdivcnt(CLK_DIV_MSB - CLK_DIV_LSB) = '0' and
@@ -974,11 +974,11 @@ begin
 			and ((not nn_dynamic) or (nn_dynamic and r.nndyn.valwerr = '0')) and
 			-- signals related to blinding (order 'q' must be set by softare
 			-- for blinding to make sense)
-			(  ((not debug) and blinding > 0 and r.ctrl.q_set = '1')
+			(  ((hwsecure) and blinding > 0 and r.ctrl.q_set = '1')
 			 or (r.ctrl.doblinding = '0' or (r.ctrl.doblinding and r.ctrl.q_set)='1'))
 			-- signals related to token feature
-			and ( (debug and (r.ctrl.token_act = '0' or r.ctrl.tokwasread = '1' ))
-			     or ((not debug) and r.ctrl.tokwasread = '1') );
+			and ( ((not hwsecure) and (r.ctrl.token_act = '0' or r.ctrl.tokwasread = '1' ))
+			     or ((hwsecure) and r.ctrl.tokwasread = '1') );
 
 		-- (s30) v_busy determines the value of the BUSY bit in R_STATUS register,
 		--       see (s160)
@@ -989,7 +989,7 @@ begin
 		--   or - we are writing or reading portion of a large number
 		--   or - we are in the process of computing signals associated
 		--        to a new value of nn (prime size, nn_dynamic = TRUE)
-		--   or - we are reading TRNG data (debug = TRUE only)
+		--   or - we are reading TRNG data (hwsecure = FALSE only)
 		--   or - we are in the process of generating the software token
 		--   or - AXI interface is briefly "locked" to avoid race condition
 		-- then the BUSY bit in R_STATUS register is set and software is not
@@ -1122,10 +1122,11 @@ begin
 		-- (s255)
 		-- Z-remasking: check that value set by software driver is smaller
 		-- or equal to what was statically set in ecc_customize.vhd
-		-- This concerns only production mode (debug = FALSE). In debug mode,
-		-- software driver can do whatever it wants.
+		-- This concerns only HW secure mode (hwsecure = TRUE).
+		-- In HW unsecure/Side-Channel analysis mode, software driver can do
+		-- whatever it wants.
 		-- ------------------------------------------------------------------
-		if (not debug) and (zremask > 0) then -- statically resolved by synthesizer
+		if (hwsecure) and (zremask > 0) then -- statically resolved by synthesizer
 			if r.ctrl.docheckzremask = '1' then -- (s258), triggered by (s257)
 				v.ctrl.docheckzremask := '0';
 				vtmp19 := '0' & to_unsigned(zremask - 1, log2(nn - 1));
@@ -1210,10 +1211,10 @@ begin
 		-- does not support a nb of blinding bits less than 4.
 		if r.ctrl.doblindsh(0) = '1' then
 			vtmp13 := resize(r.ctrl.blindbitstest, log2(nn) + 1);
-			if (not debug) then -- statically resolved by synthesizer
-				-- In production (non-debug) mode, the minimum value allowed
-				-- for the size of the blinding random depends on what the
-				-- HW designer set for parameter 'blinding' at synthesis time.
+			if (hwsecure) then -- statically resolved by synthesizer
+				-- In HW secure mode, the minimum value allowed for the
+				-- of the blinding random depends on what the hardware
+				-- designer has set for parameter 'blinding' at synthesis time.
 				-- Hence software driver can get more security than what was
 				-- planned statically for the application, but not less.
 				-- (besides, even if no blinding was forced at synthesis time,
@@ -1236,16 +1237,16 @@ begin
 					vtmp14 := to_unsigned(4, log2(nn) + 1);
 				end if;
 			else
-				-- In debug (unsecure-)mode, software driver can set what it wants,
+				-- In HW unsecure mode, software driver can set what it wants,
 				-- provided the functional minimum of 4 bits is respected.
 				vtmp14 := to_unsigned(4, log2(nn) + 1);
 			end if;
 			vtmp15 := signed(vtmp13) - signed(vtmp14);
 			if vtmp15(log2(nn)) = '1' then
 				-- (means NOK: .blindbitstest is smaller than the minimum required)
-				if (not debug) then -- statically resolved by synthesizer
+				if (hwsecure) then -- statically resolved by synthesizer
 					v.ctrl.blindbits := to_unsigned(max(blinding, 4), log2(nn)); -- (s236)
-				else -- debug = TRUE
+				else -- hwsecure = FALSE
 					-- means size of alpha < 4 (in this case, force to 4)
 					v.ctrl.blindbits := to_unsigned(4, log2(nn)); -- (s209)
 				end if;
@@ -1387,7 +1388,7 @@ begin
 		-- -----------------------------------------------------------
 		-- r.axi.awpending & r.axi.dwpending both HIGH: new write-beat
 		-- -----------------------------------------------------------
-		-- debug feature
+		-- HW unsecure/Side-Channel analysis features
 		v.debug.iwe := '0'; -- (s82)
 		v.debug.resume := '0'; -- (s173)
 		v.debug.dosomeopcodes := '0'; -- (s33)
@@ -1404,8 +1405,8 @@ begin
 			-- decoding write to W_CTRL register
 			-- -------------------------------------------------
 			if r.axi.waddr = W_CTRL
-			--if (debug and r.axi.waddr = W_CTRL)
-			--	or ((not debug) and r.axi.waddr(ADB - 2 downto 0) =
+			--if ((not hwsecure) and r.axi.waddr = W_CTRL)
+			--	or ((hwsecure) and r.axi.waddr(ADB - 2 downto 0) =
 			--		W_CTRL(ADB - 2 downto 0))
 			then
 				-- assert both AWREADY & WREADY signals to allow a new AXI data-beat
@@ -1415,8 +1416,8 @@ begin
 				v.axi.arready := '1';
 				-- drive write-response to initiator
 				v.axi.bvalid := '1';
-				if (not v_wlock) or debug then -- (s162), see (s161)
-					-- in debug mode we always grant write access to W_CTRL register
+				if (not v_wlock) or (not hwsecure) then -- (s162), see (s161)
+					-- in HW unsecure mode we always grant write access to W_CTRL register
 					-- (so use with care)
 					-- Decode content of W_CTRL register. Since sevaral actions can
 					-- be triggered by software here, we need to prioritize them,
@@ -1439,13 +1440,13 @@ begin
 						-- (s186)
 						-- sample address from W_CTRL register content
 						-- (width of the address field is given by FP_ADDR_MSB, see ecc_pkg)
-						if debug then
+						if (not hwsecure) then
 							-- (s76), see (s77)
 							v.fpaddr0 := r.axi.wdatax(
 								CTRL_NBADDR_LSB + FP_ADDR_MSB - 1 downto CTRL_NBADDR_LSB)
 								& std_logic_vector(to_unsigned(0, log2(n - 1)));
 						else
-							-- if not in debug mode, the only large numbers writable by
+							-- if in HW secure mode, the only large numbers writable by
 							-- software are the first eight ones: p, a, b, q, and the four
 							-- affine coordinates [XY]R[01] of points R0 & R1
 							v.fpaddr0 := std_logic_vector(to_unsigned(0, FP_ADDR_MSB - 3))
@@ -1495,7 +1496,7 @@ begin
 						then
 							v.ctrl.r0_is_null := '0';
 						end if;
-						if not debug then -- statically resolved by synthesizer
+						if hwsecure then -- statically resolved by synthesizer
 							v.ctrl.read_forbidden := '1';
 						end if;
 						if r.axi.wdatax(
@@ -1538,7 +1539,7 @@ begin
 							v.ctrl.k_set := '0';
 							v.ctrl.k_is_being_set := '1'; -- (s122), see (s123)
 							if r.write.rnd.enough_random = '1'
-								or (debug and r.debug.noaxirnd = '1')
+								or ((not hwsecure) and r.debug.noaxirnd = '1')
 							then
 								v.ctrl.wk := '1';
 								v.ctrl.k_is_null := '1';
@@ -1605,7 +1606,7 @@ begin
 								v.write.rnd.carry := 0;
 								-- remove any previous possible error
 								v.ctrl.ierrid(STATUS_ERR_I_NOT_ENOUGH_RANDOM_WK) := '0';
-								if debug then -- statically resolved by synthesizer
+								if (not hwsecure) then -- statically resolved by synthesizer
 									-- (s267) - Reset TRNG diagnostic counters for "AXI"
 									-- Other counters are reset when [k]P computation starts,
 									-- see (s268)
@@ -1651,7 +1652,7 @@ begin
 						--   (actually sample only the LSB of the address field,
 						--   as the external interface is only allowed to read
 						--   XR1 and YR1 locations from ecc_fp_dram)
-						if (not debug) and -- statically resolved by synthesizer
+						if (hwsecure) and -- statically resolved by synthesizer
 							-- when r.ctrl.read_forbidden is asserted, the only large number
 							-- that software is allowed to read is the random token
 							(r.ctrl.read_forbidden = '1' and r.axi.wdatax(CTRL_RD_TOKEN)='0')
@@ -1659,13 +1660,13 @@ begin
 							v.ctrl.ierrid(STATUS_ERR_I_RDNB_FBD) := '1';
 						else
 							v.ctrl.ierrid(STATUS_ERR_I_RDNB_FBD) := '0';
-							if debug then -- statically resolved by synthesizer
+							if (not hwsecure) then -- statically resolved by synthesizer
 								-- (s78), see (s77)
 								v.fpaddr0 := r.axi.wdatax(
 									CTRL_NBADDR_LSB + FP_ADDR_MSB - 1 downto CTRL_NBADDR_LSB)
 									& std_logic_vector(to_unsigned(0, log2(n - 1)));
 							else
-								-- not debug
+								-- HW secure mode
 								if r.axi.wdatax(CTRL_NBADDR_LSB) = '0' then
 									-- read is targeting XR1
 									v.fpaddr0 := CST_ADDR_XR1
@@ -1680,10 +1681,10 @@ begin
 							-- to read the random token (bit CTRL_RD_TOKEN is set in W_CTRL)
 							v_read_no_error := TRUE;
 							if r.axi.wdatax(CTRL_RD_TOKEN) = '1' then
-								-- In debug mode the operation is subject to the token feature
-								-- being activated through the W_DBG_CFG_TOKEN register
-								-- (see (s224)), while in production mode, the feature is always
-								-- active and cannot be disengaged. In both cases, the token
+								-- In HW unsecure/Side-Channel analysis mode the operation is subject
+								-- to the token feature being activated through the W_DBG_CFG_TOKEN
+								-- register (see (s224)), while in HW secure mode, the feature is
+								-- always active and cannot be disengaged. In both cases, the token
 								-- can only be read if its generation was previously asked for,
 								-- using a write to register W_TOKEN, see (s226), otherwise the
 								-- read is ignored and an error flag is raised in R_STATUS.
@@ -1806,17 +1807,17 @@ begin
 						end if;
 					end if; -- decoding content of W_CTRL register
 					v.ctrl.ierrid(STATUS_ERR_I_WREG_FBD) := '0'; -- clr possible past error
-				else
+				else -- v_wlock and hwsecure
 					-- raise error flag (illicite register write)
 					-- (s191)
 					v.ctrl.ierrid(STATUS_ERR_I_WREG_FBD) := '1';
-				end if; -- v_wlock or debug
+				end if;
 			-- -------------------------------------------------------
 			-- decoding write to W_WRITE_DATA register
 			-- -------------------------------------------------------
 			elsif r.axi.waddr = W_WRITE_DATA
-			--elsif (debug and r.axi.waddr = W_WRITE_DATA)
-			--	or ((not debug) and r.axi.waddr(ADB - 2 downto 0) =
+			--elsif ((not hwsecure) and r.axi.waddr = W_WRITE_DATA)
+			--	or ((hwsecure) and r.axi.waddr(ADB - 2 downto 0) =
 			--		W_WRITE_DATA(ADB - 2 downto 0))
 			then
 				v.axi.awready := '1'; -- (s3)
@@ -1850,15 +1851,15 @@ begin
 			-- decoding write to W_R0_NULL register
 			-- ------------------------------------------------------
 			elsif r.axi.waddr = W_R0_NULL
-			--elsif (debug and r.axi.waddr = W_R0_NULL) or
-			--	((not debug) and r.axi.waddr(ADB - 2 downto 0) =
+			--elsif ((not hwsecure) and r.axi.waddr = W_R0_NULL) or
+			--	((hwsecure) and r.axi.waddr(ADB - 2 downto 0) =
 			--		W_R0_NULL(ADB - 2 downto 0))
 			then
 				v.axi.wready := '1';
 				v.axi.awready := '1';
 				v.axi.arready := '1';
 				v.axi.bvalid := '1';
-				if (not v_wlock) or debug then -- (163), see (s161)
+				if (not v_wlock) or (not hwsecure) then -- (163), see (s161)
 					v.ctrl.r0_is_null := r.axi.wdatax(WR0_IS_NULL);
 					-- clear possible past error
 					v.ctrl.ierrid(STATUS_ERR_I_WREG_FBD) := '0';
@@ -1870,15 +1871,15 @@ begin
 			-- decoding write to W_R1_NULL register
 			-- ------------------------------------------------------
 			elsif r.axi.waddr = W_R1_NULL
-			--elsif (debug and r.axi.waddr = W_R1_NULL) or
-			--	((not debug) and r.axi.waddr(ADB - 2 downto 0) =
+			--elsif ((not hwsecure) and r.axi.waddr = W_R1_NULL) or
+			--	((hwsecure) and r.axi.waddr(ADB - 2 downto 0) =
 			--		W_R1_NULL(ADB - 2 downto 0))
 			then
 				v.axi.wready := '1';
 				v.axi.awready := '1';
 				v.axi.arready := '1';
 				v.axi.bvalid := '1';
-				if (not v_wlock) or debug then -- (s164), see (s161)
+				if (not v_wlock) or (not hwsecure) then -- (s164), see (s161)
 					v.ctrl.r1_is_null := r.axi.wdatax(WR1_IS_NULL);
 					-- clear possible past error
 					v.ctrl.ierrid(STATUS_ERR_I_WREG_FBD) := '0';
@@ -1890,8 +1891,8 @@ begin
 			-- decoding write to W_PRIME_SIZE register (s41)
 			-- -------------------------------------------------------------
 			elsif r.axi.waddr = W_PRIME_SIZE
-			--elsif (debug and r.axi.waddr = W_PRIME_SIZE) or
-			--	((not debug) and r.axi.waddr(ADB - 2 downto 0) =
+			--elsif ((not hwsecure) and r.axi.waddr = W_PRIME_SIZE) or
+			--	((hwsecure) and r.axi.waddr(ADB - 2 downto 0) =
 			--		W_PRIME_SIZE(ADB - 2 downto 0))
 			then
 				v.axi.wready := '1';
@@ -1899,7 +1900,7 @@ begin
 				v.axi.arready := '1';
 				v.axi.bvalid := '1';
 				if nn_dynamic then -- statically resolved by synthesizer
-					if (not v_busy) or debug then -- not v_wlock, otherwise deadlock
+					if (not v_busy) or (not hwsecure) then -- not v_wlock, otherwise deadlock
 						v.nndyn.valnntest := unsigned (
 							r.axi.wdatax(log2(nn) - 1 downto 0) ); -- (s31) see (s35)
 						-- note: from value of nn latched in r.nndyn.valnn by (s31),
@@ -1924,8 +1925,8 @@ begin
 			-- decoding write to W_BLINDING register - (s241)
 			-- -----------------------------------------------------
 			elsif r.axi.waddr = W_BLINDING
-			--elsif (debug and r.axi.waddr = W_BLINDING) or
-			--	((not debug) and r.axi.waddr(ADB - 2 downto 0) =
+			--elsif ((not hwsecure) and r.axi.waddr = W_BLINDING) or
+			--	((hwsecure) and r.axi.waddr(ADB - 2 downto 0) =
 			--		W_BLINDING(ADB - 2 downto 0))
 			then
 				-- (s125) - For the W_BLINDING register, a test on the number of
@@ -1934,14 +1935,14 @@ begin
 				-- {a*wready, arreday & bvalid} is delayed to (s126) (this of
 				-- course only concerns the case where software sets BLD_EN
 				-- bit to 1).
-				if (not v_wlock) or debug then -- (s165), see (s161)
+				if (not v_wlock) or (not hwsecure) then -- (s165), see (s161)
 					if r.axi.wdatax(BLD_EN) = '1' then
 						v.ctrl.blindbitstest := -- (s129), see (s130)
 							unsigned(r.axi.wdatax(BLD_BITS_MSB downto BLD_BITS_LSB));
 						v.ctrl.doblindcheck := '1'; -- (s128), will trigger (s127)
 						v.ctrl.blindcheckaxiack := '1';
 					elsif r.axi.wdatax(BLD_EN) = '0' then
-						if (not debug) then -- statically resolved by synthesizer
+						if (hwsecure) then -- statically resolved by synthesizer
 							if (blinding > 0) then
 								-- Software driver is attempting to deactivate blinding
 								-- countermeasure but the IP is configured in production
@@ -1952,7 +1953,7 @@ begin
 							else
 								v.ctrl.doblinding := '0';
 							end if;
-						else -- debug = TRUE
+						else -- hwsecure = FALSE
 							-- Software driver has any privilege.
 							v.ctrl.doblinding := '0';
 						end if;
@@ -1975,15 +1976,15 @@ begin
 			-- decoding write to W_SHUFFLE register
 			-- -------------------------------------------------------------
 			elsif r.axi.waddr = W_SHUFFLE
-			--elsif (debug and r.axi.waddr = W_SHUFFLE) or
-			--	((not debug) and r.axi.waddr(ADB - 2 downto 0) =
+			--elsif ((not hwsecure) and r.axi.waddr = W_SHUFFLE) or
+			--	((hwsecure) and r.axi.waddr(ADB - 2 downto 0) =
 			--		W_SHUFFLE(ADB - 2 downto 0))
 			then
 				v.axi.wready := '1';
 				v.axi.awready := '1';
 				v.axi.arready := '1';
 				v.axi.bvalid := '1';
-				if debug then -- (s166), see (s161) (+ stat. resolved by synthesizer)
+				if not hwsecure then -- (s166), see (s161) (+ stat. resolved by synthesizer)
 					if r.axi.wdatax(SHUF_EN) = '1' then
 						if shuffle_type = none then -- statically resolved by synthesizer
 							-- Software wants to enable shuffling but none was synthesized.
@@ -1993,10 +1994,10 @@ begin
 						end if;
 					elsif r.axi.wdatax(SHUF_EN) = '0' then
 						-- Software driver wants to disable shuffling, it's ok because
-						-- we are in debug (unsecure-)mode.
+						-- we are in HW unsecure mode.
 						v.ctrl.doshuffle := '0';
 					end if;
-				else -- debug = FALSE, we are in production (secure-)mode
+				else -- hwsecure = TRUE
 					if r.axi.wdatax(SHUF_EN) = '1' then
 						if shuffle_type = none then -- statically resolved by synthesizer
 							-- Software wants to enable shuffling but none was synthesized.
@@ -2021,13 +2022,13 @@ begin
 			-- decoding write to W_ZREMASK register
 			-- -------------------------------------------------------------
 			elsif r.axi.waddr = W_ZREMASK
-			--elsif (debug and r.axi.waddr = W_ZREMASK) or
-			--	((not debug) and r.axi.waddr(ADB - 2 downto 0) =
+			--elsif ((not hwsecure) and r.axi.waddr = W_ZREMASK) or
+			--	((hwsecure) and r.axi.waddr(ADB - 2 downto 0) =
 			--		W_ZREMASK(ADB - 2 downto 0))
 			then
 				-- For register W_ZREMASK same remark applies as to W_BLINDING,
 				-- see (s125) above.
-				if (not debug) then -- statically resolved by synthesizer
+				if hwsecure then -- statically resolved by synthesizer
 					if (zremask = 0) then
 						-- In production (secure-)mode software driver can engage
 						-- Z-remasking even if it was statically disabled (it goes
@@ -2059,8 +2060,9 @@ begin
 							v.ctrl.docheckzremask := '1'; -- (s257), will trigger (s258)
 						end if;
 					end if;
-				else -- debug = TRUE
-					-- in debug (unsecure-)mode, software driver can do what it wants.
+				else -- hwsecure = FALSE
+					-- In HW unsecure/Side-Channel analysis mode, software driver can do
+					-- what it wants.
 					v.ctrl.zremaskact := r.axi.wdatax(ZMSK_EN); -- (s254)
 					v.ctrl.zremaskbits :=
 						unsigned(r.axi.wdatax(ZMSK_MSB downto ZMSK_LSB));
@@ -2073,8 +2075,8 @@ begin
 			-- decoding write to W_IRQ register
 			-- ------------------------------------------------
 			elsif r.axi.waddr = W_IRQ
-			--elsif (debug and r.axi.waddr = W_IRQ) or
-			--	((not debug) and r.axi.waddr(ADB - 2 downto 0) =
+			--elsif ((not hwsecure) and r.axi.waddr = W_IRQ) or
+			--  ((hwsecure) and r.axi.waddr(ADB - 2 downto 0) =
 			--		W_IRQ(ADB - 2 downto 0))
 			then
 				-- TODO: set multicycle constraint on path:
@@ -2083,7 +2085,7 @@ begin
 				v.axi.awready := '1';
 				v.axi.arready := '1';
 				v.axi.bvalid := '1';
-				if (not v_wlock) or debug then -- (s167), see (s161)
+				if (not v_wlock) or (not hwsecure) then -- (s167), see (s161)
 					v.ctrl.irqen := r.axi.wdatax(IRQ_EN);
 					-- clear possible past error
 					v.ctrl.ierrid(STATUS_ERR_I_WREG_FBD) := '0';
@@ -2096,8 +2098,8 @@ begin
 			-- ------------------------------------------------
 			-- writing W_ERR_ACK register is always allowed
 			elsif r.axi.waddr = W_ERR_ACK
-			--elsif (debug and r.axi.waddr = W_ERR_ACK) or
-			--	((not debug) and r.axi.waddr(ADB - 2 downto 0) =
+			--elsif ((not hwsecure) and r.axi.waddr = W_ERR_ACK) or
+			--  ((hwsecure) and r.axi.waddr(ADB - 2 downto 0) =
 			--		W_ERR_ACK(ADB - 2 downto 0))
 			then
 				v.axi.wready := '1';
@@ -2114,8 +2116,8 @@ begin
 			-- decoding write to W_SMALL_SCALAR register
 			-- ------------------------------------------------
 			elsif r.axi.waddr = W_SMALL_SCALAR
-			--elsif (debug and r.axi.waddr = W_SMALL_SCALAR) or
-			--	((not debug) and r.axi.waddr(ADB - 2 downto 0) =
+			--elsif ((not hwsecure) and r.axi.waddr = W_SMALL_SCALAR) or
+			--  ((hwsecure) and r.axi.waddr(ADB - 2 downto 0) =
 			--		W_SMALL_SCALAR(ADB - 2 downto 0))
 			then
 				-- (s157), we assert AWREADY but NOT WREADY yet, postponed to (s158)
@@ -2125,7 +2127,7 @@ begin
 				v.axi.awready := '1';
 				v.axi.arready := '1';
 				v.axi.bvalid := '1';
-				if (not v_wlock) or debug then -- (s168), see (s161)
+				if (not v_wlock) or (not hwsecure) then -- (s168), see (s161)
 					--v.axi.ksz_test := unsigned(r.axi.datax(log2(nn) - 1 downto 0));
 					v.ctrl.do_ksz_test := '1';
 				else
@@ -2137,8 +2139,8 @@ begin
 			-- decoding write to W_SOFT_RESET register
 			-- ------------------------------------------------
 			elsif r.axi.waddr = W_SOFT_RESET
-			--elsif (debug and r.axi.waddr = W_SOFT_RESET) or
-			--	((not debug) and r.axi.waddr(ADB - 2 downto 0) =
+			--elsif ((not hwsecure) and r.axi.waddr = W_SOFT_RESET) or
+			--  ((hwsecure) and r.axi.waddr(ADB - 2 downto 0) =
 			--		W_SOFT_RESET(ADB - 2 downto 0)) 
 			then
 				v.axi.awready := '1';
@@ -2155,15 +2157,15 @@ begin
 			-- ------------------------------------------------
 			-- (s226)
 			elsif r.axi.waddr = W_TOKEN
-			--elsif (debug and r.axi.waddr = W_TOKEN) or
-			--	((not debug) and r.axi.waddr(ADB - 2 downto 0) =
+			--elsif ((not hwsecure) and r.axi.waddr = W_TOKEN) or
+			--  ((hwsecure) and r.axi.waddr(ADB - 2 downto 0) =
 			--		W_TOKEN(ADB - 2 downto 0))
 			then
 				v.axi.wready := '1';
 				v.axi.awready := '1';
 				v.axi.arready := '1';
 				v.axi.bvalid := '1';
-				if ((not debug) or (debug and r.ctrl.token_act = '1'))
+				if (hwsecure or ((not hwsecure) and r.ctrl.token_act = '1'))
 					and r.ctrl.gentoken = '0' -- no sense if command already issued
 					and r.ctrl.tokpending = '0' -- no sense if action still pending
 					and r.ctrl.tokavail4read = '0' -- no sense if token avail. & not read
@@ -2179,15 +2181,15 @@ begin
 			-- ------------------------------
 			-- below are DEBUG only registers
 			-- ------------------------------
-			-- (note that until now, the 'debug' boolean constant was only used
+			-- (note that until now, the 'hwssecure' boolean constant was only used
 			-- for proper address decoding - now in the following registers,
-			-- 'debug=TRUE' is used as a required condition for the hardware
+			-- 'hwsecure=FALSE' is used as a required condition for the hardware
 			-- inference of each of them, meaning these registers only exist
-			-- in debug mode)
+			-- in HW unsecure/Side-Channel analysis mode)
 			-- -------------------------------------------------------------
 			-- decoding write to W_DBG_HALT register
 			-- -------------------------------------------------------------
-			elsif debug and r.axi.waddr = W_DBG_HALT then
+			elsif (not hwsecure) and r.axi.waddr = W_DBG_HALT then
 				if r.axi.wdatax(DBG_HALT) = '1'  then
 					v.debug.halt := '1'; -- stays asserted only 1 cycle thx to (s154)
 				end if;
@@ -2198,7 +2200,7 @@ begin
 			-- -------------------------------------------------------------
 			-- decoding write to W_DBG_BKPT register
 			-- -------------------------------------------------------------
-			elsif debug and r.axi.waddr = W_DBG_BKPT then
+			elsif (not hwsecure) and r.axi.waddr = W_DBG_BKPT then
 				vbk := to_integer(
 					unsigned(r.axi.wdatax(DBG_BKPT_ID_MSB downto DBG_BKPT_ID_LSB)));
 				v.debug.breakpoints(vbk).addr := -- (s156) see (s155)
@@ -2216,7 +2218,7 @@ begin
 			-- --------------------------------------------------------
 			-- decoding write to W_DBG_STEPS register
 			-- --------------------------------------------------------
-			elsif debug and r.axi.waddr = W_DBG_STEPS then
+			elsif (not hwsecure) and r.axi.waddr = W_DBG_STEPS then
 				if r.axi.wdatax(DBG_RESUME) = '1' then
 					v.debug.resume := '1'; -- stays asserted 1 cycle thx to (s173)
 				elsif r.axi.wdatax(DBG_OPCODE_RUN) = '1' then
@@ -2231,7 +2233,7 @@ begin
 			-- ----------------------------------------------------------------
 			-- decoding write to W_DBG_TRIG_ACT register
 			-- ----------------------------------------------------------------
-			elsif debug and r.axi.waddr = W_DBG_TRIG_ACT then
+			elsif (not hwsecure) and r.axi.waddr = W_DBG_TRIG_ACT then
 				v.debug.trigactive := r.axi.wdatax(TRIG_EN);
 				v.axi.wready := '1';
 				v.axi.awready := '1';
@@ -2240,7 +2242,7 @@ begin
 			-- ----------------------------------------------------------
 			-- decoding write to W_DBG_TRIG_UP register
 			-- ----------------------------------------------------------
-			elsif debug and r.axi.waddr = W_DBG_TRIG_UP then
+			elsif (not hwsecure) and r.axi.waddr = W_DBG_TRIG_UP then
 				v.debug.trigup := r.axi.wdatax(TRIG_MSB downto TRIG_LSB);
 				v.axi.wready := '1';
 				v.axi.awready := '1';
@@ -2249,7 +2251,7 @@ begin
 			-- ------------------------------------------------------------
 			-- decoding write to W_DBG_TRIG_DOWN register
 			-- ------------------------------------------------------------
-			elsif debug and r.axi.waddr = W_DBG_TRIG_DOWN then
+			elsif (not hwsecure) and r.axi.waddr = W_DBG_TRIG_DOWN then
 				v.debug.trigdown := r.axi.wdatax(TRIG_MSB downto TRIG_LSB);
 				v.axi.wready := '1';
 				v.axi.awready := '1';
@@ -2258,7 +2260,7 @@ begin
 			-- --------------------------------------------------------------
 			-- decoding write to W_DBG_OP_WADDR register
 			-- --------------------------------------------------------------
-			elsif debug and r.axi.waddr = W_DBG_OP_WADDR then
+			elsif (not hwsecure) and r.axi.waddr = W_DBG_OP_WADDR then
 				v.debug.iwaddr := r.axi.wdatax(IRAM_ADDR_SZ - 1 downto 0);
 				v.axi.wready := '1';
 				v.axi.awready := '1';
@@ -2267,7 +2269,7 @@ begin
 			-- ---------------------------------------------------------------
 			-- decoding write to W_DBG_OPCODE register
 			-- ---------------------------------------------------------------
-			elsif debug and r.axi.waddr = W_DBG_OPCODE then
+			elsif (not hwsecure) and r.axi.waddr = W_DBG_OPCODE then
 				if OPCODE_SZ > C_S_AXI_DATA_WIDTH then -- statically resolved by synth.
 					if r.debug.idatabeat = '0' then
 						v.debug.idatabeat := '1';
@@ -2292,7 +2294,7 @@ begin
 			-- --------------------------------------------------------------
 			-- decoding write to W_DBG_TRNG_CFG register
 			-- --------------------------------------------------------------
-			elsif debug and r.axi.waddr = W_DBG_TRNG_CFG then
+			elsif (not hwsecure) and r.axi.waddr = W_DBG_TRNG_CFG then
 				v.debug.trng.vonneuman := r.axi.wdatax(DBG_TRNG_VONM);
 				v.debug.trng.ta :=
 					unsigned(r.axi.wdatax(DBG_TRNG_TA_MSB downto DBG_TRNG_TA_LSB));
@@ -2309,7 +2311,7 @@ begin
 			-- ------------------------------------------------------------
 			-- decoding write to W_DBG_TRNG_RESET register
 			-- ------------------------------------------------------------
-			elsif debug and r.axi.waddr = W_DBG_TRNG_RESET then
+			elsif (not hwsecure) and r.axi.waddr = W_DBG_TRNG_RESET then
 				-- assert both AWREADY & WREADY signals to allow a new AXI data-beat
 				-- to happen again
 				v.axi.awready := '1';
@@ -2319,21 +2321,20 @@ begin
 				v.axi.bvalid := '1';
 				if r.axi.wdatax(DBG_TRNG_RESET_RAW) = '1' then
 					-- ----------------------------------------------------------
-					--       debug software is asking for a TRNG raw reset
+					--          Software is asking for a TRNG raw reset
 					-- ----------------------------------------------------------
 					v.debug.trng.rawreset := '1'; -- stays asserted 1 cycle thx to (s58)
 				end if;
 				if r.axi.wdatax(DBG_TRNG_RESET_IRN) = '1' then
 					-- ----------------------------------------------------------
-					--       debug software is asking for a TRNG irn reset
+					--          Software is asking for a TRNG irn reset
 					-- ----------------------------------------------------------
 					v.debug.trng.irnreset := '1'; -- stays asserted 1 cycle thx to (s59)
 				end if;
 			-- ------------------------------------------------------------
 			-- decoding write to W_DBG_TRNG_CTRL_POSTP register
 			-- ------------------------------------------------------------
-			-- TODO: put back 'debug' condition!
-			elsif -- debug and
+			elsif (not hwsecure) and
 				r.axi.waddr = W_DBG_TRNG_CTRL_POSTP
 			then
 				-- assert both AWREADY & WREADY signals to allow a new AXI data-beat
@@ -2357,7 +2358,7 @@ begin
 			-- ------------------------------------------------------------
 			-- decoding write to W_DBG_TRNG_CTRL_BYPASS register
 			-- ------------------------------------------------------------
-			elsif debug and r.axi.waddr = W_DBG_TRNG_CTRL_BYPASS then
+			elsif (not hwsecure) and r.axi.waddr = W_DBG_TRNG_CTRL_BYPASS then
 				-- assert both AWREADY & WREADY signals to allow a new AXI data-beat
 				-- to happen again
 				v.axi.awready := '1';
@@ -2373,7 +2374,7 @@ begin
 			-- ------------------------------------------------------------
 			-- decoding write to W_DBG_TRNG_CTRL_NNRND register
 			-- ------------------------------------------------------------
-			elsif debug and r.axi.waddr = W_DBG_TRNG_CTRL_NNRND then
+			elsif (not hwsecure) and r.axi.waddr = W_DBG_TRNG_CTRL_NNRND then
 				-- assert both AWREADY & WREADY signals to allow a new AXI data-beat
 				-- to happen again
 				v.axi.awready := '1';
@@ -2387,7 +2388,7 @@ begin
 			-- ------------------------------------------------------------
 			-- decoding write to W_DBG_TRNG_CTRL_DIAG register
 			-- ------------------------------------------------------------
-			elsif debug and r.axi.waddr = W_DBG_TRNG_CTRL_DIAG then
+			elsif (not hwsecure) and r.axi.waddr = W_DBG_TRNG_CTRL_DIAG then
 				-- assert both AWREADY & WREADY signals to allow a new AXI data-beat
 				-- to happen again
 				v.axi.awready := '1';
@@ -2402,7 +2403,7 @@ begin
 			-- ------------------------------------------------------------
 			-- decoding write to W_DBG_TRNG_RAW_READ register
 			-- ------------------------------------------------------------
-			elsif debug and r.axi.waddr = W_DBG_TRNG_RAW_READ then
+			elsif (not hwsecure) and r.axi.waddr = W_DBG_TRNG_RAW_READ then
 				-- assert both AWREADY & WREADY signals to allow a new AXI data-beat
 				-- to happen again
 				v.axi.awready := '1';
@@ -2438,7 +2439,7 @@ begin
 			-- -------------------------------------------------------------
 			-- decoding write to W_DBG_FP_WADDR register
 			-- -------------------------------------------------------------
-			elsif debug and r.axi.waddr = W_DBG_FP_WADDR then
+			elsif (not hwsecure) and r.axi.waddr = W_DBG_FP_WADDR then
 				v.fpaddr0 := r.axi.wdatax(FP_ADDR - 1 downto 0);
 				-- assert both AWREADY & WREADY signals to allow a new AXI data-beat
 				-- to happen again
@@ -2450,7 +2451,7 @@ begin
 			-- -------------------------------------------------------------
 			-- decoding write to W_DBG_FP_WDATA register
 			-- -------------------------------------------------------------
-			elsif debug and r.axi.waddr = W_DBG_FP_WDATA then
+			elsif (not hwsecure) and r.axi.waddr = W_DBG_FP_WDATA then
 				v.write.fpwe0 := '1'; -- stays asserted only 1 cycle thx to (s24)
 				v.debug.fpwdata := r.axi.wdatax(ww - 1 downto 0); -- (s145), see (s144)
 				v.debug.shwon(1) := '1';
@@ -2464,7 +2465,7 @@ begin
 			-- -------------------------------------------------------------
 			-- decoding write to W_DBG_FP_RADDR register
 			-- -------------------------------------------------------------
-			elsif debug and r.axi.waddr = W_DBG_FP_RADDR then
+			elsif (not hwsecure) and r.axi.waddr = W_DBG_FP_RADDR then
 				v.fpaddr0 := r.axi.wdatax(FP_ADDR - 1 downto 0);
 				v.read.fpre0 := '1'; -- stays asserted only 1 cycle thx to (s49)
 				-- assert both AWREADY & WREADY signals to allow a new AXI data-beat
@@ -2481,7 +2482,7 @@ begin
 			-- -------------------------------------------------------------
 			-- decoding write to W_DBG_CFG_XYSHUF register
 			-- -------------------------------------------------------------
-			elsif debug and r.axi.waddr = W_DBG_CFG_XYSHUF then
+			elsif (not hwsecure) and r.axi.waddr = W_DBG_CFG_XYSHUF then
 				v.debug.noxyshuf := not r.axi.wdatax(XYSHF_EN);
 				-- assert both AWREADY & WREADY signals to allow a new AXI data-beat
 				-- to happen again
@@ -2493,7 +2494,7 @@ begin
 			-- -------------------------------------------------------------
 			-- decoding write to W_DBG_CFG_AXIMSK register
 			-- -------------------------------------------------------------
-			elsif debug and r.axi.waddr = W_DBG_CFG_AXIMSK then -- (s202) see (s203)
+			elsif (not hwsecure) and r.axi.waddr = W_DBG_CFG_AXIMSK then -- (s202) see (s203)
 				v.debug.noaxirnd := not r.axi.wdatax(AXIMSK_EN);
 				-- assert both AWREADY & WREADY signals to allow a new AXI data-beat
 				-- to happen again
@@ -2505,7 +2506,7 @@ begin
 			-- -------------------------------------------------------------
 			-- decoding write to W_DBG_CFG_TOKEN register
 			-- -------------------------------------------------------------
-			elsif debug and r.axi.waddr = W_DBG_CFG_TOKEN then
+			elsif (not hwsecure) and r.axi.waddr = W_DBG_CFG_TOKEN then
 				v.ctrl.token_act := r.axi.wdatax(TOK_EN); -- (s224) see (s225-s226)
 				v.axi.wready := '1';
 				v.axi.awready := '1';
@@ -2514,7 +2515,7 @@ begin
 			-- -------------------------------------------------------------
 			-- decoding write to W_ATTACK_CFG_0 register
 			-- -------------------------------------------------------------
-			elsif debug and r.axi.waddr = W_ATTACK_CFG_0 then
+			elsif (not hwsecure) and r.axi.waddr = W_ATTACK_CFG_0 then
 				v.debug.not_always_add := r.axi.wdatax(DO_NOT_ALWAYS_ADD);
 				v.debug.no_collision_cr := r.axi.wdatax(DO_NO_COLLISION_CR);
 				v.axi.wready := '1';
@@ -2524,7 +2525,7 @@ begin
 			-- -------------------------------------------------------------
 			-- decoding write to W_ATTACK_CFG_1 register
 			-- -------------------------------------------------------------
-			elsif debug and r.axi.waddr = W_ATTACK_CFG_1 then
+			elsif (not hwsecure) and r.axi.waddr = W_ATTACK_CFG_1 then
 				v.debug.no_nnrnd_sf := r.axi.wdatax(DO_NO_NNRND_SF);
 				v.axi.wready := '1';
 				v.axi.awready := '1';
@@ -2533,7 +2534,7 @@ begin
 			-- -------------------------------------------------------------
 			-- decoding write to W_ATTACK_CFG_2 register
 			-- -------------------------------------------------------------
-			elsif debug and r.axi.waddr = W_ATTACK_CFG_2 then
+			elsif (not hwsecure) and r.axi.waddr = W_ATTACK_CFG_2 then
 				v.debug.clkdivhperiod :=
 					unsigned('0' & r.axi.wdatax(CLK_DIV_MSB downto CLK_DIV_LSB + 1)) - 1;
 				v.debug.clkmmdivhperiod :=
@@ -2566,9 +2567,8 @@ begin
 
 		-- detection of writing one new limb of a large number to be transferred
 		-- into ecc_fp_dram
-		-- (one large number among: p, a, b, q, [XY]R[01], k0, k1 when in production
-		-- mode (= not debug), anyone of the 32 large numbers in ecc_fp_dram
-		-- otherwise)
+		-- (one large number among: p, a, b, q, [XY]R[01], k0, k1 when in HW secure
+		-- mode, anyone of the 32 large numbers in ecc_fp_dram otherwise)
 		if r.write.new32 = '1' then
 			v.write.doshift := '1';
 		end if;
@@ -2593,7 +2593,8 @@ begin
 			v.write.rnd.bitsirn := to_unsigned(ww - 1, log2(ww - 1));
 		end if;
 
-		-- (s203), bypass by debug feature, see (s202) register W_DBG_CFG_AXIMSK
+		-- (s203), bypass by HW unsecure feature, see (s202) register
+		-- W_DBG_CFG_AXIMSK
 		if r.debug.noaxirnd = '1' then
 			v.write.rnd.irn := (others => '0');
 		end if;
@@ -3103,11 +3104,11 @@ begin
 			v.ctrl.agokp := '0';
 			v.ctrl.kppending := '1';
 			v.ctrl.lockaxi := '0'; -- (s69) deassertion of (s68)
-			if debug then -- statically resolved by synthesizer
+			if (not hwsecure) then -- statically resolved by synthesizer
 				v.debug.trigger := '0';
 				v.debug.counter := (others => '0');
 			end if;
-			if debug then -- statically resolved by synthesizer
+			if (not hwsecure) then -- statically resolved by synthesizer
 				-- (s268)
 				-- Reset TRNG diagnostic counters (all except AXI,
 				-- which are reset when software starts transimitting
@@ -3140,7 +3141,7 @@ begin
 			end if;
 		end if;
 
-		if debug then -- statically resolved by synthesizer
+		if (not hwsecure) then -- statically resolved by synthesizer
 			if (r.ctrl.kppending = '1' or r.ctrl.poppending = '1')
 				and dbghalted = '0'
 			then
@@ -3149,7 +3150,7 @@ begin
 		end if;
 
 		-- detect possible trigger counter matches
-		if debug then -- statically resolved by synthesizer
+		if (not hwsecure) then -- statically resolved by synthesizer
 			if r.debug.counter = unsigned(r.debug.trigdown) then
 				v.debug.trigger := '0';
 			end if;
@@ -3205,7 +3206,7 @@ begin
 			v.ctrl.dopop := '0';
 			v.ctrl.poppending := '1';
 			v.ctrl.lockaxi := '0'; -- (s90) deassertion of (s89)
-			if debug then -- statically resolved by synthesizer
+			if (not hwsecure) then -- statically resolved by synthesizer
 				v.debug.trigger := '0';
 				v.debug.counter := (others => '0');
 			end if;
@@ -3237,8 +3238,8 @@ begin
 			-- decoding read of R_STATUS register
 			-- ----------------------------------
 			if s_axi_araddr(ADB + 2 downto 3) = R_STATUS
-			--if (debug and s_axi_araddr(ADB + 2 downto 3) = R_STATUS)
-			--	or ((not debug) and s_axi_araddr(ADB + 1 downto 3) =
+			--if ((not hwsecure) and s_axi_araddr(ADB + 2 downto 3) = R_STATUS)
+			--  or ((hwsecure) and s_axi_araddr(ADB + 1 downto 3) =
 			--		R_STATUS(ADB - 2 downto 0))
 			then
 				dw := (others => '0');
@@ -3275,8 +3276,8 @@ begin
 			-- decoding read of R_READ_DATA register
 			-- -------------------------------------
 			elsif s_axi_araddr(ADB + 2 downto 3) = R_READ_DATA
-			--elsif (debug and s_axi_araddr(ADB + 2 downto 3) = R_READ_DATA)
-			--	or ((not debug) and s_axi_araddr(ADB + 1 downto 3) =
+			--elsif ((not hwsecure) and s_axi_araddr(ADB + 2 downto 3) = R_READ_DATA)
+			--  or ((hwsecure) and s_axi_araddr(ADB + 1 downto 3) =
 			--		R_READ_DATA(ADB - 2 downto 0))
 			then
 				-- Actually there is nothing to do here: s_axi_rvalid will be asserted
@@ -3301,13 +3302,13 @@ begin
 			-- decoding read of R_CAPABILITIES register
 			-- ----------------------------------------
 			elsif s_axi_araddr(ADB + 2 downto 3) = R_CAPABILITIES
-			--elsif (debug and s_axi_araddr(ADB + 2 downto 3) = R_CAPABILITIES)
-			--	or ((not debug) and s_axi_araddr(ADB + 1 downto 3) =
+			--elsif ((not hwsecure) and s_axi_araddr(ADB + 2 downto 3) = R_CAPABILITIES)
+			--  or ((hwsecure) and s_axi_araddr(ADB + 1 downto 3) =
 			--		R_CAPABILITIES(ADB - 2 downto 0))
 			then
 				dw := (others => '0');
-				-- debug versus prod
-				if debug then -- statically resolved by synthesizer
+				-- HW secure vs unsecure
+				if (not hwsecure) then -- statically resolved by synthesizer
 					dw(CAP_DBG_N_PROD) := '1';
 				else
 					dw(CAP_DBG_N_PROD) := '0';
@@ -3339,26 +3340,26 @@ begin
 			-- decoding read of R_HW_VERSION register
 			-- --------------------------------------
 			elsif s_axi_araddr(ADB + 2 downto 3) = R_HW_VERSION
-			--elsif (debug and s_axi_araddr(ADB + 2 downto 3) = R_HW_VERSION)
-			--	or ((not debug) and s_axi_araddr(ADB + 1 downto 3) =
+			--elsif ((not hwsecure) and s_axi_araddr(ADB + 2 downto 3) = R_HW_VERSION)
+			--  or ((hwsecure) and s_axi_araddr(ADB + 1 downto 3) =
 			--		R_HW_VERSION(ADB - 2 downto 0))
 			then
 				-- 1st byte: major number
 				-- 2nd byte: minor number
 				-- 3rd & 4th bytes: patch number
 				dw := (others => '0');
-				-- Version 1.4.5
+				-- Version 1.4.6
 				dw(HW_VERSION_MAJ_MSB downto HW_VERSION_MAJ_LSB) := x"01"; -- major
 				dw(HW_VERSION_MIN_MSB downto HW_VERSION_MIN_LSB) := x"04"; -- minor
-				dw(HW_VERSION_PATCH_MSB downto HW_VERSION_PATCH_LSB) := x"0005"; -- patch
+				dw(HW_VERSION_PATCH_MSB downto HW_VERSION_PATCH_LSB) := x"0006"; -- patch
 				v.axi.rdatax := dw;
 				v.axi.rvalid := '1'; -- (s5)
 			-- --------------------------------------
 			-- decoding read of R_PRIME_SIZE register
 			-- --------------------------------------
 			elsif s_axi_araddr(ADB + 2 downto 3) = R_PRIME_SIZE
-			--elsif (debug and s_axi_araddr(ADB + 2 downto 3) = R_PRIME_SIZE)
-			--	or ((not debug) and s_axi_araddr(ADB + 1 downto 3) =
+			--elsif ((not hwsecure) and s_axi_araddr(ADB + 2 downto 3) = R_PRIME_SIZE)
+			--  or ((hwsecure) and s_axi_araddr(ADB + 1 downto 3) =
 			--		R_PRIME_SIZE(ADB - 2 downto 0))
 			then
 				dw --(PMSZ_VALNN_MSB downto PMSZ_VALNN_LSB)
@@ -3369,16 +3370,16 @@ begin
 			-- ------------------------------
 			-- below are DEBUG only registers
 			-- ------------------------------
-			-- (note that until now, the 'debug' boolean constant was only used
+			-- (note that until now, the 'hwsecure' boolean constant was only used
 			-- for proper address decoding - now in the following registers,
-			-- 'debug=TRUE' is used as a required condition for the hardware
+			-- 'hwsecure=FALSE' is used as a required condition for the hardware
 			-- inference of each of them, meaning these registers only exist
-			-- in debug mode - when not in debug mode, synthesizer will trim
-			-- them off)
+			-- in HW unsecure/Side-Channel analysis mode - when in HW secure mode,
+			-- synthesizer will trim them off)
 			-- -------------------------------------
 			-- decoding read of R_DBG_CAPABILITIES_0
 			-- -------------------------------------
-			elsif debug -- statically resolved by synthesizer
+			elsif (not hwsecure) -- statically resolved by synthesizer
 			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_CAPABILITIES_0
 			then
 				dw := (others => '0');
@@ -3389,7 +3390,7 @@ begin
 			-- -------------------------------------
 			-- decoding read of R_DBG_CAPABILITIES_1
 			-- -------------------------------------
-			elsif debug -- statically resolved by synthesizer
+			elsif (not hwsecure) -- statically resolved by synthesizer
 			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_CAPABILITIES_1
 			then
 				dw := (others => '0');
@@ -3403,7 +3404,7 @@ begin
 			-- -------------------------------------
 			-- decoding read of R_DBG_CAPABILITIES_2
 			-- -------------------------------------
-			elsif debug -- statically resolved by synthesizer
+			elsif (not hwsecure) -- statically resolved by synthesizer
 			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_CAPABILITIES_2
 			then
 				dw := (others => '0');
@@ -3417,7 +3418,7 @@ begin
 			-- --------------------------------------
 			-- decoding read of R_DBG_STATUS register
 			-- --------------------------------------
-			elsif debug -- statically resolved by synthesizer
+			elsif (not hwsecure) -- statically resolved by synthesizer
 			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_STATUS
 			then
 				dw := (others => '0');
@@ -3439,7 +3440,7 @@ begin
 			-- ------------------------------------
 			-- decoding read of R_DBG_TIME register
 			-- ------------------------------------
-			elsif debug -- statically resolved by synthesizer
+			elsif (not hwsecure) -- statically resolved by synthesizer
 			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_TIME
 			then
 				dw := (others => '0');
@@ -3450,7 +3451,7 @@ begin
 			-- --------------------------------------------
 			-- decoding read of R_DBG_TRNG_RAW_DUR register
 			-- --------------------------------------------
-			elsif debug -- statically resolved by synthesizer
+			elsif (not hwsecure) -- statically resolved by synthesizer
 			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_TRNG_RAWDUR
 			then
 				dw := (others => '0');
@@ -3461,7 +3462,7 @@ begin
 			-- -------------------------------------------
 			-- decoding read of R_DBG_TRNG_STATUS register
 			-- -------------------------------------------
-			elsif debug -- statically resolved by synthesizer
+			elsif (not hwsecure) -- statically resolved by synthesizer
 			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_TRNG_STATUS
 			then
 				v.axi.rdatax := -- (s265), see (s266)
@@ -3473,7 +3474,7 @@ begin
 			-- ---------------------------------------------
 			-- decoding read of R_DBG_TRNG_RAW_DATA register
 			-- ---------------------------------------------
-			elsif debug -- statically resolved by synthesizer
+			elsif (not hwsecure) -- statically resolved by synthesizer
 			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_TRNG_RAW_DATA
 			then
 				if r.ctrl.state = readraw then
@@ -3493,7 +3494,7 @@ begin
 			-- ----------------------------------------
 			-- decoding read of R_DBG_FP_RDATA register
 			-- ----------------------------------------
-			elsif debug -- statically resolved by synthesizer
+			elsif (not hwsecure) -- statically resolved by synthesizer
 			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_FP_RDATA
 			then
 				dw := (others => '0');
@@ -3506,7 +3507,7 @@ begin
 			-- --------------------------------------------
 			-- decoding read of R_DBG_FP_RDATA_RDY register
 			-- --------------------------------------------
-			elsif debug -- statically resolved by synthesizer
+			elsif (not hwsecure) -- statically resolved by synthesizer
 			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_FP_RDATA_RDY
 			then
 				--v.axi.rdatax(0) := r.debug.readrdy;
@@ -3517,7 +3518,7 @@ begin
 			-- -----------------------------------------
 			-- decoding read of R_DBG_EXP_FLAGS register
 			-- -----------------------------------------
-			elsif debug -- statically resolved by synthesizer
+			elsif (not hwsecure) -- statically resolved by synthesizer
 			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_EXP_FLAGS
 			then
 				dw := (others => '0');
@@ -3543,7 +3544,7 @@ begin
 			-- ---------------------------------------------
 			-- decoding read of R_DBG_TRNG_DIAG_MIN register
 			-- ---------------------------------------------
-			elsif debug -- statically resolved by synthesizer
+			elsif (not hwsecure) -- statically resolved by synthesizer
 			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_TRNG_DIAG_MIN
 			then
 				vid := to_integer(unsigned(r.debug.trng.diagid));
@@ -3575,9 +3576,8 @@ begin
 			-- ---------------------------------------------
 			-- decoding read of R_DBG_TRNG_DIAG_MAX register
 			-- ---------------------------------------------
-			-- TODO: put back 'debug' condition!
-			elsif -- debug and -- statically resolved by synthesizer
-				s_axi_araddr(ADB + 2 downto 3) = R_DBG_TRNG_DIAG_MAX
+			elsif (not hwsecure) -- statically resolved by synthesizer
+				and s_axi_araddr(ADB + 2 downto 3) = R_DBG_TRNG_DIAG_MAX
 			then
 				vid := to_integer(unsigned(r.debug.trng.diagid));
 				dw := (others => '0');
@@ -3608,9 +3608,8 @@ begin
 			-- --------------------------------------------
 			-- decoding read of R_DBG_TRNG_DIAG_OK register
 			-- ---------------------------------------------
-			-- TODO: put back 'debug' condition!
-			elsif -- debug and -- statically resolved by synthesizer
-				s_axi_araddr(ADB + 2 downto 3) = R_DBG_TRNG_DIAG_OK
+			elsif (not hwsecure) -- statically resolved by synthesizer
+				and s_axi_araddr(ADB + 2 downto 3) = R_DBG_TRNG_DIAG_OK
 			then
 				vid := to_integer(unsigned(r.debug.trng.diagid));
 				dw := (others => '0');
@@ -3641,9 +3640,8 @@ begin
 			-- -----------------------------------------------
 			-- decoding read of R_DBG_TRNG_DIAG_STARV register
 			-- -----------------------------------------------
-			-- TODO: put back 'debug' condition!
-			elsif -- debug and -- statically resolved by synthesizer
-				s_axi_araddr(ADB + 2 downto 3) = R_DBG_TRNG_DIAG_STARV
+			elsif (not hwsecure) -- statically resolved by synthesizer
+				and s_axi_araddr(ADB + 2 downto 3) = R_DBG_TRNG_DIAG_STARV
 			then
 				vid := to_integer(unsigned(r.debug.trng.diagid));
 				dw := (others => '0');
@@ -3674,9 +3672,8 @@ begin
 			-- ---------------------------------------
 			-- decoding read of R_DBG_CLK_MHZ register
 			-- ---------------------------------------
-			-- TODO: put back 'debug' condition!
-			elsif -- debug and -- statically resolved by synthesizer
-			  s_axi_araddr(ADB + 2 downto 3) = R_DBG_CLK_MHZ
+			elsif (not hwsecure) -- statically resolved by synthesizer
+			  and s_axi_araddr(ADB + 2 downto 3) = R_DBG_CLK_MHZ
 			then
 				dw := (others => '0');
 				dw(R_DBG_CLK_MHZ_MSB downto R_DBG_CLK_MHZ_LSB) :=
@@ -3687,9 +3684,8 @@ begin
 			-- -----------------------------------------
 			-- decoding read of R_DBG_CLKMM_MHZ register
 			-- -----------------------------------------
-			-- TODO: put back 'debug' condition!
-			elsif -- debug and -- statically resolved by synthesizer
-				s_axi_araddr(ADB + 2 downto 3) = R_DBG_CLKMM_MHZ
+			elsif (not hwsecure) -- statically resolved by synthesizer
+				and s_axi_araddr(ADB + 2 downto 3) = R_DBG_CLKMM_MHZ
 			then
 				dw := (others => '0');
 				dw(R_DBG_CLKMM_MHZ_MSB downto R_DBG_CLKMM_MHZ_LSB) :=
@@ -3749,12 +3745,12 @@ begin
 			-- pragma translate_on
 		end if;
 
-		-- in debug mode, if software disables token feature (through
-		-- register W_DBG_CFG_TOKEN, see (s224)) we immediately deassert
-		-- r.ctrl.tokavail4read so as to not create inconsistent state
-		-- (this only concerns debug mode, as in debug=FALSE situation
+		-- In HW unsecure/Side-Channel analysis mode, if software disables token
+		-- feature (through register W_DBG_CFG_TOKEN, see (s224)) we immediately
+		-- deassert r.ctrl.tokavail4read so as to not create inconsistent state
+		-- (this only concerns Hw unsecure mode, as in hwsecure=TRUE situation
 		-- the token feature cannot be disengaged)
-		if debug then -- statically resolved by synthesizer
+		if (not hwsecure) then -- statically resolved by synthesizer
 			if r.ctrl.token_act = '0' then
 				v.ctrl.tokavail4read := '0';
 			end if;
@@ -3975,7 +3971,7 @@ begin
 				-- a default value for r.ctrl.blindbits and reassert .doblindcheck so as
 				-- to compute a correct functional value for r.ctrl.nn_extrabits, see
 				-- (s238) & (s239).
-				if (blinding > 0) then -- whatever mode (debug or not)
+				if (blinding > 0) then -- whatever mode (hwsecure or not)
 					if r.nndyn.valnn = to_unsigned(nn, log2(nn)) then
 						-- When nn_dynamic feature is present, we must enforce that
 						-- the size of the blinding random stays as required by static
@@ -4335,7 +4331,7 @@ begin
 		-- -----------------------------------------------------
 		-- Record min & max of IRN FIFOs during [k]P computation
 		-- -----------------------------------------------------
-		if debug then -- statically resolved by synthesizer
+		if (not hwsecure) then -- statically resolved by synthesizer
 			if r.ctrl.kppending = '1' then
 				-- Testing MINIMUMs
 				--   AXI irn count (test min)
@@ -4420,7 +4416,7 @@ begin
 					v.debug.trng.rawmax := unsigned(dbgtrngrawcount);
 				end if;
 			end if;
-		end if; -- debug
+		end if; -- !hwsecure
 
 		-- synchronous (active low) reset
 		if s_axi_aresetn = '0' then
@@ -4480,9 +4476,9 @@ begin
 			v.ctrl.poppending := '0';
 			v.ctrl.ierrid := (others => '0');
 			-- (s240) - blinding config upon reset
-			--   Same treatment whether debug = TRUE or not: in both cases,
+			--   Same treatment whether hwsecure = FALSE or not: in both cases,
 			--   the reset config is as set statically by user in ecc_customize.vhd.
-			--   The difference is that in production mode (debug = FALSE) the
+			--   The difference is that in HW secure mode (hwsecure = TRUE) the
 			--   software driver won't be authorized to modify the config (but to
 			--   increase the nb of blinding bits).
 			if blinding > 0 then -- statically resolved by synthesizer
@@ -4496,9 +4492,9 @@ begin
 			end if;
 			-- Z-remasking countermeasure
 			if (zremask > 0) then -- statically resolv. by synthesizer
-				-- Whether we're in debug (unsecure-)mode or in production (secure-)mode
-				-- the Z-remasking countermeasure is reset according to what was set in
-				-- ecc_customize.vhd.
+				-- Whether we're in HW unsecure/Side-Channel analysis mode or in
+				-- HW secure mode the Z-remasking countermeasure is reset according
+				-- to what was set in ecc_customize.vhd.
 				-- Now if in production mode, the reset value of .zremaskact will act as
 				-- a hardwired signal because the synthesizer will ignore and trim paths
 				-- corresponding to (s253) & (s254). Furthermore, the test logic (s255)
@@ -4527,7 +4523,7 @@ begin
 			v.ctrl.y_set := '0';
 			v.ctrl.r0_is_null := '0';
 			v.ctrl.r1_is_null := '0';
-			if debug then -- statically resolved by synthesizer
+			if (not hwsecure) then -- statically resolved by synthesizer
 				-- upon reset, read access to ecc_fp_dram granted by default
 				v.ctrl.read_forbidden := '0';
 			else
@@ -4541,19 +4537,18 @@ begin
 			v.ctrl.doblindsh := (others => '0');
 			v.ctrl.gentoken := '0';
 			v.ctrl.tokpending := '0';
-			-- token feature activated by default in debug mode
-			-- (and cant't be disengaged in production mode)
+			-- token feature activated by default in HW unsecure mode
+			-- (and can't be disengaged in HW secure mode)
 			v.ctrl.token_act := '1';
 			v.ctrl.tokavail4read := '0';
 			v.ctrl.tokwasread := '0';
 			-- no need to reset r.ctrl.tokendone_d
 			if shuffle_type /= none then -- statically resolved by synthesizer
-				-- Reset policy is the same for both debug (unsecure-)mode
-				-- and production (secure-)mode: it is made according to the
-				-- designer's static choice in ecc_customize.vhd. The diffe-
-				-- rence is that in production mode (debug = FALSE) and when
-				-- shuffle = TRUE, software driver won't be able to disengage
-				-- shuffling, as (s221) won't allow it.
+				-- Reset policy is the same for both HW secure & HW unsecure
+				-- modes: it is made according to the designer's static choice
+				-- in ecc_customize.vhd. The difference is that in Hw secure mode
+				-- (hwsecure = TRUE) and when shuffle = TRUE, software driver won't
+				-- be able to disengage shuffling, as (s221) won't allow it.
 				if shuffle then
 					v.ctrl.doshuffle := '1';
 				else
@@ -4647,8 +4642,8 @@ begin
 				v.nndyn.valnnm2 := to_unsigned(nn - 2, log2(nn));
 			end if; -- nn_dynamic
 			v.nndyn.active := '0';
-			-- debug feature
-			if debug then
+			-- HW unsecure/Side-Channel analysis features
+			if (not hwsecure) then
 				v.debug.iwe := '0';
 				v.debug.trigger := '0';
 				v.debug.trigactive := '0';
@@ -4680,9 +4675,9 @@ begin
 				-- no need to reset r.debug.trng.crv[starv|ok|min|max]
 				-- no need to reset r.debug.trng.shf[starv|ok|min|max]
 				-- no need to reset r.debug.trng.raw[starv|ok|min|max]
-				-- upon reset (in debug mode) we use the real TRNG entropy source
+				-- upon reset (in HW unsecure mode) we use the real TRNG entropy source
 				v.debug.trng.usepseudo := '0';
-				-- upon reset (in debug mode) we inhibit ecc_trng_pp from reading
+				-- upon reset (in Hw unsecure mode) we inhibit ecc_trng_pp from reading
 				-- any raw random bytes. Thus software must activate this, by using
 				-- register W_DBG_TRNG_CTRL_POSTP.
 				v.debug.trng.rawpullppdis := '1';
@@ -4697,7 +4692,7 @@ begin
 				v.debug.clkdivcnt := (others => '0');
 				-- pragma translate_on
 			else
-				v.debug.trng.nnrnddeterm := '0'; -- present also when debug=FALSE, see (s38)
+				v.debug.trng.nnrnddeterm := '0'; -- present also when hwsecure=TRUE, see (s38)
 			end if;
 		end if; -- if s_axi_aresetn (synchronous reset)
 
@@ -4748,10 +4743,10 @@ begin
 	xwe <= r.write.fpwe;
 	xaddr <= r.fpaddr;
 	-- if writing into ecc_fp_dram using the debug interface was not
-	-- a debug feature, we could set a multicycle constraint on
-	-- path dbghalted -> xwdata (but it is a debug feature so perf
-	-- is not really an issue)
-	xwdata <= r.debug.fpwdata when (debug and dbghalted = '1' and
+	-- a HW unsecure/Side-Channel analysis feature, we could set a multicycle
+	-- constraint on path dbghalted -> xwdata (but it is a HW unsecure featur
+	-- so perf is not really an issue)
+	xwdata <= r.debug.fpwdata when ((not hwsecure) and dbghalted = '1' and
 						                      r.debug.shwon(0) = '1')
 	          else r.write.fpwdata;
 	xre <= r.read.fpre;
@@ -4867,13 +4862,13 @@ begin
 	-- interface with ecc_trng
 	trngrdy <= r.write.rnd.trngrdy;
 
-	-- debug features (to ecc_curve_iram)
+	-- HW unsecure/Side-Channel analysis features (to ecc_curve_iram)
 	dbgiwaddr <= r.debug.iwaddr;
 	dbgiwdata <= r.debug.iwdata;
 	dbgiwe <= r.debug.iwe;
 	dbgtrigger <= r.debug.trigger;
 
-	-- debug features (to ecc_curve)
+	-- HW unsecure/Side-Channel analysis features (to ecc_curve)
 	dbgbreakpoints <= r.debug.breakpoints;
 	dbgnbopcodes <= r.debug.nbopcodes;
 	dbgdosomeopcodes <= r.debug.dosomeopcodes;
@@ -4881,7 +4876,7 @@ begin
 	dbghalt <= r.debug.halt;
 	dbgnoxyshuf <= r.debug.noxyshuf;
 
-	-- debug features (to trng)
+	-- HW unsecure/Side-Channel analysis features (to trng)
 	dbgtrngnnrnddet <= r.debug.trng.nnrnddeterm; -- (s38)
 	dbgtrngta <= r.debug.trng.ta;
 	dbgtrngrawreset <= r.debug.trng.rawreset;
@@ -4890,7 +4885,7 @@ begin
 	dbgtrngrawfiforeaddis <= r.debug.trng.rawfiforeaddis;
 	dbgtrngcompletebypass <= r.debug.trng.completebypass;
 	dbgtrngcompletebypassbit <= r.debug.trng.completebypassbit;
-	dbgtrngvonneuman <= '1' when not debug -- statically resolved at synthesis
+	dbgtrngvonneuman <= '1' when hwsecure -- statically resolved at synthesis
 	                    else r.debug.trng.vonneuman;
 	dbgtrngidletime <= r.debug.trng.idletime;
 	dbgtrngusepseudosource <= r.debug.trng.usepseudo;
@@ -4906,7 +4901,7 @@ begin
 	clkmmdivo <= r_debug_clkmmdivo;
 
 	-- clkmm division & out
-	cmmd0: if debug generate
+	cmmd0: if (not hwsecure) generate
 		-- r.debug.clkmmdivhperiod & r.debug.clkmmdivoen are registers from the 'clk'
 		-- clock period, used here as asynchronous combinational inputs to logic which is
 		-- synchronous to 'clkmm' clock, WITHOUT being resynchronized. However this is

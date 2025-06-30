@@ -72,11 +72,11 @@ entity ecc_fp is
 		compcstmty : in std_logic;
 		comppop : in std_logic;
 		token_generating : in std_logic;
-		-- debug feature (ecc_axi)
+		-- HW unsecure/Side-Channel analysis feature (ecc_axi)
 		dbgtrngnnrnddet : in std_logic;
 		dbgtrngcompletebypass : in std_logic;
 		dbgtrngcompletebypassbit : in std_logic;
-		-- debug feature (ecc_scalar)
+		-- HW unsecure/Side-Channel analysis feature (ecc_scalar)
 		dbghalted : in std_logic
 		-- pragma translate_off
 		-- interface with ecc_scalar (simu only)
@@ -1917,7 +1917,7 @@ begin
 				v.rnd.trngrdy := '0'; -- (s143)
 				v.rnd.write := '1'; -- stays asserted only 1 cycle thx to (s116)
 				if r.rnd.masked = '0' then
-					if debug then
+					if not hwsecure then
 						if dbgtrngcompletebypass = '1' then
 							v.rnd.data := (others => dbgtrngcompletebypassbit);
 						elsif dbgtrngnnrnddet = '1' then
@@ -1939,7 +1939,7 @@ begin
 							v.rnd.data := (others => '0');
 						elsif nndyn_nnrnd_zerowm1 = '0' then
 							-- last ww-bit word must be masked w/ nndyn_nnrnd_mask
-							if debug then -- statically resolved by synthesizer
+							if not hwsecure then -- statically resolved by synthesizer
 								if dbgtrngcompletebypass = '1' then
 									v.rnd.data := (others => dbgtrngcompletebypassbit);
 									v.rnd.data := v.rnd.data and nndyn_nnrnd_mask;
@@ -1960,7 +1960,7 @@ begin
 							-- (s102) if most significant ww-bit word must be set to 0
 							-- (see (s101) above) then it means mask 'nndyn_nnrnd_mask'
 							-- is to be applied to the one before the last, i.e now
-							if debug then -- statically resolved by synthesizer
+							if not hwsecure then -- statically resolved by synthesizer
 								if dbgtrngcompletebypass = '1' then
 									v.rnd.data := (others => dbgtrngcompletebypassbit);
 									v.rnd.data := v.rnd.data and nndyn_nnrnd_mask;
@@ -1977,7 +1977,7 @@ begin
 							-- if last word is not to be set to 0 (see (s101) above)
 							-- then the next-to-the-last word is to be handled as any
 							-- other one (i.e no mask, as in the nominal case)
-							if debug then -- statically resolved by synthesizer
+							if not hwsecure then -- statically resolved by synthesizer
 								if dbgtrngcompletebypass = '1' then
 									v.rnd.data := (others => dbgtrngcompletebypassbit);
 								elsif dbgtrngnnrnddet = '1' then
@@ -1991,7 +1991,7 @@ begin
 						end if;
 					else
 						-- nominal case (r.rnd.opccnt modulo w is neither 0 nor 1)
-						if debug then
+						if not hwsecure then
 							if dbgtrngcompletebypass = '1' then
 								v.rnd.data := (others => dbgtrngcompletebypassbit);
 							elsif dbgtrngnnrnddet = '1' then
@@ -2091,7 +2091,7 @@ begin
 
 		-- In naive implem we force r.rnd.data to all 0's whenever the opcode
 		-- which is executed is either an NNRNDs or an NNRNDf.
-		if debug and no_nnrnd_sf = '1' then
+		if (not hwsecure) and no_nnrnd_sf = '1' then
 			if r.rnd.shift = '1' or r.rnd.shiftf = '1' then
 				v.rnd.data := (others => '0');
 			end if;
@@ -2288,7 +2288,7 @@ begin
 		v.tokgendel := token_generating;
 		if (compkp = '0' and compcstmty = '0' and comppop = '0'
 				and token_generating = '0')
-			or (debug and dbghalted = '1')
+			or ((not hwsecure) and dbghalted = '1')
 		then -- (s98), see (s100) in ecc_curve.vhd
 			v.fpram.waddrmuxsel := "111"; -- (s37), see (s20)
 			v.fpram.raddrmuxsel := "11"; -- (s36), see (s17)
@@ -3506,8 +3506,8 @@ begin
 	-- or more) on the paths compkp -> xrdata
 	--                   and compcstmty -> xrdata
 	--  (but NOT on the path fprdata -> xrdata)
-	xrdata <= fprdata when (   (compkp = '0' and compcstmty = '0')
-	                        or (       debug and dbghalted = '1')   )
+	xrdata <= fprdata when (   (  compkp = '0' and compcstmty = '0')
+	                        or ((not hwsecure) and dbghalted = '1' )  )
 	                  else (others => '0');  -- (s99), see (s100) in ecc_curve.vhd
 
 end architecture rtl;

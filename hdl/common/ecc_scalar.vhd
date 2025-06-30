@@ -118,7 +118,7 @@ entity ecc_scalar is
 		permute : out std_logic;
 		permuterdy : in std_logic;
 		permuteundo : out std_logic;
-		-- debug features
+		-- HW unsecure/Side-Channel analysis features
 		dbgpgmstate : out std_logic_vector(3 downto 0);
 		dbgnbbits : out std_logic_vector(15 downto 0);
 		dbgjoyebit : out std_logic_vector(log2(2*nn - 1) - 1 downto 0);
@@ -254,7 +254,7 @@ architecture rtl of ecc_scalar is
 		token_generating : std_logic;
 	end record;
 
-	-- debug features
+	-- HW unsecure/Side-Channel analysis features
 	type debug_reg_type is record
 		joyebit : std_logic_vector(log2(2*nn - 1) - 1 downto 0);
 	end record;
@@ -413,7 +413,7 @@ begin
 	-- (s29), see (s30)
 	-- pragma translate_off
 	assert (log2(nn) <= 16)
-		report "[ ecc_scalar.vhd ]: ERROR: Blinding size is too large for debug mode."
+		report "[ ecc_scalar.vhd ]: ERROR: Blinding size is too large for HW unsecure mode."
 			severity FAILURE;
 	-- pragma translate_on
 
@@ -531,19 +531,19 @@ begin
 					v.ctrl.small_k_sz_en := '0';
 				elsif doblinding = '1' then
 					v.kp.blind_nbbits := unsigned(blindbits);
-					if (not debug) or not_always_add = '0' then
+					if (hwsecure) or not_always_add = '0' then
 						v.kp.joye.nbbits :=
 								resize(unsigned(blindbits), log2(nn) + 1)
 							+ resize(nndyn_nnm3, log2(nn) + 1);
-					elsif debug and not_always_add = '1' then
+					elsif (not hwsecure) and not_always_add = '1' then
 						v.kp.joye.nbbits :=
 								resize(unsigned(blindbits), log2(nn) + 1)
 							+ resize(nndyn_nnm2, log2(nn) + 1);
 					end if;
 				else
-					if (not debug) or not_always_add = '0' then
+					if (hwsecure) or not_always_add = '0' then
 						v.kp.joye.nbbits := resize(nndyn_nnm3, log2(nn) + 1);
-					elsif debug and not_always_add = '1' then
+					elsif (not hwsecure) and not_always_add = '1' then
 						v.kp.joye.nbbits := resize(nndyn_nnm2, log2(nn) + 1);
 					end if;
 				end if;
@@ -551,7 +551,7 @@ begin
 				nnmax_joye_loop_s <= to_integer(v.kp.joye.nbbits);
 				blbits_max_s <= to_integer(unsigned(blindbits));
 				-- pragma translate_on
-				if debug then -- statically resolved by synthesizer
+				if not hwsecure then -- statically resolved by synthesizer
 					v.int.permuteundo := '0';
 				end if;
 				v.int.ar0zi := ar0zo;
@@ -619,9 +619,9 @@ begin
 				end case;
 				-- sample now the possible null-state of R0 & R1 points (from signals
 				-- ar[01]zo, which are driven by ecc_axi) so that even if SW changes
-				-- these in the current of operation (it is possible in debug mode)
-				-- the information will stay internally the same for both ecc_scalar
-				-- and ecc_curve and we'll have consistant computation
+				-- these in the current of operation (it is possible in Hw unsecure
+				-- mode) the information will stay internally the same for both
+				-- ecc_scalar and ecc_curve and we'll have consistant computation
 				v.ctrl.r0z := ar0zo;
 				v.ctrl.r1z := ar1zo;
 				v.int.fgo := '1'; -- (s71), see (s67)
@@ -1098,9 +1098,9 @@ begin
 							-- Mont. & Jacobian domains, including a call to .pre_zaddU routine
 							-- in order to prepare the 3rd & last step) is enforced by asserting
 							-- .kp.ssetup_step to "01"
-							if (not debug) or not_always_add = '0' then
+							if (hwsecure) or not_always_add = '0' then
 								v.kp.ssetup_step := "01";
-							elsif debug and not_always_add = '1' then
+							elsif (not hwsecure) and not_always_add = '1' then
 								-- In naive implementation, we musn't perform the first zaddu
 								-- (the one computing (2P,P) -> (3P,P) or (P,3P). The microcode
 								-- of .setupL has been changed:
@@ -1223,7 +1223,7 @@ begin
 						--                 end of ITOH
 						-- -------------------------------------------
 						v.int.faddr := EXEC_ADDR(PRE_ZADDU_ROUTINE); -- (s10)
-						if debug and not_always_add = '1' then
+						if (not hwsecure) and not_always_add = '1' then
 							-- Naive implem (double and add not always): we only call ZADDU
 							-- if the scalar bit is 1 here
 							if kap = '1' then
@@ -1308,7 +1308,7 @@ begin
 						-- -------------------------------------------
 						--                end of ZADDU
 						-- -------------------------------------------
-						if debug and not_always_add = '1' then
+						if (not hwsecure) and not_always_add = '1' then
 							v.int.faddr := EXEC_ADDR(ZDBL_NOT_ALWAYS_ROUTINE);
 							v.kp.joye.state :=  zdblnotalways;
 							v.int.fgo := '1';
@@ -1316,7 +1316,7 @@ begin
 							v.sim.logr0r1 := '1';
 							v.sim.logr0r1step := 2;
 							-- pragma translate_on
-						elsif (not debug) or not_always_add = '0' then
+						elsif (hwsecure) or not_always_add = '0' then
 							v.int.faddr := EXEC_ADDR(PRE_ZADDC_ROUTINE); -- (s11)
 							if iterate_shuffle_rdy = '1' then
 								v.kp.joye.state := prezaddc; -- (s17)
@@ -1693,16 +1693,16 @@ begin
 							-- Double-&-Add loop is not over, loop back to 'itoh'
 							-- (or to 'permutation' if shuffle is active)
 							if doshuffle = '1' and
-								((not debug) or dbgtrngcompletebypass = '0')
+								((hwsecure) or dbgtrngcompletebypass = '0')
 							then -- (s21)
 								v.kp.joye.state := permutation;
 								v.int.permute := '1'; -- stays asserted 1 cycle thx to (s4)
-								if debug and -- statically resolved by synthesizer
+								if (not hwsecure) and -- statically resolved by synthesizer
 									(r.kp.joye.nbbits = to_unsigned(1, r.kp.joye.nbbits'length))
 								then
 									v.int.permuteundo := '1';
 								end if;
-							else -- if doshuffle = '0' or (debug and dbgtrngcompletebypass=1)
+							else -- if doshuffle = '0' or ((not hwsecure) and dbgtrngcompletebypass=1)
 								v.kp.joye.state := itoh; -- (s116), bypassed by (s117)
 								v.int.faddr := EXEC_ADDR(ITOH_ROUTINE); -- (s118) byp. by (s119)
 								-- If needed, decrement the Z-remasking counter, and possibly
@@ -2119,7 +2119,7 @@ begin
 			-- no need to reset r.mty.step nor r.mty.cntrshift
 			--v.kp.laststep := '0';
 			--v.kp.setup := '0';
-			if debug then -- statically resolved by synthesizer
+			if not hwsecure then -- statically resolved by synthesizer
 				v.int.permuteundo := '0';
 			end if;
 			v.pop.done := '0';
@@ -2193,18 +2193,18 @@ begin
 	aerr_outpt_not_on_curve <= r.int.aerr_outpt_not_on_curve;
 	--     (this signal is only used in the 'shuffle_type' /= none case)
 	permute <= r.int.permute;
-	pu: if debug generate -- statically resolved by synthesizer
+	pu: if not hwsecure generate -- statically resolved by synthesizer
 		permuteundo <= r.int.permuteundo;
 	end generate;
 	-- pragma translate_off
 	--   interface with ecc_fp
 	simbit <= r.sim.simbit;
 	-- pragma translate_on
-	-- debug features
+	-- HW unsecure/Side-Channel analysis features
 	dbgjoyebit <= r.dbg.joyebit;
 	-- TODO: many multicycles can be set on paths r.ctrl.state -> dbg*
 	-- TODO: many multicycles can be set on paths r.kp.substate -> dbg*
-	-- (on the other hand these are debug only paths, so it does not
+	-- (on the other hand these are "debug" only paths, so it does not
 	-- really make sense to make effort to improve timing)
 	dbgpgmstate <= DEBUG_STATE_ANY_OR_IDLE when r.ctrl.state = idle
 	  else DEBUG_STATE_CSTMTY when r.ctrl.state = cst
@@ -2384,7 +2384,7 @@ begin
 				echol(")");
 			elsif (r.kp.joye.state /= zaddc
 				and rbak_joye_state = zaddc) then --and (not shuffle or (shuffle and
-				--( (debug and doshuffle = '0') or (not debug) )))) then
+				--( ((not hwsecure) and doshuffle = '0') or (hwsecure) )))) then
 				if (r.sim.simbit mod NB_BITS_LINE = NB_BITS_LINE - 1)
 					or (r.sim.simbit = nnmax_joye_loop_s + 2)
 				then

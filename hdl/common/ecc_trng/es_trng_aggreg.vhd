@@ -18,7 +18,7 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-use work.ecc_customize.all; -- for 'debug'
+use work.ecc_customize.all; -- for 'hwsecure'
 
 entity es_trng_aggreg is
 	port(
@@ -37,7 +37,7 @@ entity es_trng_aggreg is
 		raw1 : in std_logic;
 		valid1 : in std_logic;
 		rdy1 : out std_logic;
-		-- following signals are for debug & statistics
+		-- following signals are for HW unsecure mode
 		dbgtrngrawreset : in std_logic
 	);
 end entity es_trng_aggreg;
@@ -114,7 +114,7 @@ begin
 		end if;
 
 		-- synchronous reset
-		if rstn = '0' or (debug and dbgtrngrawreset = '1') or swrst = '1' then
+		if rstn = '0' or ((not hwsecure) and dbgtrngrawreset = '1') or swrst = '1' then
 			v.priority := '0';
 			v.valid := '0';
 			v.rdy0 := '1';

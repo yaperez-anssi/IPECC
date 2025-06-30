@@ -17,7 +17,7 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-use work.ecc_customize.all; -- for 'debug' parameter
+use work.ecc_customize.all; -- for 'hwsecure' parameter
 use work.ecc_log.all;
 use work.ecc_utils.all;
 use work.ecc_pkg.all;
@@ -67,7 +67,7 @@ architecture rtl of ecc_trng_pp is
 		shcnt8 : unsigned(2 downto 0);
 		shcnti : unsigned(log2(pp_irn_width - 1) - 1 downto 0);
 		valid_s : std_logic;
-		-- debug pseudo TRNG device
+		-- HW unsecure pseudo TRNG device
 		pseudo_rdy : std_logic;
 		usepstprev : std_logic;
 		raw_pull_inactive : std_logic;
@@ -84,7 +84,7 @@ begin
 	begin
 		v := r;
 
-		if debug then -- statically resolved by synthesizer
+		if not hwsecure then -- statically resolved by synthesizer
 			if dbgtrngusepseudosource = '0' then
 				-- valid_t/rdy_t handshake, with real TRNG source
 				if r.rdy_t = '1' and valid_t = '1' then
@@ -100,7 +100,7 @@ begin
 					v.pseudo_rdy := '0';
 				end if;
 			end if;
-		else -- not debug
+		else -- HW secure
 			-- valid_t/rdy_t handshake
 			if r.rdy_t = '1' and valid_t = '1' then
 				v.shdata8 := data_t;
@@ -121,7 +121,7 @@ begin
 			-- detect and handle counters overflow
 			if r.shcnt8 = to_unsigned(7, 3) then
 				v.sh8canberead := '0';
-				if (not debug) -- statically resolved by synthesizer
+				if hwsecure -- statically resolved by synthesizer
 					or dbgtrngusepseudosource = '0'
 				then
 					v.rdy_t := '1';
@@ -143,7 +143,7 @@ begin
 		end if;
 
 		-- Switch from one state to the other (real to pseudo or pseudo to real).
-		if debug then -- statically resolved by synthesizer
+		if not hwsecure then -- statically resolved by synthesizer
 			-- When switching from one state to the other (real/pseudo TRNG source)
 			-- we must do as if there was a reset.
 			v.usepstprev := dbgtrngusepseudosource;
@@ -175,8 +175,8 @@ begin
 		-- Activation/deactivation (by software) of the logic pulling bytes
 		-- from the raw random source, whether it is the real TRNG source
 		-- (the one internal to the IP) or the external pseudo TRNG one.
-		-- This obviously only concerns debug mode.
-		if debug then -- statically resolved by synthesizer
+		-- This obviously only concerns HW unsecure mode.
+		if not hwsecure then -- statically resolved by synthesizer
 			v.raw_pull_inactive := dbgtrngrawpullppdis;
 			if dbgtrngrawpullppdis = '1' then
 				-- The software has disabled the pulling of bytes.
@@ -192,18 +192,18 @@ begin
 					v.pseudo_rdy := '1';
 				end if;
 			end if;
-		end if; -- debug
+		end if;
 
-		-- synchronous reset
-		if rstn = '0' or swrst = '1' or (debug and irn_reset = '1') then
-			if not debug then -- statically resolved by synthesizer
+		-- Synchronous reset
+		if rstn = '0' or swrst = '1' or ((not hwsecure) and irn_reset = '1') then
+			if hwsecure then -- statically resolved by synthesizer
 				-- In production mode, we only use the real TRNG source,
 				-- and we immediately start pulling data from it as soon as
 				-- we leave the reset state.
 				v.rdy_t := '1';
 				v.pseudo_rdy := '0';
 			else
-				-- In debug mode, pulling raw random bytes (from either the
+				-- In HW unsecure mode, pulling raw random bytes (from either the
 				-- real TRNG or the pseudo TRNG) is kept stalled at the output
 				-- of reset.
 				-- This allows software to choose the source (real or pseudo)

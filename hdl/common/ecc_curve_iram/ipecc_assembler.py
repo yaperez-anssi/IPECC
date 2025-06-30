@@ -588,7 +588,7 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-use work.ecc_customize.all; -- for debug & nbopcodes parameters
+use work.ecc_customize.all; -- for hwsecure & nbopcodes parameters
 use work.ecc_utils.all; -- for function ge_pow_of_2
 use work.ecc_pkg.all; -- for IRAM_ADDR_SZ & OPCODE_SZ parameters
 
@@ -640,10 +640,10 @@ ecc_curve_iram_end = r"""
 
 begin
 
-	-- ---------------------------------------------
-	-- Port A (W only) is only present in debug mode
-	-- ---------------------------------------------
-	d0: if debug generate -- statically resolved by synthesizer
+	-- ---------------------------------------------------------
+	-- Port A (W only) is only present in hardware unsecure mode
+	-- ---------------------------------------------------------
+	d0: if not hwsecure generate -- statically resolved by synthesizer
 		process(clka)
 		begin
 			if (clka'event and clka = '1') then
@@ -660,11 +660,11 @@ begin
 		end process;
 	end generate;
 
-	-- --------------------------------------------------------------
+	-- -----------------------------------------------------------------
 	-- Port B (R only) is the nominal port used by ecc_curve to fetch
-	-- instructions (which makes ecc_curve_iram a ROM when debug mode
-	-- is not activated)
-	-- --------------------------------------------------------------
+	-- instructions (which makes ecc_curve_iram a ROM when in HW secure
+	-- mode)
+	-- ------------------------------------------------------------------
 	r1 : if rdlat = 1 generate -- statically resolved by synthesizer
 		process(clkb)
 		begin
@@ -749,7 +749,7 @@ ecc_addr_h_middle = r"""
  *
  * (these addresses can be used by the software driver
  * to break on specific useful steps of the microcode,
- * when in debug mode).
+ * when in hardware unsecure mode).
  */
 """
 

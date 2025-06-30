@@ -30,7 +30,7 @@ entity es_trng_bitctrl is
 		raw : out std_logic;
 		valid : out std_logic;
 		rdy : in std_logic;
-		-- following signals are for debug & statistics
+		-- following signals are for HW unsecure mode
 		dbgtrngrawreset : in std_logic;
 		dbgtrngta : in unsigned(15 downto 0);
 		dbgtrngvonneuman : in std_logic;
@@ -157,15 +157,15 @@ begin
 				v.debug.idlecnt := dbgtrngidletime;
 			end if;
 		elsif r.state = idle then
-			-- in debug mode we stay in idle state a nb of clk cycles equal to
+			-- In HW unsecure mode we stay in idle state a nb of clk cycles equal to
 			-- dbgtrngidletime - 1 (otherwise we directly switch to ro1 state,
 			-- idle state thus lasting only 1 cycle)
 			v.debug.idlecnt := r.debug.idlecnt - 1;
-			if (not debug) or r.debug.idlecnt = (r.debug.idlecnt'range => '0') then
+			if (hwsecure) or r.debug.idlecnt = (r.debug.idlecnt'range => '0') then
 				-- enforce transition to ro1 state upon exit of reset
 				v.state := ro1;
 				v.ro1en := '1';
-				if debug then
+				if not hwsecure then
 					v.tacnt := dbgtrngta;
 				else
 					v.tacnt := to_unsigned(trngta, 16); -- trngta defined in ecc_customize
@@ -174,7 +174,7 @@ begin
 		end if;
 
 		-- synchronous reset
-		if rstn = '0' or (debug and dbgtrngrawreset = '1') or swrst = '1' then
+		if rstn = '0' or ((not hwsecure) and dbgtrngrawreset = '1') or swrst = '1' then
 			v.state := idle;
 			-- no need to reset r.debug.idlecnt other than in behav simulation
 			-- pragma translate_off

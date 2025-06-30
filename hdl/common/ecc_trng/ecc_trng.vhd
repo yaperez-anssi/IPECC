@@ -54,7 +54,7 @@ entity ecc_trng is
 		valid3 : out std_logic;
 		data3 : out std_logic_vector(irn_width_sh - 1 downto 0);
 		irncount3 : out std_logic_vector(log2(irn_fifo_size_shf) - 1 downto 0);
-		-- interface with ecc_axi (only usable in debug mode)
+		-- interface with ecc_axi (only usable in HW unsecure mode)
 		dbgtrngta : in unsigned(15 downto 0);
 		dbgtrngrawreset : in std_logic;
 		dbgtrngrawfull : out std_logic;
@@ -90,7 +90,7 @@ architecture rtl of ecc_trng is
 			data_t : out std_logic_vector(7 downto 0);
 			valid_t : out std_logic;
 			rdy_t : in std_logic;
-			-- following signals are for debug & statistics
+			-- following signals are for HW unsecure/SCA statistics
 			dbgtrngta : in unsigned(15 downto 0);
 			dbgtrngrawreset : in std_logic;
 			dbgtrngrawfull : out std_logic;
@@ -115,7 +115,7 @@ architecture rtl of ecc_trng is
 			data_t : out std_logic_vector(7 downto 0);
 			valid_t : out std_logic;
 			rdy_t : in std_logic;
-			-- following signals are for debug & statistics
+			-- following signals are for HW unsecure/SCA statistics
 			dbgtrngta : in unsigned(15 downto 0);
 			dbgtrngrawreset : in std_logic;
 			dbgtrngrawfull : out std_logic;
@@ -186,7 +186,7 @@ architecture rtl of ecc_trng is
 			valid3 : out std_logic;
 			data3 : out std_logic_vector(irn_width_sh - 1 downto 0);
 			irncount3 : out std_logic_vector(log2(irn_fifo_size_shf) - 1 downto 0);
-			-- interface with ecc_axi (only usable in debug mode)
+			-- interface with ecc_axi (only usable in HW unsecure mode)
 			dbgtrngcompletebypass : in std_logic;
 			dbgtrngcompletebypassbit : in std_logic
 		);
@@ -308,7 +308,7 @@ begin
 			valid3 => valid3,
 			data3 => data3,
 			irncount3 => irncount3,
-			-- following signals are for debug (statistics)
+			-- following signals are for HW unsecure/SCA
 			dbgtrngcompletebypass => dbgtrngcompletebypass,
 			dbgtrngcompletebypassbit => dbgtrngcompletebypassbit
 		);

@@ -36,7 +36,7 @@ entity es_trng_sim is
 		data_t : out std_logic_vector(7 downto 0);
 		valid_t : out std_logic;
 		rdy_t : in std_logic;
-		-- following signals are for debug & statistics
+		-- following signals are for HW unsecure mode
 		dbgtrngta : in unsigned(15 downto 0);
 		dbgtrngrawreset : in std_logic;
 		dbgtrngrawfull : out std_logic;

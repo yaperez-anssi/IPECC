@@ -87,7 +87,7 @@ architecture sim of ecc_tb is
 			irq : out std_logic;
 			-- general busy signal
 			busy : out std_logic;
-			-- debug feature (off-chip trigger)
+			-- HW unsecure/SCA analysis feature (off-chip trigger)
 			dbgtrigger : out std_logic;
 			dbghalted : out std_logic;
 			--   pseudo-trng port
@@ -533,7 +533,7 @@ begin
 			irq => open,
 			-- General busy signal
 			busy => open,
-			-- Debug feature (off-chip trigger)
+			-- HW secure/SCA analysis feature (off-chip trigger)
 			dbgtrigger => open,
 			dbghalted => open,
 			-- Pseudo-trng port
@@ -730,7 +730,7 @@ begin
 
 		configure_irq(s_axi_aclk, axi0, axo0, TRUE);
 
-		if debug then
+		if not hwsecure then
 			-- Enable XY-shuffling
 			debug_enable_xyshuf(s_axi_aclk, axi0, axo0);
 	 

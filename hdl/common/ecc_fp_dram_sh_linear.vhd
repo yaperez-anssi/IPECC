@@ -266,7 +266,7 @@ begin
 			v.trngrdy := '1';
 			if permuteundo = '0' then
 				v.state := random0;
-			elsif (debug and permuteundo = '1') then
+			elsif ((not hwsecure) and permuteundo = '1') then
 				v.state := random1;
 				v.perm.wmask := r.fpmask;
 			end if;
