@@ -50,8 +50,8 @@
 #
 # with R^2 = R^2 mod p
 #       aR = redc(a,R^2) = Montgomery representation of 'a',
-# the two of which have been precalculated by routine located
-# in .constMTYL
+# the two of which have been precalculated by routines
+# .constMTY[012]L.
 #
 # Hence we can check the curve equation using 8 REDC operations,
 # 2 additions and 1 substraction (along with necessary reductions

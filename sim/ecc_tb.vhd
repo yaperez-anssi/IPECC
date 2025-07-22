@@ -780,7 +780,7 @@ begin
 			read(tline, nline(1 to tline'length), rdok);
 			if not rdok then
 				echol("[     ecc_tb.vhd ]: ERROR: While reading one line " &
-						"from" & """" & simtrngfile & " file. Aborting.");
+						"from" & """" & simvecfile & " file. Aborting.");
 				print_stats_and_exit;
 			end if;
 			--

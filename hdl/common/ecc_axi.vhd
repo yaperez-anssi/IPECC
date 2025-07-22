@@ -3113,6 +3113,9 @@ begin
 				-- Reset TRNG diagnostic counters (all except AXI,
 				-- which are reset when software starts transimitting
 				-- the scalar, see (s267).
+				-- TODO: if too high a fan-out, specify a multi-cycle constraint
+				-- (these counters are error tolerant, meaning a +/- few unit
+				-- error doesn't matter).
 				-- Min init's to all 0
 				v.debug.trng.efpmin := (others => '1');
 				v.debug.trng.crvmin := (others => '1');
@@ -3351,7 +3354,7 @@ begin
 				-- Version 1.4.6
 				dw(HW_VERSION_MAJ_MSB downto HW_VERSION_MAJ_LSB) := x"01"; -- major
 				dw(HW_VERSION_MIN_MSB downto HW_VERSION_MIN_LSB) := x"04"; -- minor
-				dw(HW_VERSION_PATCH_MSB downto HW_VERSION_PATCH_LSB) := x"0006"; -- patch
+				dw(HW_VERSION_PATCH_MSB downto HW_VERSION_PATCH_LSB) := x"0007"; -- patch
 				v.axi.rdatax := dw;
 				v.axi.rvalid := '1'; -- (s5)
 			-- --------------------------------------

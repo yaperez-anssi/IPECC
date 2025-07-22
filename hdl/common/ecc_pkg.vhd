@@ -194,17 +194,19 @@ package ecc_pkg is
 	constant OP_PATCH_MSB : integer := OP_PATCH_LSB + OP_PATCH_SZ - 1; -- 21
 	constant OP_P_POS : integer := OP_PATCH_LSB + OP_PATCH_SZ;         -- 22
 	constant OP_X_POS : integer := OP_P_POS + 1;                       -- 23
-	-- there are currently 16 different opcodes per type of opcodes (hence
+
+	-- There are currently 16 different opcodes per type of opcodes (hence
 	-- NB_OF_OP is set to 16 right below). This allows to encode 16 arith and/or
 	-- logical instructions, and 16 conditional branchs
 	constant NB_OF_OP : integer := 16;
 	constant OP_OP_SZ : integer := log2(NB_OF_OP - 1);
 	constant OP_OP_LSB : integer := OP_X_POS + 1;                      -- 24
 	constant OP_OP_MSB : integer := OP_OP_LSB + OP_OP_SZ - 1;          -- 27
-	-- there are currently 4 types of opcodes (hence NB_OF_TYPE is set to 4 right
+
+	-- There are currently 4 types of opcodes (hence NB_OF_TYPE is set to 4 right
 	-- below) which are: ARITH, BRANCH, UPDATE (now obsolete) and NOP
 	constant NB_OF_TYPE : integer := 4;
-	constant OP_TYPE_SZ : integer := log2(NB_OF_TYPE - 1);
+	constant OP_TYPE_SZ : integer := log2(NB_OF_TYPE - 1); -- 2
 	constant OP_TYPE_LSB : integer := OP_OP_MSB + 1;                   -- 28
 	constant OP_TYPE_MSB : integer := OP_TYPE_LSB + OP_TYPE_SZ - 1;    -- 29
 	constant OP_B_POS : integer := OP_TYPE_MSB + 1;                    -- 30

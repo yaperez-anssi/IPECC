@@ -109,7 +109,7 @@ work/es_trng_stub.o: work/ecc_pkg.o work/ecc_customize.o work/ecc_utils.o work/e
 
 work/fifo.o: work/ecc_log.o work/syncram_sdp.o
 
-work/mm_ndsp.o: work/ecc_customize.o work/ecc_utils.o work/ecc_log.o work/ecc_pkg.o work/mm_ndsp_pkg.o work/maccx_asic.o work/sync2ram_sdp.o
+work/mm_ndsp.o: work/ecc_customize.o work/ecc_utils.o work/ecc_log.o work/ecc_pkg.o work/mm_ndsp_pkg.o work/maccx_asic.o work/sync2ram_sdp.o work/syncram_sdp.o
 
 work/sync2ram_sdp.o: work/ecc_log.o work/ecc_pkg.o work/ecc_customize.o
 

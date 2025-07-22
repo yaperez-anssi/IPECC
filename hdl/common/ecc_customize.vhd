@@ -42,17 +42,22 @@ package ecc_customize is
 	-- -------------------------------------------------------------
 	-- Side-channel countermeasures & HW security related parameters
 	-- -------------------------------------------------------------
-	constant hwsecure : boolean := TRUE; -- TRUE = highly secure, FALSE = highly not
+	constant hwsecure : boolean := FALSE; -- TRUE = highly secure, FALSE = highly not
 	-- hwsecure replaces the old 'debug' mode (hwsecure = TRUE <=> debug = FALSE)
-	constant blinding : integer := 96; -- 96 seems fair for size of blinding rnd
-	constant shuffle : boolean := TRUE; -- memory shuffling
+	constant blinding : integer := 0; -- 96 seems fair for size of blinding rnd
+	constant shuffle : boolean := FALSE; -- memory shuffling
 	type shuftype is (none, linear, permute_lgnb, permute_limbs);
 	constant shuffle_type : shuftype := permute_lgnb; -- set a 'shuftype' value
-	constant zremask : integer := 4; -- quite arbitrary but quite often too
+	constant zremask : integer := 0; -- quite arbitrary but quite often too
 	-- -----------------------
 	-- TRNG related parameters
 	-- -----------------------
-	constant notrng : boolean := TRUE; -- set to TRUE for simu, to FALSE for syn
+	-- notrng must be set to TRUE in simulation and to FALSE in synthesis
+	constant notrng : boolean := FALSE
+	-- pragma translate_off
+	or TRUE
+	-- pragma translate_on
+	;
 	constant nbtrng : positive := 4;
 	constant trngta : natural range 1 to 4095 := 32;
 	constant trng_ramsz_raw : positive := 4; -- in kB
@@ -65,7 +70,7 @@ package ecc_customize is
 	-- -------------
 	constant axi32or64 : natural := 32; -- 32 or 64 only allowed values
 	constant nblargenb : positive := 32;  -- Change these two parameters only if
-	constant nbopcodes : positive := 512; -- |you really know what you're doing.
+	constant nbopcodes : positive := 1024; -- |you really know what you're doing.
 	-- --------------------------
 	-- Simulation-only parameters
 	-- --------------------------
