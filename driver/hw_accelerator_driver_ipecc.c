@@ -6476,6 +6476,7 @@ err:
 int hw_driver_attack_set_level(int level)
 {
 	uint32_t jumpop;
+	int res;
 
 	if(driver_setup()){
 		goto err;
@@ -6485,6 +6486,8 @@ int hw_driver_attack_set_level(int level)
 		log_print("In hw_driver_attack_set_level(): only levels 0 (min security) to 3 (max) are defined\n\r");
 		goto err;
 	}
+
+	res = 0;
 
 	switch (level) {
 
@@ -6512,20 +6515,25 @@ int hw_driver_attack_set_level(int level)
 			 */
 			jumpop = 0x21000000UL + ECC_IRAM_ZDBL_NOT_ALWAYS_ADDR; /*0x1fa*/
 			/* Step 1 */
-			ip_ecc_attack_set_cfg_0(true, false); /* can't generate any error */
+			res |= ip_ecc_attack_set_cfg_0(true, false); /* can't generate any resor */
 			/* Step 2.1 */
-			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_RANDOM_PHI0_ADDR /*0x04c*/, 0, 0x51007fea, 1);    /* NNCLR            phi0 */
-			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_RANDOM_PHI1_ADDR /*0x04d*/, 0, 0x51007feb, 1);    /* NNCLR            phi1 */
+			res |= ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_RANDOM_PHI0_ADDR /*0x04c*/, 0, 0x51007fea, 1);    /* NNCLR            phi0 */
+			res |= ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_RANDOM_PHI1_ADDR /*0x04d*/, 0, 0x51007feb, 1);    /* NNCLR            phi1 */
 			/* Step 2.2 */
-			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_SAMPLE0_KAPLSB_ADDR /*0x073*/, 0, 0x1400300c, 1); /* NNSLL    kap0    kap0 */
-			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_SAMPLE1_KAPLSB_ADDR /*0x074*/, 0, 0x1480340d, 1); /* NNSLL,X  kap1    kap1 */
+			res |= ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_SAMPLE0_KAPLSB_ADDR /*0x073*/, 0, 0x1400300c, 1); /* NNSLL    kap0    kap0 */
+			res |= ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_SAMPLE1_KAPLSB_ADDR /*0x074*/, 0, 0x1480340d, 1); /* NNSLL,X  kap1    kap1 */
 			/* Step 2.3 */
-			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_JUMP_DOUBLE_ADDR /*0x083*/, 0, jumpop, 1);        /* J   .zdbl_not_alwaysL */
+			res |= ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_JUMP_DOUBLE_ADDR /*0x083*/, 0, jumpop, 1);        /* J   .zdbl_not_alwaysL */
 			/* Step 3 */
-			ip_ecc_disable_aximsk(); /* can't generate any error */
+			res |= ip_ecc_disable_aximsk(); /* can't generate any resor */
 			/* Step 4 */
-			ip_ecc_attack_disable_nnrndsf(); /* can't generate any error */
-			log_print("hw_driver_attack_set_level(): set attack level -0-\n\r");
+			res |= ip_ecc_attack_disable_nnrndsf(); /* can't generate any resor */
+			if (res) {
+				log_print("In hw_driver_attack_set_level(): error while attempting to set level 0\n\r");
+				goto err;
+			} else {
+				log_print("hw_driver_attack_set_level(): attack level [0] is set\n\r");
+			}
 			/*
 			 * Note: in level 0, it still makes sense to activate following
 			 *       coutermeasures:
@@ -6554,15 +6562,20 @@ int hw_driver_attack_set_level(int level)
 			 * (aka CALL).
 			 */
 			jumpop = 0x26000000UL + DEBUG_ECC_IRAM_DOZDBL_ADDR; /*0x19b*/
-			ip_ecc_disable_aximsk(); /* can't generate any error */
-			ip_ecc_attack_set_cfg_0(false, true); /* can't generate any error */
-			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_RANDOM_PHI0_ADDR, 0, 0x51007fea, 1);    /* NNCLR            phi0 */
-			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_RANDOM_PHI1_ADDR, 0, 0x51007feb, 1);    /* NNCLR            phi1 */
-			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_SAMPLE0_KAPLSB_ADDR, 0, 0x16003022, 1); /* TESTPARs kap0  1 %kap */
-			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_SAMPLE1_KAPLSB_ADDR, 0, 0x00000000, 1); /* NOP                   */
-			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_JUMP_DOUBLE_ADDR, 0, jumpop, 1);        /* JL           .dozdblL */
-			ip_ecc_attack_enable_nnrndsf(); /* can't generate any error */
-			log_print("hw_driver_attack_set_level(): set attack level -1-\n\r");
+			res |= ip_ecc_disable_aximsk(); /* can't generate any error */
+			res |= ip_ecc_attack_set_cfg_0(false, true); /* can't generate any error */
+			res |= ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_RANDOM_PHI0_ADDR, 0, 0x51007fea, 1);    /* NNCLR            phi0 */
+			res |= ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_RANDOM_PHI1_ADDR, 0, 0x51007feb, 1);    /* NNCLR            phi1 */
+			res |= ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_SAMPLE0_KAPLSB_ADDR, 0, 0x16003022, 1); /* TESTPARs kap0  1 %kap */
+			res |= ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_SAMPLE1_KAPLSB_ADDR, 0, 0x00000000, 1); /* NOP                   */
+			res |= ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_JUMP_DOUBLE_ADDR, 0, jumpop, 1);        /* JL           .dozdblL */
+			res |= ip_ecc_attack_enable_nnrndsf(); /* can't generate any error */
+			if (res) {
+				goto err;
+				log_print("In hw_driver_attack_set_level(): error while attempting to set level 1\n\r");
+			} else {
+				log_print("hw_driver_attack_set_level(): attack level [1] is set\n\r");
+			}
 			/*
 			 * Note: it still makes sense to activate the following coutermeasures:
 			 *         - the same 3 as for level 0 (Z-remask, mem shuffling, blinding)
@@ -6576,14 +6589,19 @@ int hw_driver_attack_set_level(int level)
 			/* Level 2: a little bit more hardware security, we implement Anti address-bit DPA.
 			 */
 			jumpop = 0x26000000UL + DEBUG_ECC_IRAM_DOZDBL_ADDR; /*0x19b*/
-			ip_ecc_disable_aximsk(); /* can't generate any error */
-			ip_ecc_attack_set_cfg_0(false, true); /* can't generate any error */
-			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_RANDOM_PHI0_ADDR, 0, 0x1500000a, 1);    /* NNRND            phi0 */
-			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_RANDOM_PHI1_ADDR, 0, 0x1500000b, 1);    /* NNRND            phi1 */
-			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_SAMPLE0_KAPLSB_ADDR, 0, 0x16003022, 1); /* TESTPARs kap0  1 %kap */
-			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_SAMPLE1_KAPLSB_ADDR, 0, 0x00000000, 1); /* NOP                   */
-			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_JUMP_DOUBLE_ADDR, 0, jumpop, 1);        /* JL           .dozdblL */
-			log_print("hw_driver_attack_set_level(): set attack level -2-\n\r");
+			res |= ip_ecc_disable_aximsk(); /* can't generate any error */
+			res |= ip_ecc_attack_set_cfg_0(false, true); /* can't generate any error */
+			res |= ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_RANDOM_PHI0_ADDR, 0, 0x1500000a, 1);    /* NNRND            phi0 */
+			res |= ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_RANDOM_PHI1_ADDR, 0, 0x1500000b, 1);    /* NNRND            phi1 */
+			res |= ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_SAMPLE0_KAPLSB_ADDR, 0, 0x16003022, 1); /* TESTPARs kap0  1 %kap */
+			res |= ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_SAMPLE1_KAPLSB_ADDR, 0, 0x00000000, 1); /* NOP                   */
+			res |= ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_JUMP_DOUBLE_ADDR, 0, jumpop, 1);        /* JL           .dozdblL */
+			if (res) {
+				log_print("In hw_driver_attack_set_level(): error while attempting to set level 2\n\r");
+				goto err;
+			} else {
+				log_print("hw_driver_attack_set_level(): attack level [2] is set\n\r");
+			}
 			/*
 			 * Note: same as above, the following coutermeasures can still be enabled:
 			 *         - the same 4 as for level 1
@@ -6604,14 +6622,19 @@ int hw_driver_attack_set_level(int level)
 			 *          left loop).
 			 */
 			jumpop = 0x26000000UL + DEBUG_ECC_IRAM_DOZDBL_ADDR; /*0x19b*/
-			ip_ecc_disable_aximsk(); /* can't generate any error */
-			ip_ecc_attack_set_cfg_0(false, false); /* can't generate any error */
-			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_RANDOM_PHI0_ADDR, 0, 0x1500000a, 1);    /* NNRND            phi0 */
-			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_RANDOM_PHI1_ADDR, 0, 0x1500000b, 1);    /* NNRND            phi1 */
-			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_SAMPLE0_KAPLSB_ADDR, 0, 0x16003022, 1); /* TESTPARs kap0  1 %kap */
-			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_SAMPLE1_KAPLSB_ADDR, 0, 0x00000000, 1); /* NOP                   */
-			ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_JUMP_DOUBLE_ADDR, 0, jumpop, 1);        /* JL           .dozdblL */
-			log_print("hw_driver_attack_set_level(): set attack level -3-\n\r");
+			res |= ip_ecc_disable_aximsk(); /* can't generate any error */
+			res |= ip_ecc_attack_set_cfg_0(false, false); /* can't generate any error */
+			res |= ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_RANDOM_PHI0_ADDR, 0, 0x1500000a, 1);    /* NNRND            phi0 */
+			res |= ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_RANDOM_PHI1_ADDR, 0, 0x1500000b, 1);    /* NNRND            phi1 */
+			res |= ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_SAMPLE0_KAPLSB_ADDR, 0, 0x16003022, 1); /* TESTPARs kap0  1 %kap */
+			res |= ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_SAMPLE1_KAPLSB_ADDR, 0, 0x00000000, 1); /* NOP                   */
+			res |= ip_ecc_patch_one_opcode(DEBUG_ECC_IRAM_JUMP_DOUBLE_ADDR, 0, jumpop, 1);        /* JL           .dozdblL */
+			if (res) {
+				log_print("In hw_driver_attack_set_level(): error while attempting to set level 3\n\r");
+				goto err;
+			} else {
+				log_print("hw_driver_attack_set_level(): attack level [3] is set\n\r");
+			}
 			/*
 			 * Note: same as above, the 5 following coutermeasures can still be enabled
 			 * as for level 2, hence definition of level 3 neither is "unequivocal" by
