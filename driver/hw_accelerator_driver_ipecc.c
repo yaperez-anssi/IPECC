@@ -4309,43 +4309,39 @@ static void get_exp_flags(kp_exp_flags_t* flg)
 
 static void kp_trace_msg_append(kp_trace_info_t* ktrc, const char* fmt, ...)
 {
-#if 0
-	uint32_t msglen;
-#endif
 	static bool overflow = false;
 	va_list ap;
+#ifdef KP_TRACE_CONSOLE
+	int sz;
 
-#if 0
-	msglen = strlen(msg);
-	if (overflow) {
-		return;
-	}
-	if ( (ktrc->msgsz + msglen) > ktrc->msgsz_max ) {
-		if (overflow == false) {
-			printf("Warning: reached max size of [k]P trace buffer\n\r");
-			overflow = true;
-		}
-		return;
-	}
+	sz = ktrc->msgsz;
 #endif
 
-	if (overflow) {
-		return;
-	}
-
-	/* We can sprintf now that we know we won't overflow the statically
-	 * allocated trace log buffer.
-	 */
-	va_start(ap, fmt);
-	ktrc->msgsz += vsprintf(ktrc->msg + ktrc->msgsz, fmt, ap);
-	va_end(ap);
-	if (ktrc->msgsz > ktrc->msgsz_max - 32) {
-		if (overflow == false) {
-			printf("%sWarning! About to reach max allocated size for [k]P trace buffer!..."
-					" Losing subsequent trace logs%s\n\r", KUNK, KNRM);
-			overflow = true;
+	if (overflow == false) {
+		/* We can sprintf now that we know we won't overflow the statically
+		 * allocated trace log buffer.
+		 */
+		va_start(ap, fmt);
+		ktrc->msgsz += vsprintf(ktrc->msg + ktrc->msgsz, fmt, ap);
+		va_end(ap);
+		if (ktrc->msgsz > ktrc->msgsz_max - 32) {
+			if (overflow == false) {
+				printf("%sWarning! About to reach max allocated size for [k]P trace buffer!..."
+						" Losing subsequent trace logs%s\n\r", KUNK, KNRM);
+				overflow = true;
+			}
+			return;
 		}
-		return;
+#ifdef KP_TRACE_CONSOLE
+		log_print(ktrc->msg + sz);
+	} else {
+		/*
+		 * The trace buffer has overflowed. Print to the console instead.
+		 */
+		va_start(ap, fmt);
+		log_print(fmt, ap);
+		va_end(ap);
+#endif
 	}
 }
 
@@ -4821,11 +4817,12 @@ static int kp_run_with_specific_zmask(uint32_t* zmask)
 	 */
 	ip_debug_read_all_limbs(IPECC_LARGE_NB_LAMBDA_ADDR, check_zmask);
 
-	printf("Initially drawn random:     Zmask = 0x");
+	printf("Initially drawn random:     Zmask = ");
+	printf("%s0x", KWHT);
 	for (i=IPECC_DBG_GET_W() - 1 ; i>=0; i--) {
 		printf("%04x", check_zmask[i]);
 	}
-	printf("\n\r");
+	printf("%s\n\r", KNRM);
 #endif
 
 	w = DIV(IPECC_GET_NN_MAX() + 4, IPECC_DBG_GET_WW());
@@ -4851,11 +4848,12 @@ static int kp_run_with_specific_zmask(uint32_t* zmask)
 	 */
 	ip_debug_read_all_limbs(IPECC_LARGE_NB_LAMBDA_ADDR, check_zmask);
 
-	printf("Read-back after modif:      Zmask = 0x");
+	printf("Read-back after modif:      Zmask = ");
+	printf("%s0x", KUNK);
 	for (i=IPECC_DBG_GET_W() - 1 ; i>=0; i--) {
 		printf("%04x", check_zmask[i]);
 	}
-	printf("\n\r");
+	printf("%s\n\r", KNRM);
 
 	/* set new breakpoint just before ZR01 is masked */
 	ip_ecc_set_breakpoint(DEBUG_ECC_IRAM_CHECK0_ZMASK_ADDR, 0);
@@ -4864,11 +4862,12 @@ static int kp_run_with_specific_zmask(uint32_t* zmask)
 	IPECC_POLL_UNTIL_DEBUG_HALTED();
 	/* get value of ZR01 before masking */
 	ip_debug_read_all_limbs(IPECC_LARGE_NB_ZR01_ADDR, check_zmask);
-	printf("Checked in memory (before): ZR01  = 0x");
+	printf("Checked in memory (before): ZR01  = ");
+	printf("%s0x", KWHT);
 	for (i=IPECC_DBG_GET_W() - 1 ; i>=0; i--) {
 		printf("%04x", check_zmask[i]);
 	}
-	printf("\n\r");
+	printf("%s\n\r", KNRM);
 
 	/* set new breakpoint just after ZR01 has been masked */
 	ip_ecc_set_breakpoint(DEBUG_ECC_IRAM_CHECK1_ZMASK_ADDR, 0);
@@ -4877,11 +4876,12 @@ static int kp_run_with_specific_zmask(uint32_t* zmask)
 	IPECC_POLL_UNTIL_DEBUG_HALTED();
 	/* get value of ZR01 before masking */
 	ip_debug_read_all_limbs(IPECC_LARGE_NB_ZR01_ADDR, check_zmask);
-	printf("Checked in memory (after):  ZR01  = 0x");
+	printf("Checked in memory (after):  ZR01  = ");
+	printf("%s0x", KWHT);
 	for (i=IPECC_DBG_GET_W() - 1 ; i>=0; i--) {
 		printf("%04x", check_zmask[i]);
 	}
-	printf("\n\r");
+	printf("%s\n\r", KNRM);
 
 #endif
 
@@ -6472,7 +6472,18 @@ err:
 	return -1;
 }
 
-/* Attack features: set a specific level of side-channel resistance */
+/* Attack features: set a specific level of side-channel resistance.
+ *
+ * Cautionary note:
+ *
+ *   In FPGAs the effect of setting an attack level can be
+ *   persistent through reset (even a hardware reset) because
+ *   it affects the content of the microcode memory (the content
+ *   of which is not affected by reset).
+ *
+ *   Only reprogramming the FPGA will restore the content of
+ *   the microcode memory.
+ */
 int hw_driver_attack_set_level(int level)
 {
 	uint32_t jumpop;

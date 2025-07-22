@@ -111,6 +111,15 @@ static uint32_t microcode[499] = {
 };
 #endif
 
+#ifdef KP_SET_ZMASK
+	uint32_t zmask[17] = {
+		0x84a2, 0x5234, 0xc519, 0x7e50,
+		0x59df, 0x6ce0, 0x31bb, 0xbf69,
+		0xedfc, 0xc4a3, 0x406d, 0xc9c2,
+		0xf7d7, 0x5eb0, 0xf140, 0x39b0
+	};
+#endif
+
 /* Helper for curve set */
 extern int ip_test_set_curve(curve_t*);
 /* Point operations helpers */
@@ -584,7 +593,7 @@ int main(int argc, char *argv[])
 	/* Example of how to set a specific attack-level
 	 * (obviously only available in HW secure mode).
 	 */
-	if (hw_driver_attack_set_level(2)) {
+	if (hw_driver_attack_set_level(1)) {
 		printf("Error while setting attack level\n\r");
 		exit(EXIT_FAILURE);
 	}

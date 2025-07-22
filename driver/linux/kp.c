@@ -20,6 +20,10 @@
 #include <stdint.h>
 #include "ecc-test-linux.h"
 
+#ifdef KP_SET_ZMASK
+extern uint32_t zmask[];
+#endif
+
 extern int cmp_two_pts_coords(point_t*, point_t*, bool*);
 
 int ip_test_set_pt_and_run_kp(ipecc_test_t* t)
@@ -29,14 +33,6 @@ int ip_test_set_pt_and_run_kp(ipecc_test_t* t)
 	unsigned int i;
 #endif
 
-#ifdef KP_SET_ZMASK
-	uint32_t zmask[17] = {
-		0x84a2, 0x5234, 0xc519, 0x7e50,
-		0x59df, 0x6ce0, 0x31bb, 0xbf69,
-		0xedfc, 0xc4a3, 0x406d, 0xc9c2,
-		0xf7d7, 0x5eb0, 0xf140, 0x39b0
-	};
-#endif
 	/*
 	 * Sanity check.
 	 * Verify that curve is is set.
