@@ -146,12 +146,21 @@ int ip_test_set_pt_and_run_kp(ipecc_test_t* t)
 #endif /* KP_TRACE */
 
 	/* Run [k]P command */
+#ifdef KP_SET_ZMASK
 	if (hw_driver_mul(t->ptp.x.val, t->ptp.x.sz, t->ptp.y.val, t->ptp.y.sz, t->k.val, t->k.sz,
 			t->pt_hw_res.x.val, &(t->pt_hw_res.x.sz), t->pt_hw_res.y.val, &(t->pt_hw_res.y.sz), t->ktrc, zmask))
 	{
 		printf("%sError: [k]P computation by hardware triggered an error.%s\n\r", KERR, KNRM);
 		goto err;
 	}
+#else
+	if (hw_driver_mul(t->ptp.x.val, t->ptp.x.sz, t->ptp.y.val, t->ptp.y.sz, t->k.val, t->k.sz,
+			t->pt_hw_res.x.val, &(t->pt_hw_res.x.sz), t->pt_hw_res.y.val, &(t->pt_hw_res.y.sz), t->ktrc, NULL))
+	{
+		printf("%sError: [k]P computation by hardware triggered an error.%s\n\r", KERR, KNRM);
+		goto err;
+	}
+#endif
 
 	/*
 	 * Is the result the null point? (aka point at infinity)

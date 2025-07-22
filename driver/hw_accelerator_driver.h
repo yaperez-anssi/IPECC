@@ -45,6 +45,10 @@ typedef enum {
         PT_NEG = 6,
 } ip_ecc_command;
 
+/**********************
+ *    Nominal API     *
+ **********************/
+
 /* Reset the hardware */
 int hw_driver_reset(void);
 
@@ -227,8 +231,20 @@ int hw_driver_set_small_scalar_size(uint32_t bit_sz);
 /* To get hardware capabilities from the IP */
 int hw_driver_get_capabilities(bool* secure, bool* shuffle, bool* nndyn, bool* axi64, uint32_t* nnmax);
 
+/* To determine if the IP is in mode "HW unsecure"
+ *
+ * Watch-out/reminder: this is not a dynamic mode but a static one:
+ * IP was synthesized either with 'hwsecure' = TRUE or 'hwsecure' = FALSE
+ * in static config file ecc_customize.vhd.
+ *
+ * These two functions allow the calling software to know if the IP was
+ * synthesized with 'hwsecure' = FALSE or not.
+ */
+int hw_driver_is_hw_secure(bool*);   /* if HW secure, the bool. pted to by arg-ptr is set to TRUE. */
+int hw_driver_is_hw_unsecure(bool*); /* if HW secure, the bool. pted to by arg-ptr is set to FALSE. */
+
 /******************
- *    DEBUG API   *
+ *    DEBUG API   *    (meaning: IP was synthesized with 'hwsecure' = FALSE in ecc_customize.vhd)
  *******************/
 
 /* To halt the IP - This freezes execution of microcode

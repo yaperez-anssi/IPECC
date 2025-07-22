@@ -585,6 +585,11 @@ static volatile uint64_t *ipecc_baddr = NULL;
 #define IPECC_IS_BUSY_GEN_TOKEN() \
 	(!!(IPECC_GET_REG(IPECC_R_STATUS) & IPECC_R_STATUS_TOKEN_GEN))
 
+/* To simply get the info if the IP is busy at all
+ * (whatever the operation it may be busy doing, and without polling until
+ * it is idle) */
+#define IPECC_IS_IP_BUSY() (!!(IPECC_GET_REG(IPECC_R_STATUS) & IPECC_R_STATUS_BUSY))
+
 /* Commands */
 #define IPECC_EXEC_PT_KP()  (IPECC_SET_REG(IPECC_W_CTRL, IPECC_W_CTRL_PT_KP))
 #define IPECC_EXEC_PT_ADD() (IPECC_SET_REG(IPECC_W_CTRL, IPECC_W_CTRL_PT_ADD))
@@ -2861,9 +2866,14 @@ static int ip_ecc_patch_one_opcode(uint32_t address, uint32_t opcode_msb, uint32
 	 * in the course of a computation (hence with the busy BIT on,
 	 * in which case it would create a dead-lock situation).
 	 *
-	 * BUT we test that the IP is halted!
+	 * BUT we test that the IP is halted OR if it is idle.
+	 * If none of the two conditions is fulfilled we leave
+	 * wo/ doing nothing.
+	 *
+	 * Hence user MUST test the return code to ensure that its
+	 * patch request was "granted" and is now effective.
 	 */
-	if (!IPECC_IS_IP_DEBUG_HALTED()) {
+	if ((!IPECC_IS_IP_DEBUG_HALTED()) && (IPECC_IS_IP_BUSY())) {
 		goto err;
 	}
 
@@ -2930,9 +2940,14 @@ static int ip_ecc_patch_microcode(uint32_t* buf, uint32_t nbops, uint32_t opsz)
 	 * in the course of a computation (hence with the busy BIT on,
 	 * in which case it would create a dead-lock situation).
 	 *
-	 * BUT we test that the IP is halted!
+	 * BUT we test that the IP is halted OR it is idle.
+	 * If none of the two conditions is fulfilled we leave
+	 * wo/ doing nothing.
+	 *
+	 * Hence user MUST test the return code to ensure that its
+	 * patch request was "granted" and is now effective.
 	 */
-	if (!IPECC_IS_IP_DEBUG_HALTED()) {
+	if ((!IPECC_IS_IP_DEBUG_HALTED()) && (IPECC_IS_IP_BUSY())) {
 		goto err;
 	}
 
@@ -3329,14 +3344,18 @@ static inline int ip_ecc_write_word_in_lgnbmem(uint32_t addr, uint32_t limb)
 	 * in the course of a computation (hence with the busy BIT on,
 	 * in which case it would create a dead-lock situation).
 	 *
-	 * BUT we test that the IP is halted!
+	 * BUT we test that the IP is halted OR it is idle.
+	 * If none of the two conditions is fulfilled we leave
+	 * wo/ doing nothing, because in this case access to the
+	 * memory of large numbers inside the IP can't be completed
+	 * as its write data path is hold by ecc_fp (the ALU for large
+	 * numbers) as long as the microcode is running (= as long as
+	 * the IP is not debug-halted).
 	 *
-	 *     It it isn't, the access to the memory of large numbers inside
-	 *     the IP can't be completed as its write data path is hold by ecc_fp
-	 *     (the ALU for large numbers) as long as the microcode is running
-	 *     (= as long as the IP is not debug-halted).
+	 * Hence user MUST test the return code to ensure that its
+	 * writing request was "granted" and is now effective.
 	 */
-	if (!IPECC_IS_IP_DEBUG_HALTED()) {
+	if ((!IPECC_IS_IP_DEBUG_HALTED()) && (IPECC_IS_IP_BUSY())) {
 		goto err;
 	}
 
@@ -3362,12 +3381,16 @@ err:
  *                                       SAME LIMITATIONS APPLY.
  *
  * This function should only be used when IP was synthesized in
- * Hw unsecure mode. Nominal functions to access large numbers are
+ * HW unsecure mode. Nominal functions to access large numbers are
  * ip_ecc_write_bignum() and ip_ecc_read_bignum().
  */
 static inline int ip_ecc_write_limb(int32_t i, uint32_t j, uint32_t limb)
 {
 	uint32_t w, n;
+
+	/* Testing that IP is halted OR it is idle will be done by
+	 * ip_ecc_write_word_in_lgnbmem() - see a few lines below.
+	 */
 
 	/* Get the value of 'w' from capabilities */
 	w = DIV(IPECC_GET_NN_MAX() + 4, IPECC_DBG_GET_WW());
@@ -3397,14 +3420,18 @@ static inline int ip_ecc_write_largenb(uint32_t i, uint32_t* limbs)
 	 * in the course of a computation (hence with the busy BIT on,
 	 * in which case it would create a dead-lock situation).
 	 *
-	 * BUT we test that the IP is halted!
+	 * BUT we test that the IP is halted OR it is idle.
+	 * If none of the two conditions is fulfilled we leave
+	 * wo/ doing nothing, because in this case access to the
+	 * memory of large numbers inside the IP can't be completed
+	 * as its write data path is hold by ecc_fp (the ALU for large
+	 * numbers) as long as the microcode is running (= as long as
+	 * the IP is not debug-halted).
 	 *
-	 *     It it isn't, the access to the memory of large numbers inside
-	 *     the IP can't be completed as its write data path is hold by ecc_fp
-	 *     (the ALU for large numbers) as long as the microcode is running
-	 *     (= as long as the IP is not debug-halted).
+	 * Hence user MUST test the return code to ensure that its
+	 * writing request was "granted" and is now effective.
 	 */
-	if (!IPECC_IS_IP_DEBUG_HALTED()) {
+	if ((!IPECC_IS_IP_DEBUG_HALTED()) && (IPECC_IS_IP_BUSY())) {
 		goto err;
 	}
 
@@ -3442,14 +3469,18 @@ static inline int ip_ecc_read_word_from_lgnbmem(uint32_t addr, uint32_t* limb)
 	 * in the course of a computation (hence with the busy BIT on,
 	 * in which case it would create a dead-lock situation).
 	 *
-	 * BUT we test that the IP is halted!
+	 * BUT we test that the IP is halted OR it is idle.
+	 * If none of the two conditions is fulfilled we leave
+	 * wo/ doing nothing, because in this case access to the
+	 * memory of large numbers inside the IP can't be completed
+	 * as its read data path is hold by ecc_fp (the ALU for large
+	 * numbers) as long as the microcode is running (= as long as
+	 * the IP is not debug-halted).
 	 *
-	 *     It it isn't, the access to the memory of large numbers inside
-	 *     the IP can't be completed as its read data path is hold by ecc_fp
-	 *     (the ALU for large numbers) as long as the microcode is running
-	 *     (= as long as the IP is not debug-halted).
+	 * Hence user MUST test the return code to ensure that its
+	 * writing request was "granted" and is now effective.
 	 */
-	if (!IPECC_IS_IP_DEBUG_HALTED()) {
+	if ((!IPECC_IS_IP_DEBUG_HALTED()) && (IPECC_IS_IP_BUSY())) {
 		goto err;
 	}
 
@@ -3513,14 +3544,18 @@ static inline int ip_ecc_read_largenb(uint32_t i, uint32_t *limbs)
 	 * in the course of a computation (hence with the busy BIT on,
 	 * in which case it would create a dead-lock situation).
 	 *
-	 * BUT we test that the IP is halted!
+	 * BUT we test that the IP is halted OR it is idle.
+	 * If none of the two conditions is fulfilled we leave
+	 * wo/ doing nothing, because in this case access to the
+	 * memory of large numbers inside the IP can't be completed
+	 * as its read data path is hold by ecc_fp (the ALU for large
+	 * numbers) as long as the microcode is running (= as long as
+	 * the IP is not debug-halted).
 	 *
-	 *     It it isn't, the access to the memory of large numbers inside
-	 *     the IP can't be completed as its write data path is hold by ecc_fp
-	 *     (the ALU for large numbers) as long as the microcode is running
-	 *     (= as long as the IP is not debug-halted).
+	 * Hence user MUST test the return code to ensure that its
+	 * writing request was "granted" and is now effective.
 	 */
-	if (!IPECC_IS_IP_DEBUG_HALTED()) {
+	if ((!IPECC_IS_IP_DEBUG_HALTED()) && (IPECC_IS_IP_BUSY())) {
 		goto err;
 	}
 
@@ -3609,13 +3644,25 @@ static inline int ip_ecc_enable_aximsk(void)
 	/* We DON'T busy-wait as we assume the IP might be debug-halted
 	 * in the course of a computation (hence with the busy BIT on,
 	 * in which case it would create a dead-lock situation).
+	 *
+	 * BUT we test that the IP is halted OR if it is idle.
+	 * If none of the two conditions is fulfilled we leave
+	 * wo/ doing nothing.
+	 *
+	 * Hence user MUST test the return code to ensure that its
+	 * config request was "granted" and is now effective.
 	 */
+	if ((!IPECC_IS_IP_DEBUG_HALTED()) && (IPECC_IS_IP_BUSY())) {
+		goto err;
+	}
 
 	/* Memory-mapped register access
 	 * to enable the countermeasure. */
 	IPECC_DBG_ENABLE_AXIMSK();
 
 	return 0;
+err:
+	return -1;
 }
 
 /* Disable 'on-the-fly masking of the scalar by AXI interface'
@@ -3625,16 +3672,28 @@ static inline int ip_ecc_enable_aximsk(void)
  */
 static inline int ip_ecc_disable_aximsk(void)
 {
-	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	/* we DON'T busy-wait as we assume the IP might be debug-halted
 	 * in the course of a computation (hence with the busy BIT on,
 	 * in which case it would create a dead-lock situation).
+	 *
+	 * BUT we test that the IP is halted OR if it is idle.
+	 * If none of the two conditions is fulfilled we leave
+	 * wo/ doing nothing.
+	 *
+	 * Hence user MUST test the return code to ensure that its
+	 * config request was "granted" and is now effective.
 	 */
+	if ((!IPECC_IS_IP_DEBUG_HALTED()) && (IPECC_IS_IP_BUSY())) {
+		goto err;
+	}
 
 	/* Memory-mapped register access
 	 * to disable the countermeasure. */
 	IPECC_DBG_DISABLE_AXIMSK();
 
 	return 0;
+err:
+	return -1;
 }
 
 /* Enable token feature
@@ -4273,6 +4332,7 @@ static void kp_trace_msg_append(kp_trace_info_t* ktrc, const char* fmt, ...)
 	if (overflow) {
 		return;
 	}
+
 	/* We can sprintf now that we know we won't overflow the statically
 	 * allocated trace log buffer.
 	 */
@@ -4371,6 +4431,7 @@ static int kp_debug_trace(kp_trace_info_t* ktrc)
 	}
 
 	kp_trace_msg_append(ktrc, "Starting step-by-step execution\n\r");
+
 	/*
 	 * Step-by-step loop
 	 */
@@ -4867,6 +4928,7 @@ static inline int ip_ecc_exec_command(ip_ecc_command cmd, int *flag, kp_trace_in
 					goto err;
 				};
 			}
+			(void)zmask; /* To avoid unused parameter warning from gcc */
 #else
   #ifdef KP_SET_ZMASK
 			/* sanity check */
@@ -5038,62 +5100,111 @@ static inline int ip_ecc_get_version_tags(uint32_t* maj, uint32_t* min, uint32_t
 
 int ip_ecc_attack_set_cfg_0(bool naive, bool nocollisioncr)
 {
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 */
+
+	/* we DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * BUT we test that the IP is halted OR if it is idle.
+	 * If none of the two conditions is fulfilled we leave
+	 * wo/ doing nothing.
+	 *
+	 * Hence user MUST test the return code to ensure that its
+	 * config request was "granted" and is now effective.
+	 */
+	if ((!IPECC_IS_IP_DEBUG_HALTED()) && (IPECC_IS_IP_BUSY())) {
+		goto err;
+	}
 
 	/* Transmit configuration to low-level routine */
 	IPECC_ATTACK_SET_HW_CFG(naive, nocollisioncr);
 
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
 	return 0;
+err:
+	return -1;
 }
 
 /* Enable masking of kappa & kappa' by shift-registers embedded in the hardware.
  */
 int ip_ecc_attack_enable_nnrndsf()
 {
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
+	/* we DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * BUT we test that the IP is halted OR if it is idle.
+	 * If none of the two conditions is fulfilled we leave
+	 * wo/ doing nothing.
+	 *
+	 * Hence user MUST test the return code to ensure that its
+	 * config request was "granted" and is now effective.
+	 */
+	if ((!IPECC_IS_IP_DEBUG_HALTED()) && (IPECC_IS_IP_BUSY())) {
+		goto err;
+	}
 
 	/* Transmit configuration to low-level routine */
 	IPECC_ATTACK_ENABLE_NNRNDSF();
 
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
 	return 0;
+err:
+	return -1;
 }
 
 /* Disable masking of kappa & kappa' by shift-registers embedded in the hardware.
  */
 int ip_ecc_attack_disable_nnrndsf()
 {
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
+	/* we DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * BUT we test that the IP is halted OR if it is idle.
+	 * If none of the two conditions is fulfilled we leave
+	 * wo/ doing nothing.
+	 *
+	 * Hence user MUST test the return code to ensure that its
+	 * config request was "granted" and is now effective.
+	 */
+	if ((!IPECC_IS_IP_DEBUG_HALTED()) && (IPECC_IS_IP_BUSY())) {
+		goto err;
+	}
 
 	/* Transmit configuration to low-level routine */
 	IPECC_ATTACK_DISABLE_NNRNDSF();
 
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
 	return 0;
+err:
+	return -1;
 }
 
 int ip_ecc_attack_set_clock_div_out(int div, int divmm)
 {
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
+	/* we DON'T busy-wait as we assume the IP might be debug-halted
+	 * in the course of a computation (hence with the busy BIT on,
+	 * in which case it would create a dead-lock situation).
+	 *
+	 * BUT we test that the IP is halted OR if it is idle.
+	 * If none of the two conditions is fulfilled we leave
+	 * wo/ doing nothing.
+	 *
+	 * Hence user MUST test the return code to ensure that its
+	 * config request was "granted" and is now effective.
+	 */
+	if ((!IPECC_IS_IP_DEBUG_HALTED()) && (IPECC_IS_IP_BUSY())) {
+		goto err;
+	}
 
 	/* Transmit configuration to low-level routine */
 	IPECC_ATTACK_SET_CLOCK_DIVOUT(div, divmm);
 
-	/* Wait until the IP is not busy */
-	IPECC_BUSY_WAIT();
-
 	return 0;
+err:
+	return -1;
 }
 
 #if 0
@@ -7118,7 +7229,7 @@ int hw_driver_is_on_curve(const uint8_t *x, uint32_t x_sz, const uint8_t *y, uin
 	}
 
 	/* Check if it is on curve */
-	if(ip_ecc_exec_command(PT_CHK, on_curve, NULL)){
+	if(ip_ecc_exec_command(PT_CHK, on_curve, NULL, NULL)){
 		goto err;
 	}
 
@@ -7177,7 +7288,7 @@ int hw_driver_eq(const uint8_t *x1, uint32_t x1_sz, const uint8_t *y1, uint32_t 
 	}
 
 	/* Check if it the points are equal */
-	if(ip_ecc_exec_command(PT_EQU, is_eq, NULL)){
+	if(ip_ecc_exec_command(PT_EQU, is_eq, NULL, NULL)){
 		goto err;
 	}
 
@@ -7237,7 +7348,7 @@ int hw_driver_opp(const uint8_t *x1, uint32_t x1_sz, const uint8_t *y1, uint32_t
 
 
 	/* Check if the points are opposite */
-	if(ip_ecc_exec_command(PT_OPP, is_opp, NULL)){
+	if(ip_ecc_exec_command(PT_OPP, is_opp, NULL, NULL)){
 		goto err;
 	}
 
@@ -7419,7 +7530,7 @@ int hw_driver_neg(const uint8_t *x, uint32_t x_sz, const uint8_t *y, uint32_t y_
 	}
 
 	/* Execute our NEG command */
-	if(ip_ecc_exec_command(PT_NEG, NULL, NULL)){
+	if(ip_ecc_exec_command(PT_NEG, NULL, NULL, NULL)){
 		goto err;
 	}
 
@@ -7485,7 +7596,7 @@ int hw_driver_dbl(const uint8_t *x, uint32_t x_sz, const uint8_t *y, uint32_t y_
 	}
 
 	/* Execute our DBL command */
-	if(ip_ecc_exec_command(PT_DBL, NULL, NULL)){
+	if(ip_ecc_exec_command(PT_DBL, NULL, NULL, NULL)){
 		goto err;
 	}
 
@@ -7560,7 +7671,7 @@ int hw_driver_add(const uint8_t *x1, uint32_t x1_sz, const uint8_t *y1, uint32_t
 	}
 
 	/* Execute our ADD command */
-	if(ip_ecc_exec_command(PT_ADD, NULL, NULL)){
+	if(ip_ecc_exec_command(PT_ADD, NULL, NULL, NULL)){
 		goto err;
 	}
 

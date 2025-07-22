@@ -45,3 +45,5 @@ vivado
 sim/ecc_tb
 sim/work
 *.swo
+vivado
+soc

@@ -571,32 +571,6 @@ int main(int argc, char *argv[])
 	printf("%sTRNG bypassed using all 0 values instead%s\n\r", KWHT, KNRM);
 #endif
 
-#ifdef ATTACK
-	/* ATTACK feature: setting attack level to 0 for test */
-#define ATTACK_LEVEL   0   /* TODO: nasty to have this here */
-	if (hw_driver_attack_set_level(ATTACK_LEVEL)) {
-		printf("Error:  hw_driver_attack_set_level() returned exception\n\r");
-		exit(EXIT_FAILURE);
-	}
-	printf("%sATTACK LEVEL: %d%s\n\r", KWHT, ATTACK_LEVEL, KNRM);
-
-	hw_driver_disable_xyshuf_DBG();
-	hw_driver_enable_zremask_and_set_period(1);
-	hw_driver_enable_shuffling();
-
-
-	/* Set & configure clk & clkmm division & out feature */
-#define CLK_DIV     16384
-#define CLKMM_DIV   16384
-	if (hw_driver_attack_set_clock_div_out(CLK_DIV, CLKMM_DIV)) {
-		printf("Error:  hw_driver_attack_set_clock_div_out() returned exception\n\r");
-		exit(EXIT_FAILURE);
-	}
-	printf("clk divided by %d\n\r", CLK_DIV);
-	printf("clkmm divided by %d\n\r", CLKMM_DIV);
-#endif
-
-
 	/* Before entering the main loop, hook up the SIGINT signal
 	 * to our own handler.
 	 */
@@ -605,6 +579,16 @@ int main(int argc, char *argv[])
 	/* Make cursor invisible from the terminal window.
 	 */
 	printf("%s", KCURSORINVIS);
+
+#if 0
+	/* Example of how to set a specific attack-level
+	 * (obviously only available in HW secure mode).
+	 */
+	if (hw_driver_attack_set_level(2)) {
+		printf("Error while setting attack level\n\r");
+		exit(EXIT_FAILURE);
+	}
+#endif
 
 	/* Main infinite loop, parsing lines from standard input to extract:
 	 *   - input vectors
