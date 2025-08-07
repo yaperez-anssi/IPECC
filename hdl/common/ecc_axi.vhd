@@ -1946,9 +1946,10 @@ begin
 							if (blinding > 0) then
 								-- Software driver is attempting to deactivate blinding
 								-- countermeasure but the IP is configured in production
-								-- mode and with blinding countermeasure locked: keep
-								-- things as they are (blinding is activated as per (s240))
-								-- and signal error 'ERR_WREG_FBD' in R_STATUS register.
+								-- (secure-)mode and with blinding countermeasure locked:
+								-- keep things as they are (blinding is activated as per
+								-- (s240)) and signal error 'ERR_WREG_FBD' in R_STATUS
+								-- register.
 								v.ctrl.ierrid(STATUS_ERR_I_WREG_FBD) := '1';
 							else
 								v.ctrl.doblinding := '0';
@@ -4498,11 +4499,11 @@ begin
 				-- Whether we're in HW unsecure/Side-Channel analysis mode or in
 				-- HW secure mode the Z-remasking countermeasure is reset according
 				-- to what was set in ecc_customize.vhd.
-				-- Now if in production mode, the reset value of .zremaskact will act as
-				-- a hardwired signal because the synthesizer will ignore and trim paths
-				-- corresponding to (s253) & (s254). Furthermore, the test logic (s255)
-				-- will enforce that .zremaskbits can only be decreased as compared to
-				-- its reset value in (s256) below.
+				-- Now if in production (secure-)mode, the reset value of .zremaskact
+				-- will act as a hardwired signal because the synthesizer will ignore
+				-- and trim paths corresponding to (s253) & (s254). Furthermore, the
+				-- test logic (s255) will enforce that .zremaskbits can only be
+				-- decreased as compared to its reset value in (s256) below.
 				v.ctrl.zremaskact := '1';
 				v.ctrl.zremaskbits :=
 					to_unsigned(zremask - 1, log2(nn - 1)); -- (s256)
