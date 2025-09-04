@@ -202,7 +202,7 @@ architecture struct of ecc is
 			xre : out std_logic;
 			xrdata : in std_logic_vector(ww - 1 downto 0);
 			nndyn_nnrnd_mask : out std_logic_vector(ww - 1 downto 0);
-			nndyn_nnrnd_zerowm1 : out std_logic;
+			nndyn_nnrnd_maskwg : out unsigned(log2(w) - 1 downto 0);
 			-- interface with ecc_trng
 			trngvalid : in std_logic;
 			trngrdy : out std_logic;
@@ -224,6 +224,16 @@ architecture struct of ecc is
 			nndyn_nnp1 : out unsigned(log2(nn + 1) - 1 downto 0);
 			nndyn_nnm3 : out unsigned(log2(nn) - 1 downto 0);
 			nndyn_nnm2 : out unsigned(log2(nn) - 1 downto 0);
+			nndyn_w_less_eq_ndsp : out std_logic;
+			nndyn_w_less_ndsp : out std_logic;
+			nndyn_w_multiple_of_ndsp : out std_logic;
+			nndyn_w_div_ndsp_minus_one : out unsigned(log2(div(w, ndsp)) - 1 downto 0);
+			nndyn_w_div_ndsp : out unsigned(log2(div(w, ndsp)) - 1 downto 0);
+			nndyn_nb_bursts : out unsigned(log2(div(w, ndsp)) - 1 downto 0);
+			nndyn_slkpivot_0 : out signed(NB_SLK_BITS - 1 downto 0);
+			nndyn_slkpivot_0_larger_cstslk : out std_logic;
+			nndyn_slkpivot_1 : out signed(NB_SLK_BITS - 1 downto 0);
+			nndyn_slkpivot_1_larger_cstslk : out std_logic;
 			-- busy signal for [k]P computation
 			kppending : out std_logic;
 			-- software reset (to other components of the IP)
@@ -548,7 +558,7 @@ architecture struct of ecc is
 			xre : in std_logic;
 			xrdata : out std_logic_vector(ww - 1 downto 0);
 			nndyn_nnrnd_mask : in std_logic_vector(ww - 1 downto 0);
-			nndyn_nnrnd_zerowm1 : in std_logic;
+			nndyn_nnrnd_maskwg : in unsigned(log2(w) - 1 downto 0);
 			nndyn_wm1 : in unsigned(log2(w - 1) - 1 downto 0);
 			nndyn_2wm1 : in unsigned(log2((2*w) - 1) - 1 downto 0);
 			-- pragma translate_off
@@ -817,6 +827,16 @@ architecture struct of ecc is
 			nndyn_wmin_excp_val : in unsigned(log2(2*w - 1) - 1 downto 0);
 			nndyn_wmin_excp : in std_logic;
 			nndyn_mask_wm2 : in std_logic;
+			nndyn_w_less_eq_ndsp : in std_logic;
+			nndyn_w_less_ndsp : in std_logic;
+			nndyn_w_multiple_of_ndsp : in std_logic;
+			nndyn_w_div_ndsp_minus_one : in unsigned(log2(div(w, ndsp)) - 1 downto 0);
+			nndyn_w_div_ndsp : in unsigned(log2(div(w, ndsp)) - 1 downto 0);
+			nndyn_nb_bursts : in unsigned(log2(div(w, ndsp)) - 1 downto 0);
+			nndyn_slkpivot_0 : in signed(NB_SLK_BITS - 1 downto 0);
+			nndyn_slkpivot_0_larger_cstslk : in std_logic;
+			nndyn_slkpivot_1 : in signed(NB_SLK_BITS - 1 downto 0);
+			nndyn_slkpivot_1_larger_cstslk : in std_logic;
 			-- interface with ecc_curve
 			ppen : in std_logic;
 			-- output data
@@ -880,6 +900,16 @@ architecture struct of ecc is
 	signal nndyn_wmin_excp_val : unsigned(log2(2*w - 1) - 1 downto 0);
 	signal nndyn_wmin_excp : std_logic;
 	signal nndyn_mask_wm2 : std_logic;
+	signal nndyn_w_less_eq_ndsp : std_logic;
+	signal nndyn_w_less_ndsp : std_logic;
+	signal nndyn_w_multiple_of_ndsp : std_logic;
+	signal nndyn_w_div_ndsp_minus_one : unsigned(log2(div(w, ndsp)) - 1 downto 0);
+	signal nndyn_w_div_ndsp : unsigned(log2(div(w, ndsp)) - 1 downto 0);
+	signal nndyn_nb_bursts : unsigned(log2(div(w, ndsp)) - 1 downto 0);
+	signal nndyn_slkpivot_0 : signed(NB_SLK_BITS - 1 downto 0);
+	signal nndyn_slkpivot_0_larger_cstslk : std_logic;
+	signal nndyn_slkpivot_1 : signed(NB_SLK_BITS - 1 downto 0);
+	signal nndyn_slkpivot_1_larger_cstslk : std_logic;
 	-- signals between ecc_curve & mm_ndsp(s)
 	signal ppen : std_logic;
 	-- signals between ecc_scalar & ecc_curve
@@ -937,7 +967,7 @@ architecture struct of ecc is
 	signal mmo : mmo_type;
 	-- signals between ecc_axi & ecc_fp
 	signal nndyn_nnrnd_mask : std_logic_vector(ww - 1 downto 0);
-	signal nndyn_nnrnd_zerowm1 : std_logic;
+	signal nndyn_nnrnd_maskwg : unsigned(log2(w) - 1 downto 0);
 	-- signals between ecc_axi and ecc_fp_dram
 	signal xwe, xre : std_logic;
 	signal xaddr : std_logic_vector(FP_ADDR - 1 downto 0);
@@ -1179,7 +1209,7 @@ begin
 			xre => xre,
 			xrdata => xrdata,
 			nndyn_nnrnd_mask => nndyn_nnrnd_mask,
-			nndyn_nnrnd_zerowm1 => nndyn_nnrnd_zerowm1,
+			nndyn_nnrnd_maskwg => nndyn_nnrnd_maskwg,
 			-- interface with ecc_trng
 			trngvalid => trng_valid_axi,
 			trngrdy => trng_rdy_axi,
@@ -1204,6 +1234,16 @@ begin
 			nndyn_nnp1 => nndyn_nnp1,
 			nndyn_nnm3 => nndyn_nnm3,
 			nndyn_nnm2 => nndyn_nnm2,
+			nndyn_w_less_eq_ndsp => nndyn_w_less_eq_ndsp,
+			nndyn_w_less_ndsp => nndyn_w_less_ndsp,
+			nndyn_w_multiple_of_ndsp => nndyn_w_multiple_of_ndsp,
+			nndyn_w_div_ndsp_minus_one => nndyn_w_div_ndsp_minus_one,
+			nndyn_w_div_ndsp => nndyn_w_div_ndsp,
+			nndyn_nb_bursts => nndyn_nb_bursts,
+			nndyn_slkpivot_0 => nndyn_slkpivot_0,
+			nndyn_slkpivot_0_larger_cstslk => nndyn_slkpivot_0_larger_cstslk,
+			nndyn_slkpivot_1 => nndyn_slkpivot_1,
+			nndyn_slkpivot_1_larger_cstslk => nndyn_slkpivot_1_larger_cstslk,
 			-- general busy signal
 			kppending => busy,
 			-- software reset (to other components of the IP)
@@ -1511,7 +1551,7 @@ begin
 			xre => xre,
 			xrdata => xrdata,
 			nndyn_nnrnd_mask => nndyn_nnrnd_mask,
-			nndyn_nnrnd_zerowm1 => nndyn_nnrnd_zerowm1,
+			nndyn_nnrnd_maskwg => nndyn_nnrnd_maskwg,
 			nndyn_wm1 => nndyn_wm1,
 			nndyn_2wm1 => nndyn_2wm1,
 			-- pragma translate_off
@@ -1784,6 +1824,16 @@ begin
 				nndyn_wmin_excp_val => nndyn_wmin_excp_val,
 				nndyn_wmin_excp => nndyn_wmin_excp,
 				nndyn_mask_wm2 => nndyn_mask_wm2,
+				nndyn_w_less_eq_ndsp => nndyn_w_less_eq_ndsp,
+				nndyn_w_less_ndsp => nndyn_w_less_ndsp,
+				nndyn_w_multiple_of_ndsp => nndyn_w_multiple_of_ndsp,
+				nndyn_w_div_ndsp_minus_one => nndyn_w_div_ndsp_minus_one,
+				nndyn_w_div_ndsp => nndyn_w_div_ndsp,
+				nndyn_nb_bursts => nndyn_nb_bursts,
+				nndyn_slkpivot_0 => nndyn_slkpivot_0,
+				nndyn_slkpivot_0_larger_cstslk => nndyn_slkpivot_0_larger_cstslk,
+				nndyn_slkpivot_1 => nndyn_slkpivot_1,
+				nndyn_slkpivot_1_larger_cstslk => nndyn_slkpivot_1_larger_cstslk,
 				-- interface with ecc_curve
 				ppen => ppen,
 				-- output data
@@ -1817,11 +1867,13 @@ begin
 		echo(integer'image(n));
 		echo("), ndsp = ");
 		echo(integer'image(ndsp));
+		echo(", sram lat = ");
+		echo(integer'image(sramlat));
 		echo(", async = ");
 		if async then
-			echol("TRUE");
+			echo("TRUE");
 		else
-			echol("FALSE");
+			echo("FALSE");
 		end if;
 		echo("[        ecc.vhd ]: Config: sram lat = ");
 		echo(integer'image(sramlat));

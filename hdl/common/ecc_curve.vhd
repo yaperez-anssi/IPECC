@@ -997,6 +997,7 @@ begin
 									null; -- opc by default to ZR01 in zaddc.s for this opcode
 								end if;
 							end if;
+						-- TODO: remove patch ,p3 - it's not used anymore
 						elsif r.decode.c.patchid = "000011" then -- set opc for ",p3" patch
 							if laststep = '1' then
 								-- this is the FPREDC instruction that computes ZR01
@@ -3129,7 +3130,7 @@ begin
 					v.debug.breakpointhit := '0';
 				end if;
 			-- ----------------------------------------------
-			-- state to wait for an FPREDC to finishz
+			-- state to wait for an FPREDC to finish
 			--   before breakpoint halt (HW unsecure feature)
 			-- ----------------------------------------------
 			when waitb4bkpt =>
@@ -3566,13 +3567,13 @@ begin
 			-- log message when detecting the input point (the one given
 			-- by software) is a 2-torsion point
 			if rbak_first2pz = '0' and r.ctrl.first2pz = '1' then
-				echol("ECC_CURVE: detected initial 2-torsion point ([2]P = 0)");
+				echol("[  ecc_curve.vhd ]: DETECTED INITIAL 2-TORSION POINT ([2]P = 0)");
 			end if;
 			-- log message when detecting we're doubling a point (in .zdblL)
 			-- and it happens to be a 2-torsion point
 			rbak_torsion2 <= r.ctrl.torsion2;
 			if rbak_torsion2 = '0' and r.ctrl.torsion2 = '1' then -- (s105)
-				echol("ECC_CURVE: detected doubling of a 2-torsion point (result = 0)");
+				echol("[  ecc_curve.vhd ]: DETECTED DOUBLING OF A 2-TORSION POINT ([2]P = 0)");
 			end if;
 		end if;
 	end process log;
@@ -3646,8 +3647,9 @@ begin
 	opi.oposhr <= opo.shr(to_integer(unsigned(r.decode.a.popb(1 downto 0))));
 	stop <= r.decode.c.stop;
 	patching <= r.decode.c.patch;
-	patchid <= to_integer(unsigned(
-						 r.fetch.opcode(OP_PATCH_MSB downto OP_PATCH_LSB)));
+	patchid <= to_integer(unsigned(r.decode.c.patchid));
+	--patchid <= to_integer(unsigned(
+	--					 r.fetch.opcode(OP_PATCH_MSB downto OP_PATCH_LSB)));
 	-- pragma translate_on
 
 	-- pragma translate_off

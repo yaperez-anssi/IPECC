@@ -93,7 +93,10 @@ architecture sim of ecc_tb is
 			--   pseudo-trng port
 			dbgptdata : in std_logic_vector(7 downto 0);
 			dbgptvalid : in std_logic;
-			dbgptrdy : out std_logic
+			dbgptrdy : out std_logic;
+			-- clk & clkmm division & out feature
+			clkdivo : out std_logic;
+			clkmmdivo : out std_logic
 		);
 	end component ecc;
 
@@ -193,6 +196,10 @@ architecture sim of ecc_tb is
 	signal r_fifo_count : natural;
 	signal once_out_of_reset : std_logic;
 	signal pseudo_trng_irq : std_logic;
+
+	-- clk & clkmm division & out feature
+	signal clkdivo : std_logic;
+	signal clkmmdivo : std_logic;
 
 	-- A 32-bit number needs at most 10 decimal digits to be encoded in base 10.
 	type digit_array_type is array(0 to 9) of integer;
@@ -423,7 +430,7 @@ architecture sim of ecc_tb is
 	end function compare_two_points_coords;
 
 	--
-	--	To help parsing the input file/stream.
+	-- To help parsing the input file/stream.
 	--
 	type line_t is
 		(EXPECT_NONE, EXPECT_CURVE, EXPECT_NN, EXPECT_P, EXPECT_A, EXPECT_B,
@@ -485,13 +492,13 @@ begin
 		wait for 3.333 ns;
 	end process;
 
-	-- Emulate clkmm clock (116 MHz).
+	-- Emulate clkmm clock (374 MHz).
 	process
 	begin
 		clkmm <= '0';
-		wait for 4.31 ns;
+		wait for 1.336 ns;
 		clkmm <= '1';
-		wait for 4.31 ns;
+		wait for 1.336 ns;
 	end process;
 
 	-- DuT instance
@@ -539,7 +546,10 @@ begin
 			-- Pseudo-trng port
 			dbgptdata => dbgptdata,
 			dbgptvalid => dbgptvalid,
-			dbgptrdy => dbgptrdy
+			dbgptrdy => dbgptrdy,
+			-- clk & clkmm division & out feature
+			clkdivo => clkdivo,
+			clkmmdivo => clkmmdivo
 		);
 
 	-- Pseudo TRNG device
@@ -761,6 +771,9 @@ begin
 
 		echol("[     ecc_tb.vhd ]: Reading test-vectors from input file: """
 			& simvecfile & """");
+
+		echol("[     ecc_tb.vhd ]: Execution traced in output file: """
+			& simlogfile & """");
 
 		nbbld := 0; op := OP_NONE; line_type_expected := EXPECT_NONE;
 		stats_ok := 0; stats_nok := 0; stats_total := 0;

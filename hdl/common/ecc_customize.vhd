@@ -24,7 +24,7 @@ package ecc_customize is
 	-- Please refer to the in-file documentation of parameters below (after the
 	-- package specification), where parameters are described in the same order
 	-- as they appear hereafter.
-	constant nn : positive := 528;
+	constant nn : positive range 3 to positive'high := 528;
 	constant nn_dynamic : boolean := TRUE;
 	type techno_type is (spartan6, virtex6, series7, ultrascale, ialtera, asic);
 	constant techno : techno_type := series7; -- set a 'techno_type' value
@@ -35,20 +35,19 @@ package ecc_customize is
 	-- (otherwise its value has no meaning and can be ignored)
 	constant multwidth : positive := 32; -- 32 seems fair for an ASIC default
 	constant nbmult : positive range 1 to 2 := 2;
-	-- parameter nbdsp below is range-constrained because it must be >=2
-	constant nbdsp : positive range 2 to positive'high := 6;
-	constant sramlat : positive range 1 to 2 := 1;
-	constant async : boolean := TRUE;
+	constant nbdsp : positive := 6;
+	constant sramlat : positive range 1 to 2 := 2;
+	constant async : boolean := FALSE;
 	-- -------------------------------------------------------------
 	-- Side-channel countermeasures & HW security related parameters
 	-- -------------------------------------------------------------
-	constant hwsecure : boolean := FALSE; -- TRUE = highly secure, FALSE = highly not
+	constant hwsecure : boolean := TRUE; -- TRUE = highly secure, FALSE = highly not
 	-- hwsecure replaces the old 'debug' mode (hwsecure = TRUE <=> debug = FALSE)
-	constant blinding : integer := 0; -- 96 seems fair for size of blinding rnd
-	constant shuffle : boolean := FALSE; -- memory shuffling
+	constant blinding : integer := 96; -- 96 seems fair for size of blinding rnd
+	constant shuffle : boolean := TRUE; -- memory shuffling
 	type shuftype is (none, linear, permute_lgnb, permute_limbs);
 	constant shuffle_type : shuftype := permute_lgnb; -- set a 'shuftype' value
-	constant zremask : integer := 0; -- quite arbitrary but quite often too
+	constant zremask : integer := 4; -- quite arbitrary but quite often too
 	-- -----------------------
 	-- TRNG related parameters
 	-- -----------------------
@@ -493,7 +492,7 @@ end package ecc_customize;
 --       security feature and countermeasure to be disengaged at runtime at the
 --       software initiative.
 --
---       Setting 'hwsecure' to TRUE is what you wish if you're targeting pro-
+--       Setting 'debug' to FALSE is what you wish if you're targeting pro-
 --       duction mode and you aim at disposing of a true hardware secure
 --       element for your application.
 --

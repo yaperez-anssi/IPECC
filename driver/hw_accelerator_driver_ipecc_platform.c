@@ -25,39 +25,51 @@
  *
  * This address should only be used for direct access in standalone
  * mode or using a physical memory access (e.g. through /dev/mem).
+ *
+ * #Defining IPECC_PHYS_BADDR is always preceeded with a '#ifndef' test
+ * so as to allow you to set it through gcc '-D' inline setting instead.
+ *
+ * As for the 'pseudo TRNG' feature, yt's under construction and will
+ * probably never actually be implemented, so please just ignore it.
  */
 #ifdef WITH_EC_HW_STANDALONE_XILINX
-#include <xparameters.h>
-#define IPECC_PHYS_BADDR                (XPAR_ECC_0_BASEADDR)
-#ifdef XPAR_PSEUDO_TRNG_0_BASEADDR
-#define IPECC_PHYS_PSEUDO_TRNG_BADDR    (XPAR_PSEUDO_TRNG_0_BASEADDR)
+  #include <xparameters.h>
+  #ifndef IPECC_PHYS_BADDR
+    #define IPECC_PHYS_BADDR                (XPAR_ECC_0_BASEADDR)
+  #endif
+  #ifdef XPAR_PSEUDO_TRNG_0_BASEADDR
+    #define IPECC_PHYS_PSEUDO_TRNG_BADDR    (XPAR_PSEUDO_TRNG_0_BASEADDR)
+  #else
+    #define IPECC_PHYS_PSEUDO_TRNG_BADDR    (NULL)
+  #endif
 #else
-#define IPECC_PHYS_PSEUDO_TRNG_BADDR    (NULL)
-#endif
-#else
-#ifdef IPECC_PLATFORM_ULTRASCALE
-#define IPECC_PHYS_BADDR                0x80000000
-#define IPECC_PHYS_PSEUDO_TRNG_BADDR    0x80001000
-#else
-#ifdef IPECC_PLATFORM_SERIES7
-#define IPECC_PHYS_BADDR                0x40000000
-#define IPECC_PHYS_PSEUDO_TRNG_BADDR    0x40001000
-#else
-#error "hw_accelerator_driver_ipecc_platform.c: could not determine platform embedding the IP ("series7", "ultrascale" ?)"
-#endif
-#endif
+  #ifdef IPECC_PLATFORM_ULTRASCALE
+    #ifndef IPECC_PHYS_BADDR
+      #define IPECC_PHYS_BADDR                0x80000000
+    #endif
+    #define IPECC_PHYS_PSEUDO_TRNG_BADDR    0x80001000
+  #else
+    #ifdef IPECC_PLATFORM_SERIES7
+      #ifndef IPECC_PHYS_BADDR
+        #define IPECC_PHYS_BADDR                0x40000000
+      #endif
+      #define IPECC_PHYS_PSEUDO_TRNG_BADDR    0x40001000
+    #else
+      #error "hw_accelerator_driver_ipecc_platform.c: could not determine platform embedding the IP ("series7", "ultrascale" ?)"
+    #endif
+  #endif
 #endif
 
 #define IPECC_PHYS_SZ                   (4096) /* One page size */
 
 #ifdef IPECC_PLATFORM_ULTRASCALE
-#define IPECC_DEV_UIO_IPECC             "/dev/uio4"
-#define IPECC_DEV_UIO_PSEUDOTRNG        "/dev/uio5"
+  #define IPECC_DEV_UIO_IPECC             "/dev/uio4"
+  #define IPECC_DEV_UIO_PSEUDOTRNG        "/dev/uio5"
 #else
-#ifdef IPECC_PLATFORM_SERIES7
-#define IPECC_DEV_UIO_IPECC             "/dev/uio0"
-#define IPECC_DEV_UIO_PSEUDOTRNG        "/dev/uio1"
-#endif
+  #ifdef IPECC_PLATFORM_SERIES7
+    #define IPECC_DEV_UIO_IPECC             "/dev/uio0"
+    #define IPECC_DEV_UIO_PSEUDOTRNG        "/dev/uio1"
+  #endif
 #endif
 
 /* Setup the driver depending on the environment.

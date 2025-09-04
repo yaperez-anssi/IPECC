@@ -112,6 +112,7 @@ static uint32_t microcode[499] = {
 #endif
 
 #ifdef KP_SET_ZMASK
+	/* Example */
 	uint32_t zmask[17] = {
 		0x84a2, 0x5234, 0xc519, 0x7e50,
 		0x59df, 0x6ce0, 0x31bb, 0xbf69,
@@ -170,6 +171,8 @@ unsigned int debug_yr1[NBMAXSZ/4];
 unsigned int debug_zr01[NBMAXSZ/4];
 char debug_msg[KP_TRACE_PRINTF_SZ];
 
+uint32_t kptime;
+
 /* for TRNG diagnostics */
 trng_diagcnt_t tdiag;
 /*
@@ -227,6 +230,7 @@ static ipecc_test_t test = {
 #else
 	.ktrc = NULL,
 #endif
+	.kptime = NULL,
 	.tdg = &tdiag
 };
 
@@ -473,11 +477,16 @@ int main(int argc, char *argv[])
 	bool axi64;
 	uint32_t nnmax;
 
+	bool result_pts_are_equal;
+	bool result_tests_are_identical;
+
+	uint32_t fclk, fclkmm;
+
+	uint32_t raw_ff_time, raw_ff_step, mean_raw_ff_time = 0;
+
 	(void)argc;
 	(void)argv;
 
-	bool result_pts_are_equal;
-	bool result_tests_are_identical;
 
 	/* Move the claptrap below rather in --help it it exists one day. */
 #if 0
@@ -488,13 +497,14 @@ int main(int argc, char *argv[])
 #endif
 
 #if 1
-	/* Is it a 'HW secure' or a 'HW usnecure' version of the IP? */
+	/* Is it a 'HW secure' or a 'HW unsecure' version of the IP? */
 	if (hw_driver_is_hw_unsecure(&hw_unsecure)) {
 		printf("%sError: Probing 'HW secure/unsecure mode' triggered an error.%s\n\r", KERR, KNRM);
 		exit(EXIT_FAILURE);
 	}
 
 	if (hw_unsecure){
+
 		if (hw_driver_get_version_tags(&vmajor, &vminor, &vpatch)){
 			printf("%sError: Probing revision numbers triggered an error.%s\n\r", KERR, KNRM);
 			exit(EXIT_FAILURE);
@@ -509,12 +519,22 @@ int main(int argc, char *argv[])
 			printf("%sError: Enabling TRNG post-processing on hardware triggered an error.%s\n\r", KERR, KNRM);
 			exit(EXIT_FAILURE);
 		}
+		/*
+		 * If in HW unsecure mode, we can measure the [k]P computation time
+		 */
+		test.kptime = &kptime;
+
 	} else {
+
 		if (hw_driver_get_version_tags(&vmajor, &vminor, &vpatch)){
 			printf("%sError: Probing revision numbers triggered an error.%s\n\r", KERR, KNRM);
 			exit(EXIT_FAILURE);
 		}
-		log_print("IP in production mode (HW version %d.%d.%d)\n\r", vmajor, vminor, vpatch);
+		log_print("IP in HW secure mode (HW version %d.%d.%d)\n\r", vmajor, vminor, vpatch);
+		/*
+		 * No [k]P computation time measurement if in HW secure mode
+		 */
+		test.kptime = NULL;
 	}
 #endif
 
@@ -585,9 +605,24 @@ int main(int argc, char *argv[])
 	 */
 	signal(SIGINT, int_handler);
 
-	/* Make cursor invisible from the terminal window.
-	 */
-	printf("%s", KCURSORINVIS);
+	if (hw_unsecure) {
+		/* Estimate clock frequencies
+		 */
+		printf("Estimating clock freqs... "); fflush(stdout);
+		hw_driver_get_clocks_freq_DBG(&fclk, &fclkmm, 3);
+		printf(" (%d MHz|%d MHz)\n\r", fclk, fclkmm);
+
+		/* Estimate the time it takes to fill the TRNG raw random FIFO
+		 */
+		printf("Estimating TRNG raw fifo fill-up time"); fflush(stdout);
+		for (raw_ff_step=0; raw_ff_step < 10; raw_ff_step++)
+		{
+			printf("."); fflush(stdout);
+			hw_driver_get_trng_raw_fifo_filling_time_DBG(&raw_ff_time);
+			mean_raw_ff_time += raw_ff_time;
+		}
+		printf("%d\n", (uint32_t)((float)(mean_raw_ff_time) / 10.f));
+	}
 
 #if 0
 	/* Example of how to set a specific attack-level
@@ -598,6 +633,10 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 #endif
+
+	/* Make cursor invisible from the terminal window.
+	 */
+	printf("%s", KCURSORINVIS);
 
 	/* Main infinite loop, parsing lines from standard input to extract:
 	 *   - input vectors

@@ -135,7 +135,7 @@ entity ecc_axi is
 		xre : out std_logic;
 		xrdata : in std_logic_vector(ww - 1 downto 0);
 		nndyn_nnrnd_mask : out std_logic_vector(ww - 1 downto 0);
-		nndyn_nnrnd_zerowm1 : out std_logic;
+		nndyn_nnrnd_maskwg : out unsigned(log2(w) - 1 downto 0);
 		-- interface with ecc_trng
 		trngvalid : in std_logic;
 		trngrdy : out std_logic;
@@ -156,6 +156,16 @@ entity ecc_axi is
 		nndyn_mask_wm2 : out std_logic;
 		nndyn_nnp1 : out unsigned(log2(nn + 1) - 1 downto 0);
 		nndyn_nnm3 : out unsigned(log2(nn) - 1 downto 0);
+		nndyn_w_less_eq_ndsp : out std_logic;
+		nndyn_w_less_ndsp : out std_logic;
+		nndyn_w_multiple_of_ndsp : out std_logic;
+		nndyn_w_div_ndsp : out unsigned(log2(div(w, ndsp)) - 1 downto 0);
+		nndyn_w_div_ndsp_minus_one : out unsigned(log2(div(w, ndsp)) - 1 downto 0);
+		nndyn_nb_bursts : out unsigned(log2(div(w, ndsp)) - 1 downto 0);
+		nndyn_slkpivot_0 : out signed(NB_SLK_BITS - 1 downto 0);
+		nndyn_slkpivot_0_larger_cstslk : out std_logic;
+		nndyn_slkpivot_1 : out signed(NB_SLK_BITS - 1 downto 0);
+		nndyn_slkpivot_1_larger_cstslk : out std_logic;
 		nndyn_nnm2 : out unsigned(log2(nn) - 1 downto 0);
 		-- busy signal for [k]P computation
 		kppending : out std_logic;
@@ -412,7 +422,7 @@ architecture rtl of ecc_axi is
 		valnnm3 : unsigned(log2(nn) - 1 downto 0);
 		valnnm2 : unsigned(log2(nn) - 1 downto 0);
 		valw, valwtmp : unsigned(log2(w) - 1 downto 0);
-		valwerr : std_logic;
+		--valwerr : std_logic;
 		mask, masktmp : std_logic_vector(ww - 1 downto 0);
 		shrcnt : unsigned(log2(ww) - 1 downto 0);
 		shlcnt : unsigned(log2(ww) - 1 downto 0);
@@ -436,7 +446,9 @@ architecture rtl of ecc_axi is
 		nn_mod_ww : unsigned(log2(ww) downto 0);
 		nbtrailzeros : unsigned(log2(2*ww) - 1 downto 0);
 		tmp2 : unsigned(log2(nn + 4) downto 0);
-		tmp22a, tmp22b, tmp22bprev : unsigned(log2(w) downto 0);
+		tmp22a, tmp22aprev : unsigned(log2(w) downto 0);
+		tmp22b, tmp22bprev : unsigned(log2(w) downto 0);
+		tmp22c, tmp22cprev, tmp22cprev2: unsigned(log2(div(w, ndsp)) - 1 downto 0);
 		brlwmin : unsigned(log2(w) downto 0);
 		brlwmin_rdy : std_logic;
 		tmp3, tmp3b, tmpprev3b : unsigned(log2(nn) downto 0);
@@ -446,7 +458,8 @@ architecture rtl of ecc_axi is
 		shcnt3b : unsigned(log2(ww) - 1 downto 0);
 		doshcnt3b : std_logic;
 		masktmp3b : std_logic_vector(ww - 1 downto 0);
-		valw3, valwtmp3 : unsigned(log2(w) - 1 downto 0);
+		valw3 : unsigned(log2(w) - 1 downto 0);
+		valwtmp3, valwtmp3prev : unsigned(log2(w) - 1 downto 0);
 		nnrnd_mask : std_logic_vector(ww - 1 downto 0);
 		doburst01 : std_logic;
 		burst01cnt : unsigned(log2(n - 1) - 1 downto 0);
@@ -458,6 +471,18 @@ architecture rtl of ecc_axi is
 		r_burstwrcnt : unsigned(log2(n - 1) - 1 downto 0);
 		--rwritedone : std_logic; 
 		exception : std_logic;
+		w_multiple_of_ndsp : std_logic;
+		w_div_ndsp : unsigned(log2(div(w, ndsp)) - 1 downto 0);
+		w_div_ndsp_minus_one : unsigned(log2(div(w, ndsp)) - 1 downto 0);
+		w_less_eq_ndsp : std_logic;
+		w_less_ndsp : std_logic;
+		nb_bursts : unsigned(log2(div(w, ndsp)) - 1 downto 0);
+		w_mod_ndsp : unsigned(log2(ndsp - 1) - 1 downto 0);
+		slkpivot_0 : signed(NB_SLK_BITS - 1 downto 0);
+		slkpivot_1 : signed(NB_SLK_BITS - 1 downto 0);
+		slkpivot_0_larger_cstslk : std_logic;
+		slkpivot_1_larger_cstslk : std_logic;
+		nmw : unsigned(log2(w) - 1  downto 0);
 	end record;
 
 	type raw_reg_type is record
@@ -578,7 +603,6 @@ architecture rtl of ecc_axi is
 
 	signal r, rin : reg_type;
 	signal nndyn_mask_s : std_logic_vector(ww - 1 downto 0);
-	signal nndyn_mask_is_zero_s : std_logic;
 	signal nndyn_mask_is_all1_but_msb_s : std_logic;
 	signal nndyn_wm1_s : unsigned(log2(w - 1) - 1 downto 0);
 	signal nndyn_wm2_s : unsigned(log2(w - 1) - 1 downto 0);
@@ -587,7 +611,6 @@ architecture rtl of ecc_axi is
 	--signal nndyn_shlcnt_s : unsigned(log2(ww) - 1 downto 0);
 	signal nndyn_mask_wm2_s : std_logic;
 	signal nndyn_wmin_s : unsigned(log2(2*w - 1) - 1 downto 0);
-	signal nndyn_nnrnd_zerowm1_s : std_logic;
 	signal nndyn_nnp1_s : unsigned(log2(nn + 1) - 1 downto 0);
 	signal nndyn_nnm3_s : unsigned(log2(nn) - 1 downto 0);
 	signal nndyn_nnm2_s : unsigned(log2(nn) - 1 downto 0);
@@ -602,6 +625,7 @@ architecture rtl of ecc_axi is
 	signal rkw : natural;
 	signal rkx : natural;
 	signal rkx_on : std_logic;
+	signal r_nndyn_dodec22prev : std_logic;
 	-- pragma translate_on
 
 	-- in clkmm clock domain (HW unsecure/Side-Channel analysis features only)
@@ -630,14 +654,14 @@ begin
 		report "Value of nn too large."
 			severity FAILURE;
 
-	-- (s44), see (s45)
-	assert(ww >= 4)
-		report "Value of ww too small (must be greater or equal to 4)."
-			severity FAILURE;
+	---- (s44), see (s45)
+	--assert(ww >= 4)
+	--	report "Value of ww too small (must be greater or equal to 4)."
+	--		severity FAILURE;
 
 	-- (s51), see (s50)
 	assert(((not hwsecure) and C_S_AXI_DATA_WIDTH > ww) or (hwsecure))
-		report "In debug mode, ww must be smaller than C_S_AXI_DATA_WIDTH."
+		report "In HW unsecure mode, ww must be smaller than C_S_AXI_DATA_WIDTH."
 			severity FAILURE;
 
 	-- (s77), see (s76) & (s78)
@@ -694,15 +718,15 @@ begin
 			severity FAILURE;
 
 	-- (s152), see (s153)
-	assert (dbgdecodepc'length <= 12)
+	assert (hwsecure or dbgdecodepc'length <= 12)
 		report "In HW unsecure mode address of instructions is limited to 12 bits "
 				 & "(which means nbopcodes must be smaller than or equal to 4096 "
 				 & "in ecc_customize.vhd)."
 			severity FAILURE;
 
 	-- (s155), see (s156)
-	assert ( ( (not hwsecure) and (4 + IRAM_ADDR_SZ - 1 < 16)) or (hwsecure))
-		report "value of parameter nbopcodes too large to be compatible "
+	assert (hwsecure or (4 + IRAM_ADDR_SZ - 1 < 16))
+		report "Value of parameter nbopcodes too large to be compatible "
 		     & "w/ HW unsecure mode (address of SW breakpoints set in register "
 				 & "W_DBG_BKPT wouldn't all be sampled by hardware)."
 			severity FAILURE;
@@ -757,8 +781,8 @@ begin
 	              dbgtrngrawcount
 	              -- nndyn_x_s signals looped back for AXI register reads
 	              , nndyn_wm2_s, nndyn_wm1_s, nndyn_2wm1_s,
-	              nndyn_mask_is_zero_s, nndyn_mask_is_all1_but_msb_s,
-	              nndyn_mask_wm2_s, nndyn_wmin_s, nndyn_nnrnd_zerowm1_s,
+	              nndyn_mask_is_all1_but_msb_s,
+	              nndyn_mask_wm2_s, nndyn_wmin_s,
 	              nndyn_nnm3_s, nndyn_nnp1_s,
 	              small_k_sz_en_ack, small_k_sz_kpdone,
 	              dbgtrngaxirdy, dbgtrngaxivalid, dbgtrngefprdy, dbgtrngefpvalid,
@@ -809,6 +833,10 @@ begin
 		variable vtmp31, vtmp32, vtmp33 : unsigned(log2(irn_fifo_size_shf) downto 0);
 		variable vtmp34, vtmp35, vtmp36 : unsigned(log2(raw_ram_size) downto 0);
 		variable vid : integer range 0 to 4;
+		variable vtmp37, vtmp38, vtmp39 : unsigned(log2(w) downto 0);
+		variable vtmp40 : unsigned(log2(w) downto 0);
+		variable vtmp41, vtmp42, vtmp43 : signed(NB_SLK_BITS downto 0);
+		variable vtmp44, vtmp45, vtmp46 : signed(NB_SLK_BITS downto 0);
 	begin
 		v := r;
 
@@ -829,7 +857,7 @@ begin
 
 		-- (s260)
 		-- The logic below is to allow software driver to get diagnostic infos
-		-- on the TRNG throughput in HW unsecure /Side-Channel analysis mode.
+		-- on the TRNG throughput in HW unsecure / Side-Channel analysis mode.
 		-- In concrete terms, for each of the 4 sources of internal random numbers
 		-- ("axi", "fp", "crv" & "sh") provided by ecc_trng, the IP maintains two
 		-- counters: a "starv" counter and an "ok" counter.
@@ -967,11 +995,14 @@ begin
 		-- all go through combinational signal v_kp_possible):
 		--   r.ctrl.doblinding -> r.ctrl.agokp/r.ctrl.lockaxi/r.ctrl.ierrid
 		--   r.ctrl.[kq]_set -> r.ctrl.agokp/r.ctrl.lockaxi/r.ctrl.ierrid
-		--   r.nndyn.valwerr -> r.ctrl.agokp/r.ctrl.lockaxi/r.ctrl.ierrid
-		--   
-		v_kp_possible := v_pop_possible and r.ctrl.k_set = '1' -- (s114)
+		-- --  r.nndyn.valwerr -> r.ctrl.agokp/r.ctrl.lockaxi/r.ctrl.ierrid
+		--
+		-- Note: (dynamic-value-of-)w = 1 is now an admissible setting, that's
+		--       why .valwerr = '0' has been removed from the computation of
+		--       'v_kp_possible' below.
+		v_kp_possible := v_pop_possible and r.ctrl.k_set = '1' and -- (s114)
 			-- signals related to nn_dynamic feature
-			and ((not nn_dynamic) or (nn_dynamic and r.nndyn.valwerr = '0')) and
+			-- ((not nn_dynamic) or (nn_dynamic and r.nndyn.valwerr = '0'))
 			-- signals related to blinding (order 'q' must be set by softare
 			-- for blinding to make sense)
 			(  ((hwsecure) and blinding > 0 and r.ctrl.q_set = '1')
@@ -1020,7 +1051,13 @@ begin
 		-- software from performing undesirable actions when nn is not set properly
 		-- yet (this concerns the following write registers: W_CTRL, W_R[01]_NULL,
 		-- W_BLINDING, W_IRQ & W_SMALL_SCALAR, see (s162) & (s164)-(s168)).
-		v_wlock := v_busy or (nn_dynamic and r.nndyn.valwerr = '1');
+		--
+		-- Note: (dynamic-value-of-)w = 1 is now an admissible setting, that's
+		--       why .valwerr = '1' has been removed from the computation of
+		--       'v_wlock' below (which now has become useless since it is
+		--       identical to v_busy.
+		--       For now we keep it for sake of readability.
+		v_wlock := v_busy; -- or (nn_dynamic and r.nndyn.valwerr = '1');
 
 		-- pragma translate_off
 		if v_wlock then v.ctrl.wlock := '1'; else v.ctrl.wlock := '0'; end if;
@@ -1129,7 +1166,17 @@ begin
 		if (hwsecure) and (zremask > 0) then -- statically resolved by synthesizer
 			if r.ctrl.docheckzremask = '1' then -- (s258), triggered by (s257)
 				v.ctrl.docheckzremask := '0';
-				vtmp19 := '0' & to_unsigned(zremask - 1, log2(nn - 1));
+				-- Note on (s286) below: GHDL issues a "static expression violates
+				-- bounds" Warning when zremask = 0, seemingly because zremask - 1 < 0,
+				-- however at runtime we're protected by the "zremask > 0" test just
+				-- above.
+				-- That's for simulation.
+				-- For synthesis, the logic below will be trimmed:
+				--   1/ if zremask=0 and the IP is synthesized in production
+				--      (secure-)mode
+				--   2/ or whatever the value of zremask when the IP is synthezized
+				--      in HW unsecure mode.
+				vtmp19 := '0' & to_unsigned(zremask - 1, log2(nn - 1)); -- (s286)
 				vtmp20 := '0' & r.ctrl.zremaskbitstest;
 				vtmp21 := vtmp19 - vtmp20;
 				if vtmp21(log2(nn - 1)) = '1' then
@@ -1212,7 +1259,7 @@ begin
 		if r.ctrl.doblindsh(0) = '1' then
 			vtmp13 := resize(r.ctrl.blindbitstest, log2(nn) + 1);
 			if (hwsecure) then -- statically resolved by synthesizer
-				-- In HW secure mode, the minimum value allowed for the
+				-- In HW secure mode, the minimum value allowed for the size
 				-- of the blinding random depends on what the hardware
 				-- designer has set for parameter 'blinding' at synthesis time.
 				-- Hence software driver can get more security than what was
@@ -1444,14 +1491,14 @@ begin
 							-- (s76), see (s77)
 							v.fpaddr0 := r.axi.wdatax(
 								CTRL_NBADDR_LSB + FP_ADDR_MSB - 1 downto CTRL_NBADDR_LSB)
-								& std_logic_vector(to_unsigned(0, log2(n - 1)));
+								& std_logic_vector(to_unsigned(0, log2z(n - 1)));
 						else
 							-- if in HW secure mode, the only large numbers writable by
 							-- software are the first eight ones: p, a, b, q, and the four
 							-- affine coordinates [XY]R[01] of points R0 & R1
 							v.fpaddr0 := std_logic_vector(to_unsigned(0, FP_ADDR_MSB - 3))
 								& r.axi.wdatax(CTRL_NBADDR_LSB + 2 downto CTRL_NBADDR_LSB)
-								& std_logic_vector(to_unsigned(0, log2(n - 1)));
+								& std_logic_vector(to_unsigned(0, log2z(n - 1)));
 						end if;
 						-- by default the large number to write is not 'a', but see bypass
 						-- (s121) below
@@ -1595,7 +1642,7 @@ begin
 											to_unsigned(nn - 1, log2(nn) + 1); -- (s213)
 									end if;
 									-- use the address of logic (xor) masking
-									v.write.rnd.maskaddr(FP_ADDR - 1 downto log2(n - 1)) :=
+									v.write.rnd.maskaddr(FP_ADDR - 1 downto log2z(n - 1)) :=
 										std_logic_vector(
 											to_unsigned(CST_LOGIC_MASK_0, FP_ADDR_MSB));
 									v.write.rnd.maskaddr(log2(n - 1) - 1 downto 0) :=
@@ -1664,17 +1711,17 @@ begin
 								-- (s78), see (s77)
 								v.fpaddr0 := r.axi.wdatax(
 									CTRL_NBADDR_LSB + FP_ADDR_MSB - 1 downto CTRL_NBADDR_LSB)
-									& std_logic_vector(to_unsigned(0, log2(n - 1)));
+									& std_logic_vector(to_unsigned(0, log2z(n - 1)));
 							else
 								-- HW secure mode
 								if r.axi.wdatax(CTRL_NBADDR_LSB) = '0' then
 									-- read is targeting XR1
 									v.fpaddr0 := CST_ADDR_XR1
-										& std_logic_vector(to_unsigned(0, log2(n - 1)));
+										& std_logic_vector(to_unsigned(0, log2z(n - 1)));
 								elsif r.axi.wdatax(CTRL_NBADDR_LSB) = '1' then
 									-- read is targeting YR1
 									v.fpaddr0 := CST_ADDR_YR1
-										& std_logic_vector(to_unsigned(0, log2(n - 1)));
+										& std_logic_vector(to_unsigned(0, log2z(n - 1)));
 								end if;
 							end if;
 							-- bypass the previous write to v.fpaddr0 when software wishes
@@ -1693,7 +1740,7 @@ begin
 								-- and is available for software to read.
 								if r.ctrl.tokavail4read = '1' then -- (s229)
 									v.fpaddr0 := CST_ADDR_TOKEN
-										& std_logic_vector(to_unsigned(0, log2(n - 1)));
+										& std_logic_vector(to_unsigned(0, log2z(n - 1)));
 									v.read.token := '1';
 								elsif r.ctrl.tokavail4read = '0' then
 									-- This error case is shared with the one where software
@@ -2182,7 +2229,7 @@ begin
 			-- ------------------------------
 			-- below are DEBUG only registers
 			-- ------------------------------
-			-- (note that until now, the 'hwssecure' boolean constant was only used
+			-- (note that until now, the 'hwsecure' boolean constant was only used
 			-- for proper address decoding - now in the following registers,
 			-- 'hwsecure=FALSE' is used as a required condition for the hardware
 			-- inference of each of them, meaning these registers only exist
@@ -2687,8 +2734,6 @@ begin
 			v.write.bitsww := r.write.bitsww - 1;
 			v.write.bitstotal := r.write.bitstotal - 1;
 			if r.write.trailingzeros = "00" then
-			--if r.write.trailingzeros = '0' then
-			--if r.write.trailingzeros(0) = '0' and r.write.trailingzeros(1) = '0' then
 				v.write.bitsaxi := r.write.bitsaxi - 1;
 			end if;
 			-- detect and handle completion of a 'ww'-bit shifts cycle
@@ -2739,13 +2784,15 @@ begin
 				--                      is based on a field numbers' representation
 				--                      in which they can span the [0...2p[ interval
 				--                      (not simply [0;p[ as for ordinary modulo-p
-				--                      arithmetic)
+				--                      arithmetic).
+				--                      This "trick" allows not having to perform
+				--                      the conditional reduction at the end of the
+				--                      REDC operation.
 				--   1 of these is because we need to form the number R = 2**(nn + 2)
 				--   1 of these is for sign (two's complement representation)
 				if r.write.trailingzeros(1) = '1' or
 					(r.write.trailingzeros(0) = '1'
 					  and (r.ctrl.doblinding = '0' or r.ctrl.wk = '0'))
-				--if r.write.trailingzeros = '1' then
 				then
 					v.ctrl.state := idle;
 					v.write.doshift := '0';
@@ -2764,7 +2811,7 @@ begin
 					end if;
 					-- (s178), see (s177)
 					v_fpaddr0_msb :=
-						r.fpaddr0(log2(n - 1) + FP_ADDR_MSB - 1 downto log2(n - 1));
+						r.fpaddr0(log2z(n - 1) + FP_ADDR_MSB - 1 downto log2z(n - 1));
 					if v_fpaddr0_msb = CST_ADDR_P then
 						v.ctrl.p_set := '1'; -- (s112)
 					elsif v_fpaddr0_msb = CST_ADDR_A then
@@ -2810,9 +2857,7 @@ begin
 					v.write.busy := '0';
 				elsif r.write.trailingzeros(0) = '1' and
 					r.ctrl.doblinding = '1' and r.ctrl.wk = '1'
-				--elsif r.write.trailingzeros = '0'
 				then
-					--v.write.trailingzeros := '1';
 					v.write.trailingzeros := "10";
 					-- We need to determine the nb of extra 0 bits following the most
 					-- significant bit of the large number that software is currently
@@ -2832,10 +2877,12 @@ begin
 					-- The idea here is to reuse register .bitstotal in order to shift
 					-- the required number of trailing zeros into .shdataww. Next time
 					-- we hit down 0 for .bitstotal, we'll know the job is over for
-					-- the whole large number as .trailingzeros this time will be high
-					-- (note that there are always trailing zeros to account for
+					-- the whole large number as .trailingzeros this time will be set
+					-- to "01".
+					-- (note that there are always trailing zeros to account for,
 					-- since the large number transmitted by user-software is nn-bit
-					-- long while the large numbers in ecc_fp_dram are (nn+4)-bit long
+					-- long, while the large numbers in ecc_fp_dram are (nn+4)-bit
+					-- long).
 					-- Note: in case of blinding the trick is now using an extra bit
 					-- for register r.write.trailingzeros, to allow enough extra 0 bits
 					-- to span the entirety of the scalar once blinded.
@@ -2852,19 +2899,52 @@ begin
 						v.write.bitstotal := resize(r.ctrl.blindbits - 1, -- (s208)
 							log2(nn));
 					elsif r.ctrl.wk = '0' or r.ctrl.doblinding = '0' then
-						-- it is either a large number other than the scalar the the
-						-- software is currently pushing to us OR it is the scalar indeed
-						-- BUT blinding is not currently activated (and in this case the
+						-- it is either a large number other than the scalar the software
+						-- is currently pushing to us OR it is the scalar indeed BUT
+						-- blinding is not currently activated (and in this case the
 						-- scalar can be treated as any other large number regarding the
 						-- nb of extra bits to add)
 						if nn_dynamic then -- statically resolved by synthesizer
 							v.write.bitstotal := resize(r.nndyn.nbtrailzeros, log2(nn));
 						else -- the 4 tests below will be statically resolved by synthesizer
-							if (nn mod ww) = 0 then
-								v.write.bitstotal := to_unsigned(ww - 1, log2(nn));
-							elsif (nn mod ww) < ww - 4 then
-								v.write.bitstotal := to_unsigned(ww - (nn mod ww) - 1, log2(nn));
-							elsif (nn mod ww) = ww - 4 then
+							if ww > 4 then -- statically resolved by synthesizer
+								-- the 4 tests below will be statically resolved by synthesizer
+								-- (the three first ones could actually be regrouped in the
+								-- same formula .bitstotal := ww - (nn % ww) - 1, but they
+								-- were kept separated for more readability - as resolution is
+								-- purely static, it won't affect performance).
+								if (nn mod ww) = 0 then
+									v.write.bitstotal := to_unsigned(ww - 1, log2(nn));
+								elsif (nn mod ww) < ww - 4 then
+									v.write.bitstotal :=
+										to_unsigned(ww - (nn mod ww) - 1, log2(nn));
+								elsif (nn mod ww) = ww - 4 then
+									v.write.bitstotal := to_unsigned(3, log2(nn));
+								else -- means nn mod ww > ww - 4 strictly (ww-3, ww-2 or ww-1)
+									v.write.bitstotal :=
+										to_unsigned(2*ww - (nn mod ww) - 1, log2(nn));
+								end if;
+							elsif ww = 4 then -- statically resolved by synthesizer
+								if (nn mod ww) = 0 then -- stat. resolved by syn.
+									v.write.bitstotal :=
+										to_unsigned(3, log2(nn)); -- (= ww - 1)
+								else -- means (nn mod ww) = 1, 2 or 3 (stat. resolved by syn.)
+									v.write.bitstotal :=
+										to_unsigned(7 - (nn mod ww), log2(nn));
+										-- (= 2*ww - (nn % ww) - 1)
+								end if;
+							elsif ww = 3 then -- statically resolved by synthesizer
+								v.write.bitstotal :=
+									to_unsigned(5 - (nn mod ww), log2(nn));
+									-- (= 2*ww - (nn % ww) - 1)
+							elsif ww = 2 then -- statically resolved by synthesizer
+								if (nn mod ww) = 0 then -- stat. resolved by syn.
+									-- means nn is even
+									v.write.bitstotal := to_unsigned(3, log2(nn));
+								else -- means nn is odd (stat. resolved by syn.)
+									v.write.bitstotal := to_unsigned(4, log2(nn));
+								end if;
+							elsif ww = 1 then -- statically resolved by synthesizer
 								v.write.bitstotal := to_unsigned(3, log2(nn));
 							else -- means nn mod ww > ww - 4 strictly (ww-3, ww-2 or ww-1)
 								v.write.bitstotal := to_unsigned(2*ww-(nn mod ww)-1, log2(nn));
@@ -3109,6 +3189,7 @@ begin
 				v.debug.trigger := '0';
 				v.debug.counter := (others => '0');
 			end if;
+
 			if (not hwsecure) then -- statically resolved by synthesizer
 				-- (s268)
 				-- Reset TRNG diagnostic counters (all except AXI,
@@ -3352,10 +3433,10 @@ begin
 				-- 2nd byte: minor number
 				-- 3rd & 4th bytes: patch number
 				dw := (others => '0');
-				-- Version 1.4.10
+				-- Version 1.5.0
 				dw(HW_VERSION_MAJ_MSB downto HW_VERSION_MAJ_LSB) := x"01"; -- major
-				dw(HW_VERSION_MIN_MSB downto HW_VERSION_MIN_LSB) := x"04"; -- minor
-				dw(HW_VERSION_PATCH_MSB downto HW_VERSION_PATCH_LSB) := x"000a"; -- patch
+				dw(HW_VERSION_MIN_MSB downto HW_VERSION_MIN_LSB) := x"05"; -- minor
+				dw(HW_VERSION_PATCH_MSB downto HW_VERSION_PATCH_LSB) := x"0000"; -- patch
 				v.axi.rdatax := dw;
 				v.axi.rvalid := '1'; -- (s5)
 			-- --------------------------------------
@@ -3752,7 +3833,7 @@ begin
 		-- In HW unsecure/Side-Channel analysis mode, if software disables token
 		-- feature (through register W_DBG_CFG_TOKEN, see (s224)) we immediately
 		-- deassert r.ctrl.tokavail4read so as to not create inconsistent state
-		-- (this only concerns Hw unsecure mode, as in hwsecure=TRUE situation
+		-- (this only concerns HW unsecure mode, as in hwsecure=TRUE situation
 		-- the token feature cannot be disengaged)
 		if (not hwsecure) then -- statically resolved by synthesizer
 			if r.ctrl.token_act = '0' then
@@ -3916,7 +3997,7 @@ begin
 					v.ctrl.state := idle;
 					v.nndyn.active := '0';
 					-- raise error flag (illicite dynamic value for nn)
-					v.ctrl.ierrid(STATUS_ERR_I_NNDYN) := '1';
+					v.ctrl.ierrid(STATUS_ERR_I_NNDYN) := '1'; -- (s276)
 				elsif v_nndyn_testnn(31 - CAP_NNMAX_LSB) = '0' then -- nn >= .valnn (OK)
 					v.nndyn.start := '1'; -- asserted only 1 cycle, see (s124)
 					v.nndyn.valnn := r.nndyn.valnntest;
@@ -3964,6 +4045,8 @@ begin
 				v.nndyn.tmp1 := '0' & r.nndyn.valnn;
 				v.nndyn.tmp3 := '0' & r.nndyn.valnn;
 				v.nndyn.tmp3b := '0' & r.nndyn.valnn;
+					--v.nndyn.nmw :=
+					--	to_unsigned(div(to_integer(r.nndyn.valnn) + 4, ww) - 1, log2(w - 1));
 				v.nndyn.savnnp2p3p4 := '1'; -- asserted only 1 cycle
 				v.nndyn.dodec0done := '0';
 				v.nndyn.dodec3done := '0';
@@ -3975,7 +4058,7 @@ begin
 				-- a default value for r.ctrl.blindbits and reassert .doblindcheck so as
 				-- to compute a correct functional value for r.ctrl.nn_extrabits, see
 				-- (s238) & (s239).
-				if (blinding > 0) then -- whatever mode (hwsecure or not)
+				if (blinding > 0) then -- whatever mode ((not hwsecure) or not)
 					if r.nndyn.valnn = to_unsigned(nn, log2(nn)) then
 						-- When nn_dynamic feature is present, we must enforce that
 						-- the size of the blinding random stays as required by static
@@ -4054,6 +4137,17 @@ begin
 			-- --------------------------------------------------------------------
 			-- 1st batch of operations, based on value nn + 2
 			-- --------------------------------------------------------------------
+			--
+			-- The purpose here is to compute (nn + 2) / ww  and (nn + 2) mod  w
+			-- in order to set, in the end, register 'r.nndyn.mask', see (s278).
+			-- This register in turn is driven onto output bus 'nndyn_mask',
+			-- see (s279), which is used by mm_ndsp.vhd (Montgomery multiplier)
+			-- to perform the final division by R required at the end of the REDC
+			-- operation.
+			--
+			-- Note that 'r.nndyn.mask' is also used to set output signal
+			-- 'nndyn_mask_is_all1_but_msb_s', see (s281), and thus also
+			-- 'nndyn_wmin', see (s283), and 'nndyn_mask_wm2', see (s285).
 
 			if r.nndyn.dodec0 = '1' then
 				-- subtract ww to value of .tmp0
@@ -4101,7 +4195,7 @@ begin
 					and v.nndyn.shcnt(log2(ww - 1) - 1) = '1'
 				then
 					v.nndyn.doshcnt := '0';
-					v.nndyn.mask := r.nndyn.masktmp;
+					v.nndyn.mask := r.nndyn.masktmp; -- (s278)
 					v.nndyn.dodec0done := '1';
 				end if;
 			end if;
@@ -4131,26 +4225,69 @@ begin
 
 			-- computation of signal r.nndyn.nbtrailzeros based on value
 			-- of .nn_mod_ww
-			-- TODO: set a multicycle on following path:
-			--       r.nndyn.nn_mod_ww -> r.nndyn.nbtrailzeros
-			-- (s45) below is the (lazy) reason why we don't want to support ww < 4,
-			-- see (s44)
-			v_nn_mod_ww_sub :=
-				r.nndyn.nn_mod_ww - to_unsigned(ww - 4, log2(ww) + 1); -- (s45)
-			if r.nndyn.nn_mod_ww = (r.nndyn.nn_mod_ww'range => '0') then
-				-- means nn mod ww = 0
-				v.nndyn.nbtrailzeros := to_unsigned(ww - 1, log2(2*ww));
-			elsif v_nn_mod_ww_sub(log2(ww)) = '1' then
-				-- means nn mod ww < ww - 4 (strictly)
-				v.nndyn.nbtrailzeros := to_unsigned(ww - 1, log2(2*ww))
-					- resize(r.nndyn.nn_mod_ww, log2(ww + 4));
-			elsif v_nn_mod_ww_sub = (v_nn_mod_ww_sub'range => '0') then
-				-- means nn mod ww = ww - 4
-				v.nndyn.nbtrailzeros := to_unsigned(3, log2(2*ww));
-			else
-				-- means nn mod ww > ww - 4 strictly (either ww - 3, ww - 2 or ww - 1)
-				v.nndyn.nbtrailzeros := to_unsigned(2*ww - 1, log2(2*ww))
+
+			if ww > 4 then -- statically resolved by synthesizer
+
+				v_nn_mod_ww_sub :=
+					r.nndyn.nn_mod_ww - to_unsigned(ww - 4, log2(ww) + 1); -- (s45)
+
+				-- TODO: set a multicycle on following path:
+				--       r.nndyn.nn_mod_ww -> r.nndyn.nbtrailzeros
+				-- (s45) below is the (lazy) reason why we don't want to support ww < 4,
+				-- see (s44)
+				if r.nndyn.nn_mod_ww = (r.nndyn.nn_mod_ww'range => '0')
+					 -- (means nn mod ww = 0)
+					or v_nn_mod_ww_sub(log2(ww)) = '1'
+					   -- (means nn mod ww < ww - 4)
+					or v_nn_mod_ww_sub = (v_nn_mod_ww_sub'range => '0')
+					   -- (means nn mod ww = ww - 4)
+				then
+					v.nndyn.nbtrailzeros := to_unsigned(ww - 1, log2(2*ww))
+						- resize(r.nndyn.nn_mod_ww, log2(ww + 4));
+				--if r.nndyn.nn_mod_ww = (r.nndyn.nn_mod_ww'range => '0') then
+				--	-- means nn mod ww = 0
+				--	v.nndyn.nbtrailzeros := to_unsigned(ww - 1, log2(2*ww));
+				--elsif v_nn_mod_ww_sub(log2(ww)) = '1' then
+				--	-- means nn mod ww < ww - 4 (strictly)
+				--	v.nndyn.nbtrailzeros := to_unsigned(ww - 1, log2(2*ww))
+				--		- resize(r.nndyn.nn_mod_ww, log2(ww + 4));
+				--elsif v_nn_mod_ww_sub = (v_nn_mod_ww_sub'range => '0') then
+				--	-- means nn mod ww = ww - 4
+				--	v.nndyn.nbtrailzeros := to_unsigned(3, log2(2*ww));
+				else
+					-- means nn mod ww > ww - 4 strictly (either ww - 3, ww - 2 or ww - 1)
+					v.nndyn.nbtrailzeros := to_unsigned(2*ww - 1, log2(2*ww))
+						- resize(r.nndyn.nn_mod_ww, log2(2*ww));
+				end if;
+
+			elsif ww = 4 then -- statically resolved by synthesizer
+				if r.nndyn.nn_mod_ww = (r.nndyn.nn_mod_ww'range => '0')
+				then
+					-- (means dyn. nn mod ww = 0)
+					v.nndyn.nbtrailzeros := to_unsigned(3, log2(2*ww));
+					-- (= ww - 1)
+				else
+					-- means (dyn. nn mod ww) = 1, 2 or 3
+					v.nndyn.nbtrailzeros := to_unsigned(7, log2(2*ww))
+						- resize(r.nndyn.nn_mod_ww, log2(2*ww));
+					-- (= 2*ww - (dyn. nn % ww) - 1)
+				end if;
+
+			elsif ww = 3 then -- statically resolved by synthesizer
+				v.nndyn.nbtrailzeros := to_unsigned(5, log2(2*ww))
 					- resize(r.nndyn.nn_mod_ww, log2(2*ww));
+
+			elsif ww = 2 then -- statically resolved by synthesizer
+				if r.nndyn.nn_mod_ww(0) = '0' then
+					-- means dyn. nn is is even
+					v.nndyn.nbtrailzeros := to_unsigned(3, log2(2*ww));
+				elsif r.nndyn.nn_mod_ww(0) = '1' then
+					-- means dyn. nn is is odd
+					v.nndyn.nbtrailzeros := to_unsigned(4, log2(2*ww));
+				end if;
+
+			elsif ww = 1 then -- statically resolved by synthesizer
+				v.nndyn.nbtrailzeros := to_unsigned(3, log2(2*ww));
 			end if;
 
 			-- --------------------------------------------------------------------
@@ -4167,8 +4304,8 @@ begin
 					-- (here we must test for either negative OR ZERO)
 				then
 					v.nndyn.dodec2 := '0';
-					v.nndyn.valw := r.nndyn.valwtmp;
-					-- the latch of r.nndyn.brlwmim, which is the second register useful
+					v.nndyn.valw := r.nndyn.valwtmp; -- (s277)
+					-- the latch of r.nndyn.brlwmin, which is the second register useful
 					-- here, is already done in (s74) (it will keep the value it was
 					-- holding during the last cycle where .dodec2 was high). This value
 					-- will be compared afterwards w/ floor[(nn + 2)/ww], the value of
@@ -4177,27 +4314,41 @@ begin
 					v.nndyn.dodec22 := '1';
 					v.nndyn.tmp22a := '0' & r.nndyn.valwtmp;
 					v.nndyn.tmp22b := (others => '0');
+					v.nndyn.tmp22c := (others => '0');
 				end if;
 			end if;
 
-			-- TODO: set a multicycle constraint on path:
-			--       r.nndyn.valw -> r.nndyn.valwerr (but not on .ierrid)
-			-- w = 1 is forbidden (same as in static case)
-			if r.nndyn.valw = to_unsigned(1, log2(w)) then
-				v.nndyn.valwerr := '1';
-				v.ctrl.ierrid(STATUS_ERR_I_NNDYN) := '1';
-			else
-				v.nndyn.valwerr := '0';
-				-- no need to reset a possible past error in r.ctrl.ierrid, it was
-				-- done by (s131) when starting the nn_dynamic related computations
-				-- (just upon validating the first test nn < max)
-			end if;
+			-- -------------------------------------
+			-- .valw = 1 is now a admissible setting
+			-- -------------------------------------
+			--
+			-- Now the only possible cause of error 'STATUS_ERR_I_NNDYN'
+			-- is when dynamic value of 'nn' the software tries to set
+		 	-- turns out to be greater than the static one, see (s276).
+			--
+			---- TODO: set a multicycle constraint on path:
+			----       r.nndyn.valw -> r.nndyn.valwerr (but not on .ierrid)
+			---- w = 1 is forbidden (same as in static case)
+			--if r.nndyn.valw = to_unsigned(1, log2(w)) then
+			--	v.nndyn.valwerr := '1';
+			--	v.ctrl.ierrid(STATUS_ERR_I_NNDYN) := '1';
+			--else
+			--	v.nndyn.valwerr := '0';
+			--	-- no need to reset a possible past error in r.ctrl.ierrid, it was
+			--	-- done by (s131) when starting the nn_dynamic related computations
+			--	-- (just upon validating the first test nn < max)
+			--end if;
 
 			-- compute r.nndyn.brlwmin = (ceil[ceil[(nn+4)/ww]/ndsp] - 1 ) * ndsp
 			if r.nndyn.dodec22 = '1' then
 				v.nndyn.tmp22a := r.nndyn.tmp22a - to_unsigned(ndsp, log2(w) + 1);
+				v.nndyn.tmp22aprev := r.nndyn.tmp22a;
 				v.nndyn.tmp22b := r.nndyn.tmp22b + to_unsigned(ndsp, log2(w) + 1);
+				v.nndyn.tmp22c := r.nndyn.tmp22c + 1;
 				v.nndyn.tmp22bprev := r.nndyn.tmp22b;
+				v.nndyn.tmp22cprev := r.nndyn.tmp22c;
+				v.nndyn.tmp22cprev2 := r.nndyn.tmp22cprev;
+				v.nndyn.nb_bursts := r.nndyn.tmp22c;
 				if r.nndyn.tmp22a(log2(w)) = '1' -- < 0
 					or r.nndyn.tmp22a = (r.nndyn.tmp22a'range => '0') -- or = 0
 					-- (here we must test for either negative OR ZERO)
@@ -4205,6 +4356,29 @@ begin
 					v.nndyn.dodec22 := '0';
 					v.nndyn.brlwmin := r.nndyn.tmp22bprev; -- (s74)
 					v.nndyn.brlwmin_rdy := '1';
+					-- Note on (s274) below:
+					--   r.nndyn.tmp22aprev is an unsigned of 'log2(w) + 1' bits
+					--   and the resize function targets a bitwidth of 'log2(ndsp - 1)'
+					--   hence formally there's a truncature. But at the time we
+					--   latch r.nndyn.tmp22aprev into .w_mod_ndsp, we know that
+					--   the register contains the value of w modulus ndsp, so it's
+					--   strictly less than ndsp.
+					v.nndyn.w_mod_ndsp :=
+						resize(r.nndyn.tmp22aprev, log2(ndsp - 1)); -- (s274)
+					v.nndyn.w_div_ndsp := r.nndyn.tmp22cprev;
+					v.nndyn.w_div_ndsp_minus_one := r.nndyn.tmp22cprev2;
+					if r.nndyn.tmp22a = (r.nndyn.tmp22a'range => '0') then
+						v.nndyn.w_mod_ndsp := resize(r.nndyn.tmp22a, log2(ndsp - 1));
+						v.nndyn.w_div_ndsp := r.nndyn.tmp22c;
+						v.nndyn.w_div_ndsp_minus_one := r.nndyn.tmp22cprev;
+					end if;
+				end if;
+				-- To determine if (dynamic value of) 'w' is a(n exact) multiple
+				-- of ndsp, we need to test for equal to zero only
+				if r.nndyn.tmp22a = (r.nndyn.tmp22a'range => '0') then
+					v.nndyn.w_multiple_of_ndsp := '1';
+				else
+					v.nndyn.w_multiple_of_ndsp := '0';
 				end if;
 			end if;
 
@@ -4217,21 +4391,105 @@ begin
 				v.nndyn.exception := vtmp5(log2(w) + 1);
 			end if;
 
+			-- TODO: set multicycle constraints on paths:
+			--       r.nndyn.valw -> r.nndyn.w_less_ndsp
+			--       r.nndyn.valw -> r.nndyn.w_less_eq_ndsp
+			-- Signals 'r.nndyn.w_less_eq_ndsp' and 'r.nndyn.w_less_ndsp'
+			vtmp37 := resize(r.nndyn.valw, log2(w) + 1);
+			-- Note on (s273) below: 'ndsp' is guaranteed to be smaller than
+			-- (or equal to) 'w', see function set_ndsp() in ecc_pkg.vhd and
+			-- statement (s0) in mm_ndsp_pkg.vhd.
+			vtmp38 := to_unsigned(ndsp, log2(w) + 1); -- (s273)
+			vtmp39 := vtmp37 - vtmp38;
+			-- 'r.nndyn.w_less_ndsp' is simply the MSbit of the difference
+			v.nndyn.w_less_ndsp := vtmp39(log2(w));
+			-- For 'r.nndyn.w_less_eq_ndsp' we must include the test of
+			-- equality
+			if vtmp39(log2(w)) = '1' -- less
+				or vtmp39 = (vtmp39'range => '0') -- or equal
+			then
+				v.nndyn.w_less_eq_ndsp := '1';
+			else
+				v.nndyn.w_less_eq_ndsp := '0';
+			end if;
+
+			-- ---------------------------------------------------
+			-- Computation of two quantities r.nndyn.slkpivot_[01]
+			-- ---------------------------------------------------
+			-- Note: The result of the three subtractions below cannot underflow,
+			--       see computation of NB_SLK_MAX and and NB_SLK_BITS in
+			--       mm_ndsp_pkg.vhd
+
+			-- "pivot 0"
+			--
+			-- TODO: set multicyle constraints on paths:
+			--       r.nndyn.valw -> r.nndyn.slkpivot_0
+			--
+			vtmp40 := r.nndyn.valw & '0';
+			v.nndyn.slkpivot_0 :=
+				-- contribution of constants
+				to_signed(NBRP + sramlat + 4 + ndsp - (MIN_SLK - 1) - 1, NB_SLK_BITS)
+				-- variable part
+				- signed(resize(vtmp40, NB_SLK_BITS))
+				- signed(resize(r.nndyn.w_mod_ndsp, NB_SLK_BITS));
+
+			-- TODO: set multicycle on paths:
+			--       r.nndyn.slkpivot_0 -> r.nndyn.slkpivot_0_larger_cstslk
+			vtmp41 := '0' & to_signed(MIN_SLK_LAST - 1, NB_SLK_BITS);
+			vtmp42 := '0' & r.nndyn.slkpivot_0;
+			vtmp43 := vtmp41 - vtmp42;
+			if vtmp43(NB_SLK_BITS - 1) = '1' then
+				-- means MIN_SLK_LAST - 1 < "pivot0"
+				v.nndyn.slkpivot_0_larger_cstslk := '1';
+			elsif vtmp43(NB_SLK_BITS - 1) = '0' then
+				-- means MIN_SLK_LAST - 1 is less than (or equal to) "pivot0"
+				v.nndyn.slkpivot_0_larger_cstslk := '0';
+			end if;
+
+			-- "pivot 1"
+			--
+			-- TODO: set multicyle constraints on paths:
+			--       r.nndyn.valw -> r.nndyn.slkpivot_1
+			--
+			v.nndyn.slkpivot_1 :=
+				-- contribution of constants
+				to_signed(NBRP + sramlat + 4 - (MIN_SLK - 1) - 1, NB_SLK_BITS)
+				-- variable part
+				- signed(resize(vtmp40, NB_SLK_BITS));
+
+			-- TODO: set multicycle on paths:
+			--       r.nndyn.slkpivot_1 -> r.nndyn.slkpivot_1_larger_cstslk
+			vtmp44 := '0' & to_signed(MIN_SLK_LAST - 1, NB_SLK_BITS);
+			vtmp45 := '0' & r.nndyn.slkpivot_1;
+			vtmp46 := vtmp44 - vtmp45;
+			if vtmp46(NB_SLK_BITS - 1) = '1' then
+				-- means MIN_SLK_LAST - 1 < "pivot1"
+				v.nndyn.slkpivot_1_larger_cstslk := '1';
+			elsif vtmp46(NB_SLK_BITS - 1) = '0' then
+				-- means MIN_SLK_LAST - 1 is less than (or equal to) "pivot1"
+				v.nndyn.slkpivot_1_larger_cstslk := '0';
+			end if;
+
 			-- --------------------------------------------------------------------
 			-- 4th batch of operations (for NNRND instruction)
 			-- --------------------------------------------------------------------
+
+			v.nndyn.valwtmp3prev := r.nndyn.valwtmp3;
 
 			if r.nndyn.dodec3 = '1' then
 				-- subtract ww to value of .tmp3
 				v.nndyn.tmp3 := r.nndyn.tmp3 - to_unsigned(ww, log2(nn) + 1);
 				-- increment .valwtmp3
 				v.nndyn.valwtmp3 := r.nndyn.valwtmp3 + 1;
+					-- -- decrement .nmw
+					-- v.nndyn.nmw := r.nndyn.nmw - 1;
 				if r.nndyn.tmp3(log2(nn)) = '1' -- < 0
 					or r.nndyn.tmp3 = (r.nndyn.tmp3'range => '0') -- or = 0
 					-- (here we must test for either negative OR ZERO)
 				then
 					v.nndyn.dodec3 := '0';
 					v.nndyn.valw3 := r.nndyn.valwtmp3;
+					v.nndyn.nmw := r.nndyn.valwtmp3prev;
 				end if;
 			end if;
 
@@ -4242,7 +4500,7 @@ begin
 				v.nndyn.tmp3b := r.nndyn.tmp3b - to_unsigned(ww, log2(nn) + 1);
 				if r.nndyn.tmp3b(log2(nn)) = '1' -- < 0
 					or r.nndyn.tmp3b = (r.nndyn.tmp3b'range => '0') -- or = 0
-					-- (here we must test for either negative OR ZERO)
+					-- (here we must test for either negative OR zero)
 				then
 					v.nndyn.dodec3b := '0';
 					v.nndyn.doshcnt3b := '1';
@@ -4277,31 +4535,55 @@ begin
 			-- 5th batch of operations (based on value nn + 3)
 			-- --------------------------------------------------------------------
 
+			-- The purpose here is to initialize the two large numbers 0 and 1
+			-- in ecc_fp_dram (so-called memory of large numbers).
+			--
+			--   - Large nb 0 is at address LARGE_NB_ZERO_ADDR.
+			--   - Large nb 1 is at address LARGE_NB_ONE_ADDR.
+			--
+			-- Both constants LARGE_NB_(ZERO|ONE)_ADDR are defined in ecc_vars.vhd,
+			-- a package which is automatically generated upon compilation
+			-- of microcode (ecc_curve_iram.vhd), based on CSV source file
+			-- asm_src/vardefs.csv (look for character strings "zero" and "one"
+			-- in this file).
+			-- Generation of ecc_vars.vhd from vardefs.csv in handled by
+			-- Makefile in ecc_curve_iram.
+			--
+			-- Signal r.nndyn.burst0or1 is used to differenciate between the
+			-- two phases, the first one, when we're initializing large number 0,
+			-- and the second one, when we're initializing large number 1.
+			--
+			-- Both large numbers are initialized using a burst of size 'n' limbs
+			-- (each limb being of size 'ww') which are performed in decremented
+			-- address oder. All written terms are set to 0 (see (s272)), except
+			-- the last limb to be written which is obviously set to 0x1 (on ww-bit)
+			-- see (s271). This last write corresponds to the clock cycle where
+			-- r.nndyn.dosingle1 = 1, see (s269) & (s270).
 			if r.nndyn.doburst01 = '1' then
 				v.write.fpwe0 := '1'; -- (s222), will be deasserted by (s223)
 				-- we "recycle" the .shdataww register
-				v.write.shdataww := (others => '0');
+				v.write.shdataww := (others => '0'); -- (s272)
 				if r.nndyn.burst0or1 = '0' then
 					v.fpaddr0 := std_logic_vector(
 						to_unsigned(LARGE_NB_ZERO_ADDR, FP_ADDR_MSB)
-					) & std_logic_vector(r.nndyn.burst01cnt);
+					) & std_logic_vector(resize(r.nndyn.burst01cnt, FP_ADDR_LSB));
 				elsif r.nndyn.burst0or1 = '1' then
 					v.fpaddr0 := std_logic_vector(
 						to_unsigned(LARGE_NB_ONE_ADDR, FP_ADDR_MSB)
-					) & std_logic_vector(r.nndyn.burst01cnt);
+					) & std_logic_vector(resize(r.nndyn.burst01cnt, FP_ADDR_LSB));
 				end if;
 				v.nndyn.burst01cnt := r.nndyn.burst01cnt - 1;
 				if r.nndyn.burst01cnt = (r.nndyn.burst01cnt'range => '0') then
 					v.nndyn.burst0or1 := not r.nndyn.burst0or1;
 					if r.nndyn.burst0or1 = '1' then
 						v.nndyn.doburst01 := '0';
-						v.nndyn.dosingle1 := '1';
-						v.write.shdataww := (0 => '1', others => '0');
+						v.nndyn.dosingle1 := '1'; -- (s269)
+						v.write.shdataww := (0 => '1', others => '0'); -- (s271)
 					end if;
 				end if;
 			end if;
 
-			if r.nndyn.dosingle1 = '1' then
+			if r.nndyn.dosingle1 = '1' then -- (s270)
 				v.nndyn.dosingle1 := '0';
 				v.write.fpwe0 := '0'; -- (s223), deassertion of (s222)
 				v.nndyn.burst01done := '1';
@@ -4505,6 +4787,7 @@ begin
 				-- test logic (s255) will enforce that .zremaskbits can only be
 				-- decreased as compared to its reset value in (s256) below.
 				v.ctrl.zremaskact := '1';
+				-- Same remark on (s256) below regarding GHDL as for (s286) above.
 				v.ctrl.zremaskbits :=
 					to_unsigned(zremask - 1, log2(nn - 1)); -- (s256)
 			else -- zremask = 0 in ecc_customize.vhd
@@ -4606,7 +4889,7 @@ begin
 				v.nndyn.nnrnd_mask := std_logic_vector (
 					resize(unsigned(to_signed(-1, nn mod ww)), ww) );
 				v.nndyn.valw3 := to_unsigned(div(nn, ww), log2(w));
-				v.nndyn.valwerr := '0';
+				--v.nndyn.valwerr := '0';
 				v.nndyn.valnnp1 := to_unsigned(nn + 1, log2(nn + 1));
 				v.nndyn.valnnm3 := to_unsigned(nn - 3, log2(nn));
 				v.nndyn.valnnm2 := to_unsigned(nn - 2, log2(nn));
@@ -4620,6 +4903,28 @@ begin
 				v.nndyn.docnt32done := '0';
 				v.nndyn.doburst01 := '0';
 				-- no need to reset r.nndyn.start, thx to (s124)
+				v.nndyn.dosingle1 := '0';
+				-- "pivot_0" & "pivot_1" signals
+				v.nndyn.slkpivot_0 := to_signed(
+					NBRP + sramlat + 4 + ndsp - (MIN_SLK - 1) - 1 - (2*w) - (w mod ndsp),
+					NB_SLK_BITS);
+				if ( (NBRP + sramlat + 4 + ndsp - (MIN_SLK - 1) - 1
+					   - (2*w) - (w mod ndsp)) > MIN_SLK_LAST - 1 )
+				then
+					v.nndyn.slkpivot_0_larger_cstslk := '1';
+				else
+					v.nndyn.slkpivot_0_larger_cstslk := '0';
+				end if;
+				v.nndyn.slkpivot_1 := to_signed(
+					NBRP + sramlat + 4 - (MIN_SLK - 1) - 1 - (2*w), NB_SLK_BITS);
+				if ( (NBRP + sramlat + 4 - (MIN_SLK - 1) - 1
+					   - (2*w) ) > MIN_SLK_LAST - 1 )
+				then
+					v.nndyn.slkpivot_1_larger_cstslk := '1';
+				else
+					v.nndyn.slkpivot_1_larger_cstslk := '0';
+				end if;
+				v.nndyn.nmw := to_unsigned(nn / ww, log2(w));
 			else -- nn_dynamic = FALSE
 				v.nndyn.valnn := to_unsigned(nn, log2(nn));
 				v.nndyn.valnnm1 := to_unsigned(nn - 1, log2(nn));
@@ -4640,7 +4945,7 @@ begin
 				v.nndyn.nnrnd_mask := std_logic_vector (
 					resize(unsigned(to_signed(-1, nn mod ww)), ww) );
 				v.nndyn.valw3 := to_unsigned(div(nn, ww), log2(w));
-				v.nndyn.valwerr := '0';
+				--v.nndyn.valwerr := '0';
 				v.nndyn.valnnp1 := to_unsigned(nn + 1, log2(nn + 1));
 				v.nndyn.valnnm3 := to_unsigned(nn - 3, log2(nn));
 				v.nndyn.valnnm2 := to_unsigned(nn - 2, log2(nn));
@@ -4681,7 +4986,7 @@ begin
 				-- no need to reset r.debug.trng.raw[starv|ok|min|max]
 				-- upon reset (in HW unsecure mode) we use the real TRNG entropy source
 				v.debug.trng.usepseudo := '0';
-				-- upon reset (in Hw unsecure mode) we inhibit ecc_trng_pp from reading
+				-- upon reset (in HW unsecure mode) we inhibit ecc_trng_pp from reading
 				-- any raw random bytes. Thus software must activate this, by using
 				-- register W_DBG_TRNG_CTRL_POSTP.
 				v.debug.trng.rawpullppdis := '1';
@@ -4772,7 +5077,7 @@ begin
 	pen <= r.ctrl.pen; -- (s9)
 
 	n0: if nn_dynamic generate -- statically resolved by synthesizer
-		nndyn_mask <= r.nndyn.mask;
+		nndyn_mask <= r.nndyn.mask; -- (s279)
 		nndyn_shrcnt <= r.nndyn.shrcnt;
 		nndyn_shlcnt <= r.nndyn.shlcnt;
 		-- to mm_ndsp's & ecc_fp
@@ -4783,33 +5088,44 @@ begin
 		nndyn_wm1 <= nndyn_wm1_s;
 		nndyn_wm2 <= nndyn_wm2_s;
 		nndyn_2wm1 <= nndyn_2wm1_s;
-		nndyn_mask_is_zero_s <=
-			'1' when r.nndyn.mask = (r.nndyn.mask'range => '0')
-			else '0';
-		nndyn_mask_is_all1_but_msb_s <=
-			'1' when (r.nndyn.mask(r.nndyn.mask'LENGTH-1) = '0'
-			     and ( r.nndyn.mask(r.nndyn.mask'LENGTH - 2 downto 0)
-				      = (r.nndyn.mask'LENGTH - 2 downto 0 => '1') ) )
-			else '0';
-		nndyn_mask_wm2_s <= '1' when nndyn_mask_is_all1_but_msb_s = '1' else '0';
-		nndyn_mask_wm2 <= nndyn_mask_wm2_s;
-		nndyn_wmin_s <= resize(nndyn_wm2_s, log2(2*w - 1))
-			when nndyn_mask_is_all1_but_msb_s = '1'
-			else resize(nndyn_wm1_s, log2(2*w - 1));
-		nndyn_wmin <= nndyn_wmin_s;
+		n00: if ww > 1 generate
+			nndyn_mask_is_all1_but_msb_s <= -- (s281)
+				'1' when (r.nndyn.mask(r.nndyn.mask'LENGTH-1) = '0'
+						 and ( r.nndyn.mask(r.nndyn.mask'LENGTH - 2 downto 0)
+								= (r.nndyn.mask'LENGTH - 2 downto 0 => '1') ) )
+				else '0';
+			nndyn_mask_wm2 <=
+				'1' when nndyn_mask_is_all1_but_msb_s = '1' -- (s285)
+				else '0';
+			nndyn_wmin <= resize(nndyn_wm2_s, log2(2*w - 1)) -- (s283)
+				when nndyn_mask_is_all1_but_msb_s = '1'
+				else resize(nndyn_wm1_s, log2(2*w - 1));
+		end generate;
+		n01: if ww = 1 generate
+			nndyn_mask_wm2 <= '1';
+			nndyn_wmin <= resize(nndyn_wm2_s, log2(2*w - 1));
+		end generate;
 		nndyn_wmin_excp_val <= resize(r.nndyn.brlwmin, log2(2*w - 1));
 		nndyn_wmin_excp <= r.nndyn.exception;
 		nndyn_nnrnd_mask <= r.nndyn.nnrnd_mask;
-		nndyn_nnrnd_zerowm1_s <=
-			'1' when r.nndyn.valw /= r.nndyn.valw3
-			else '0';
-		nndyn_nnrnd_zerowm1 <= nndyn_nnrnd_zerowm1_s;
+		nndyn_nnrnd_maskwg <= r.nndyn.nmw;
 		nndyn_nnp1_s <= r.nndyn.valnnp1;
 		nndyn_nnp1 <= nndyn_nnp1_s;
 		nndyn_nnm3_s <= r.nndyn.valnnm3;
 		nndyn_nnm3 <= nndyn_nnm3_s;
 		nndyn_nnm2_s <= r.nndyn.valnnm2;
 		nndyn_nnm2 <= nndyn_nnm2_s;
+		-- Signals holding comparisons between (dynamic value of) w and ndsp
+		nndyn_w_less_eq_ndsp <= r.nndyn.w_less_eq_ndsp;
+		nndyn_w_less_ndsp <= r.nndyn.w_less_ndsp;
+		nndyn_w_multiple_of_ndsp <= r.nndyn.w_multiple_of_ndsp;
+		nndyn_w_div_ndsp <= r.nndyn.w_div_ndsp;
+		nndyn_w_div_ndsp_minus_one <= r.nndyn.w_div_ndsp_minus_one;
+		nndyn_nb_bursts <= r.nndyn.nb_bursts;
+		nndyn_slkpivot_0 <= r.nndyn.slkpivot_0;
+		nndyn_slkpivot_0_larger_cstslk <= r.nndyn.slkpivot_0_larger_cstslk;
+		nndyn_slkpivot_1 <= r.nndyn.slkpivot_1;
+		nndyn_slkpivot_1_larger_cstslk <= r.nndyn.slkpivot_1_larger_cstslk;
 	end generate;
 
 	nn0: if not nn_dynamic generate -- statically resolved by synthesizer
@@ -4831,9 +5147,6 @@ begin
 		nndyn_wm1 <= nndyn_wm1_s;
 		nndyn_wm2 <= nndyn_wm2_s;
 		nndyn_2wm1 <= nndyn_2wm1_s;
-		nndyn_mask_is_zero_s <=
-			'1' when nndyn_mask_s = (nndyn_mask_s'range => '0')
-			else '0';
 		nndyn_mask_is_all1_but_msb_s <=
 			'1' when (nndyn_mask_s(nndyn_mask_s'LENGTH - 1) = '0'
 			     and ( nndyn_mask_s(nndyn_mask_s'LENGTH - 2 downto 0)
@@ -4849,15 +5162,35 @@ begin
 			else '0';
 		nndyn_nnrnd_mask <= std_logic_vector (
 			resize(unsigned(to_signed(-1, nn mod ww)), ww) );
-		nndyn_nnrnd_zerowm1 <=
-			'1' when ((nn + 4) mod ww) /= (nn mod ww)
-			else '0';
+		nndyn_nnrnd_maskwg <= to_unsigned(nn / ww, log2(w - 1));
 		nndyn_nnp1_s <= to_unsigned(nn + 1, log2(nn + 1));
 		nndyn_nnp1 <= nndyn_nnp1_s;
 		nndyn_nnm3_s <= to_unsigned(nn - 3, log2(nn));
 		nndyn_nnm3 <= nndyn_nnm3_s;
 		nndyn_nnm2_s <= to_unsigned(nn - 2, log2(nn));
 		nndyn_nnm2 <= nndyn_nnm2_s;
+		-- Signals holding comparisons between (static value of) w and ndsp
+		nndyn_w_less_eq_ndsp <= '1' when w <= ndsp else '0';
+		nndyn_w_less_ndsp <= '1' when w < ndsp else '0';
+		nndyn_w_multiple_of_ndsp <= '1' when w mod ndsp = 0 else '0';
+		nndyn_w_div_ndsp <= to_unsigned(w / ndsp, log2(div(w, ndsp)));
+		-- In (s275) below, (w / ndsp) - 1 cannot turn out to be strictly
+		-- negative, because ndsp < w (or equal), hence (w / ndsp) > 1 (or equal).
+		nndyn_w_div_ndsp_minus_one <=
+	 		to_unsigned((w / ndsp) - 1, log2(div(w, ndsp))); -- (s275)
+		nndyn_nb_bursts <= to_unsigned(div(w, ndsp), log2(div(w, ndsp)));
+		nndyn_slkpivot_0 <= to_signed(
+				NBRP + sramlat + 4 + ndsp - (MIN_SLK - 1) - (2 * w) - (w mod ndsp),
+			NB_SLK_BITS);
+		nndyn_slkpivot_0_larger_cstslk <=
+			'1' when (((NBRP + sramlat + 4 + ndsp - (MIN_SLK-1) - (2*w) - (w mod ndsp)))
+			         > MIN_SLK_LAST - 1)
+			else '0';
+		nndyn_slkpivot_1 <= to_signed(
+				NBRP + sramlat + 4 - (MIN_SLK - 1) - (2 * w), NB_SLK_BITS);
+		nndyn_slkpivot_1_larger_cstslk <=
+			'1' when ((NBRP + sramlat + 4 - (MIN_SLK-1) - (2*w)) > MIN_SLK_LAST - 1)
+			else '0';
 	end generate;
 
 	-- general busy signal
@@ -4910,7 +5243,7 @@ begin
 		-- clock period, used here as asynchronous combinational inputs to logic which is
 		-- synchronous to 'clkmm' clock, WITHOUT being resynchronized. However this is
 		-- a debug feature and both the registers are expected to toogle at a very low
-		-- frequentce. We don't even reset anything here.
+		-- frequency. We don't even reset anything here.
 		process(clkmm) is
 			variable vcnt : unsigned(CLKMM_DIV_MSB - CLKMM_DIV_LSB downto 0);
 		begin
@@ -5005,8 +5338,13 @@ begin
 						if s_axi_wvalid = '1' and r.axi.wready = '1' and rkx_on = '1' then
 							-- a new data-beat is currently happening on the Data-Write
 							-- AXI channel
-							r_k((C_S_AXI_DATA_WIDTH*(rkx+1))-1 downto C_S_AXI_DATA_WIDTH*rkx)
-								<= s_axi_wdata;
+							if C_S_AXI_DATA_WIDTH < nn then
+								r_k((C_S_AXI_DATA_WIDTH*(rkx+1))-1 downto C_S_AXI_DATA_WIDTH*rkx)
+									<= s_axi_wdata;
+							else
+								r_k((nn*(rkx+1))-1 downto nn*rkx)
+									<= s_axi_wdata(nn - 1 downto 0);
+							end if;
 							rkx <= rkx + 1;
 						end if;
 						-- construct r_mask & r_k_masked by intercepting the writes
@@ -5024,6 +5362,17 @@ begin
 							end if;
 						end if;
 					end if;
+				end if;
+				r_nndyn_dodec22prev <= r.nndyn.dodec22;
+				-- We also use this simulation process to log new values of 'w'
+				-- (when nn_dynamic = TRUE)
+				if r.nndyn.dodec22 = '1' and r_nndyn_dodec22prev = '0' then
+					-- this means (s277) just latched a new value of 'w'
+					-- into 'r.nndyn.valw' from 'r.nndyn.valwtmp'.
+					echo("[    ecc_axi.vhd ]: SW has set new prime size: nn = ");
+					echo(integer'image(to_integer(r.nndyn.valnn)));
+					echo(" -> w = ");
+					echol(integer'image(to_integer(r.nndyn.valw)));
 				end if;
 			end if;
 		end if;

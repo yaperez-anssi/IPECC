@@ -82,17 +82,17 @@ ww = 16                                                                        #
 #                                                                              #
 # Parameter: 'nnmaxabsolute' ###################################################
 #                                                                              #
-nnmaxabsolute = 528       # Largest possible value of 'nn'.                    #
+nnmaxabsolute = 256       # Largest possible value of 'nn'.                    #
 #                                                                              #
 # Initial range [ 'nnmin' - 'nnmax' ] ##########################################
 #                                                                              #
 nnmax = nnmaxabsolute                                                          #
-nnmin = nnmaxabsolute - 16                                                     #
+nnmin = nnmaxabsolute - 32                                                     #
 #                                                                              #
 # Final possible range [ 'nnminmin' - 'nnmaxmin' ] #############################
 #                                                                              #
 nnminmin = 32      # Smallest possible value of 'nnmin'.                       #
-nnmaxmin = 48      # Smallest possible value of 'nnmax'                        #
+nnmaxmin = 128     # Smallest possible value of 'nnmax'                        #
 #                                                                              #
 #   Also read info on parameter 'ww' above.                                    #
 #                                                                              #
@@ -121,7 +121,7 @@ nnmaxmin = 48      # Smallest possible value of 'nnmax'                        #
 NNMINMOD = 3       # 'nnmin' will decrease every 'NNMINMOD' curve(s),          #
 NNMINDECR = 8      #  and it will be decreased by 'NNMINDECR'.                 #
 NNMAXMOD = 6       # 'nnmax' will decrease every 'NNMAXMOD' curve(s),          #
-NNMAXDECR = 4      #  and it will be deceased by 'NNMAXDECR'.                  #
+NNMAXDECR = 4      #  and it will be decreased by 'NNMAXDECR'.                 #
 #                                                                              #
 #   This script generates test-vectors by gradually decreasing the range from  #
 #   which the random values of 'nn' are drawn for each new curve, this range   #
@@ -136,13 +136,17 @@ NNMAXDECR = 4      #  and it will be deceased by 'NNMAXDECR'.                  #
 #       curves by a decrement of 'NNMAXDECR'                                   #
 #                                                                              #
 #   Now, as 'nnmin' is regularly decreased, parameter 'nnminmin' defines the   #
-#   minimal threeshold below which 'nnmin' will never go.                      #
+#   minimal threeshold below which 'nnmin' will never go. Parameter 'nnmax'    #
+#   is also regularly decreased, that's the reason for an 'nnmaxmin' para-     #
+#   meter.                                                                     #
 #                                                                              #
-#   Warning: keep NNMAXMOD > NNMINMOD to avoid range inversion error!          #
+#   Warning: keep  NNMAXMOD > NNMINMOD (nnmax decreased less often than nnmin) #
+#             and NNMAXDECR < NNMINDECR (nnmax decreased less than nnmin)      #
+#            to avoid range inversion error!                                   #
 #                                                                              #
 # Parameters: 'nn_constant', 'only_kp_and_no_blinding' #########################
 #                                                                              #
-nn_constant = 528 # Non-0 value will make it the constant unique value of 'nn',#
+nn_constant = 0   # Non-0 value will make it the constant unique value of 'nn',#
 #                 # hence bypassing previous settings for nnmin, nnmax, etc.   #
 #                                                                              #
 only_kp_and_no_blinding = False  # Hope that option's name speaks for itself   #
@@ -151,11 +155,18 @@ only_kp_and_no_blinding = False  # Hope that option's name speaks for itself   #
 #                                # point addition, point doubling, point equa- #
 #                                # lity/opposition tests, etc. also blinding   #
 #                                # will be kept disabled).                     #
+#                                #                                             #
+#                                # Also no exceptions will be issued (same     #
+#                                # as if NO_EXCEPTIONS was set to TRUE, see    #
+#                                # this parameter a few wiles below)           #
+#                                #                                             #
+#                                # See also paramter 'NN_LIMIT_COMPUTE_Q'      #
+#                                # below.                                      #
 #                                                                              #
 # Parameters: 'NBCURV'                                                         #
 #             'NB*' where * = KP|ADD|DBL|NEG|CHK|EQU|OPP #######################
 #                                                                              #
-NBCURV = 10  # A value of 0 means don't stop (ever-lasting producing loop).     #
+NBCURV = 10  # A value of 0 means don't stop (ever-lasting producing loop).    #
 NBKP = 100  # Nb of [k]P tests that will be generated per curve.               #
 NBADD = 10 # Nb of P+Q tests that will be generated per curve.                 #
 NBDBL = 10 # Nb of [2]P tests that will be generated per curve.                #
@@ -194,14 +205,17 @@ NBOPP = 10 # Nb of 'are points opposite?" tests that'll be generated per curve #
 #                                                                              #
 # Parameter 'NN_LIMIT_COMPUTE_Q' ###############################################
 #                                                                              #
-NN_LIMIT_COMPUTE_Q = 64  # Limit of 'nn' above which blinding will be disabl.  #
+NN_LIMIT_COMPUTE_Q = 0  # Limit of 'nn' above which blinding will be disabled. #
+#                       # A value of 0 means there's no such limit.            #
 #                                                                              #
 #   For [k]P tests, blinding may or may not be enabled (and if so, with a      #
 #   number of blinding bits randomly drawn in the range [1 : nn - 1]).         #
+#                                                                              #
 #   Generating a test with blinding enabled requires first to compute the      #
 #   order of the curve, which can become insupportably long as value of 'nn'   #
 #   exceeds some threeshold. Such a threeshold is difficult to assess,         #
 #   however that's the reason for parameter 'NN_LIMIT_COMPUTE_Q'.              #
+#                                                                              #
 #   By definition, any random curve generated for a value of 'nn' exceeding    #
 #   'NN_LIMIT_COMPUTE_Q' will involve no blinding in their [k]P tests          #
 #   generation. Furthermore, for these curves, the order 'q' will be           #
@@ -215,7 +229,7 @@ NO_EXCEPTIONS = False                                                          #
 #                                                                              #
 #   If set to False, the script will also generate, for each generated         #
 #   curve and in addition to the tests defined above (c.f NBKP, NBADD, etc)    #
-#   a certain number of tests that will have the IP to meet an exception       #
+#   a certain number of tests that will have the IP to meet a singularity      #
 #   during computation, like for instance adding two points which are          #
 #   opposite, or multiplying a point by a scalar equal to its order, etc.      #
 #                                                                              #
@@ -308,13 +322,13 @@ try:
             disc = -16 * ( (4 * (a**3)) + (27 * (b**2)) )
         EE = EllipticCurve(Fp, [a,b])
         # compute value of q (order of the curve)
-        #   but only if nn < 256 (or equal) otherwise Sage computation is
-        #   too long (only if we do compute q do we also generate tests with
-        #   blinding)
-        if nn > NN_LIMIT_COMPUTE_Q:
-            q = 1
-        else:
+        #   but only if nn < NN_LIMIT_COMPUTE_Q (or equal) otherwise Sage
+        #   computation is too long (only if we do compute q do we also
+        #   generate tests with blinding)
+        if (NN_LIMIT_COMPUTE_Q == 0) or (nn <= NN_LIMIT_COMPUTE_Q):
             q = EE.order()
+        else:
+            q = 1
         # nn might need to be adjusted to get into account the size of q
         # as nn must be equal to max(log2(p), log2(q))
         nn = max(nn, ceil(RR(log(q, 2))))
@@ -352,7 +366,7 @@ try:
                 print("Py=0x%0*x" % (int(div(nn, 4)), yP))
             print("k=0x%0*x" % (int(div(nn, 4)), k))
             if not only_kp_and_no_blinding:
-                if nn <= NN_LIMIT_COMPUTE_Q:
+                if (NN_LIMIT_COMPUTE_Q == 0) or (nn <= NN_LIMIT_COMPUTE_Q):
                     if toss_a_coin() == 1:
                         nbbld = random.randint(1, nn - 1)
                         print("nbbld=%d" % nbbld)
@@ -579,7 +593,7 @@ try:
         P = EE.random_element()
         xP = P[0]
         yP = P[1]
-        if nn <= NN_LIMIT_COMPUTE_Q:
+        if (NN_LIMIT_COMPUTE_Q == 0) or (nn <= NN_LIMIT_COMPUTE_Q):
             #
             # TEST: [k]P computation with exception: k = q
             #
@@ -595,7 +609,7 @@ try:
                 print("Px=0x%0*x" % (int(div(nn, 4)), xP))
                 print("Py=0x%0*x" % (int(div(nn, 4)), yP))
             print("k=0x%0*x" % (int(div(nn, 4)), k))
-            if nn <= NN_LIMIT_COMPUTE_Q:
+            if (NN_LIMIT_COMPUTE_Q == 0) or (nn <= NN_LIMIT_COMPUTE_Q):
                 if toss_a_coin() == 1:
                     nbbld = random.randint(1, nn - 1)
                     print("nbbld=%d" % nbbld)
@@ -622,7 +636,7 @@ try:
                     print("Px=0x%0*x" % (int(div(nn, 4)), xP))
                     print("Py=0x%0*x" % (int(div(nn, 4)), yP))
                 print("k=0x%0*x" % (int(div(nn, 4)), k))
-                if nn <= NN_LIMIT_COMPUTE_Q:
+                if (NN_LIMIT_COMPUTE_Q == 0) or (nn <= NN_LIMIT_COMPUTE_Q):
                     if toss_a_coin() == 1:
                         nbbld = random.randint(1, nn - 1)
                         print("nbbld=%d" % nbbld)
@@ -647,7 +661,7 @@ try:
                 print("Px=0x%0*x" % (int(div(nn, 4)), xP))
                 print("Py=0x%0*x" % (int(div(nn, 4)), yP))
             print("k=0x%0*x" % (int(div(nn, 4)), k))
-            if nn <= NN_LIMIT_COMPUTE_Q:
+            if (NN_LIMIT_COMPUTE_Q == 0) or (nn <= NN_LIMIT_COMPUTE_Q):
                 if toss_a_coin() == 1:
                     nbbld = random.randint(1, nn - 1)
                     print("nbbld=%d" % nbbld)
@@ -661,7 +675,7 @@ try:
         # TEST: [k]P with exception: k = a factor of P.order()
         #       (implying: result should be the null point)
         #
-        if nn <= NN_LIMIT_COMPUTE_Q:
+        if (NN_LIMIT_COMPUTE_Q == 0) or (nn <= NN_LIMIT_COMPUTE_Q):
             # compute order of point P
             o = P.order()
             # factor order of P
@@ -898,7 +912,7 @@ try:
         nbtest+=1
         #
         #   P of order 2 (aka 2-torsion)
-        if nn <= NN_LIMIT_COMPUTE_Q:
+        if (NN_LIMIT_COMPUTE_Q == 0) or (nn <= NN_LIMIT_COMPUTE_Q):
             for fac in facs:
                 if fac[0] == 2:
                     # the order has 2 as a factor (possibly as a multifactor,

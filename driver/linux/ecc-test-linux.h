@@ -164,6 +164,7 @@ typedef struct {
 	bool is_an_exception;
 	uint32_t id;
 	kp_trace_info_t *ktrc;
+	uint32_t* kptime;
 	trng_diagcnt_t* tdg;
 } ipecc_test_t;
 

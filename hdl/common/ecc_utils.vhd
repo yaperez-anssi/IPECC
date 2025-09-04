@@ -97,10 +97,13 @@ package ecc_utils is
 	subtype std_logic528 is std_logic_vector(527 downto 0);
 	subtype std_logic544 is std_logic_vector(543 downto 0);
 	subtype std_logic1024 is std_logic_vector(1023 downto 0);
+	subtype std_logic_nn is std_logic_vector(nn - 1 downto 0);
 
 	function std_nat(arg, size: natural) return std_logic_vector;
 
 	function ge_even(arg: natural) return natural;
+
+	function max4(a, b, c, d : positive) return positive;
 
 end package ecc_utils;
 
@@ -229,6 +232,16 @@ package body ecc_utils is
 			return arg + 1;
 		end if;
 	end function ge_even;
+
+	function max4(a, b, c, d : positive) return positive is
+		variable tmp : positive;
+	begin
+		tmp := a;
+		if (b > tmp) then tmp := b; end if;
+		if (c > tmp) then tmp := c; end if;
+		if (d > tmp) then tmp := d; end if;
+		return tmp;
+	end function max4;
 
 	-- pragma translate_off
 	-- write something to the console (without flushing the line)

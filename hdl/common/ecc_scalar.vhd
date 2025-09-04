@@ -619,7 +619,7 @@ begin
 				end case;
 				-- sample now the possible null-state of R0 & R1 points (from signals
 				-- ar[01]zo, which are driven by ecc_axi) so that even if SW changes
-				-- these in the current of operation (it is possible in Hw unsecure
+				-- these in the current of operation (it is possible in HW unsecure
 				-- mode) the information will stay internally the same for both
 				-- ecc_scalar and ecc_curve and we'll have consistant computation
 				v.ctrl.r0z := ar0zo;

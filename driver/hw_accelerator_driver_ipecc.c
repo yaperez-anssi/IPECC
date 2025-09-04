@@ -1142,7 +1142,7 @@ static volatile uint64_t *ipecc_baddr = NULL;
 } while (0)
 
 /* (Re-)enable the TRNG post-processing logic that pulls bytes from the
- * raw random source - in the IP Hw unsecure mode, that logic is disabled
+ * raw random source - in the IP HW unsecure mode, that logic is disabled
  * upon reset and needs to be explicitly enabled by sofware by calling
  * this macro.
  *
@@ -3672,7 +3672,7 @@ err:
  */
 static inline int ip_ecc_disable_aximsk(void)
 {
-	/* we DON'T busy-wait as we assume the IP might be debug-halted
+	/* We DON'T busy-wait as we assume the IP might be debug-halted
 	 * in the course of a computation (hence with the busy BIT on,
 	 * in which case it would create a dead-lock situation).
 	 *
@@ -4309,6 +4309,9 @@ static void get_exp_flags(kp_exp_flags_t* flg)
 
 static void kp_trace_msg_append(kp_trace_info_t* ktrc, const char* fmt, ...)
 {
+#if 0
+	uint32_t msglen;
+#endif
 	static bool overflow = false;
 	va_list ap;
 #ifdef KP_TRACE_CONSOLE
@@ -4402,7 +4405,7 @@ static int kp_debug_trace(kp_trace_info_t* ktrc)
 	IPECC_EXEC_PT_KP();
 
 	/* Poll register R_DBG_STATUS until it shows IP is halted
-	 * in debug mode.
+	 * in HW unsecure mode.
 	 */
 	kp_trace_msg_append(ktrc, "Polling until debug halt\n\r");
 	IPECC_POLL_UNTIL_DEBUG_HALTED();
@@ -4438,7 +4441,7 @@ static int kp_debug_trace(kp_trace_info_t* ktrc)
 		IPECC_SINGLE_STEP();
 		/*
 		 * Poll register R_DBG_STATUS until it shows IP is halted
-		 * in debug mode.
+		 * in HW unsecure mode.
 		 */
 		IPECC_POLL_UNTIL_DEBUG_HALTED();
 		ktrc->nb_steps++;
@@ -4790,7 +4793,7 @@ static int kp_run_with_specific_zmask(uint32_t* zmask)
 	IPECC_EXEC_PT_KP();
 
 	/* Poll register R_DBG_STATUS until it shows IP is halted
-	 * in debug mode.
+	 * in HW unsecure mode.
 	 */
 	IPECC_POLL_UNTIL_DEBUG_HALTED();
 
@@ -4896,8 +4899,31 @@ err:
 
 /*
  * Commands execution (point operation)
+ *
+ *   kp_time: pointer for IP where to write the number of clock-cycles
+ *            last operation took.
+ *
+ *            If NULL, simply no timing info will be transmitted back
+ *            by the IP.
+ *
+ *   zmask:   pointer for IP where to read the first Z-mask to apply
+ *            initially to coordinates.
+ *
+ *            Must be diffrent from NULL if and only if compilation
+ *            with made with -DKP_SET_ZMASK.
+ *
+ *   ktrc:    pointer for IP where to write [k]P trance infos/log.
+ *
+ *            Must be different from NULL if only if compilation is
+ *            made wuth -DKP_TRACE.
+ *
+ * The default behaviour should be to call ip_ecc_exec_command() in 'blocking'
+ * mode (the software driver will poll the BUSY WAIT bit until it is cleared
+ * by the hardware). When in HW unsecure mode setting 'blocking' to 0 allows to
+ * debug monitor the operation, using e.g breakpoints.
  */
-static inline int ip_ecc_exec_command(ip_ecc_command cmd, int *flag, kp_trace_info_t* ktrc, uint32_t* zmask)
+static inline int ip_ecc_exec_command(ip_ecc_command cmd, int *flag,
+		uint32_t* kp_time, uint32_t* zmask, kp_trace_info_t* ktrc)
 {
 	/* Wait until the IP is not busy */
 	IPECC_BUSY_WAIT();
@@ -4979,6 +5005,15 @@ static inline int ip_ecc_exec_command(ip_ecc_command cmd, int *flag, kp_trace_in
 	/* Wait until the IP is not busy */
 	IPECC_BUSY_WAIT();
 
+#ifndef KP_TRACE
+	if (kp_time)
+	{
+		if (ip_ecc_get_time(kp_time)) {
+			goto err;
+		};
+	}
+#endif
+
 	/* Check for error */
 	if(ip_ecc_check_error(NULL)){
 		goto err;
@@ -5050,13 +5085,13 @@ static inline int ip_ecc_is_hw_secure(bool* hw_secure)
 }
 
 /* To get hardware capabilities from the IP */
-static inline int ip_ecc_get_capabilities(bool* hw_unsecure, bool* shuffle, bool* nndyn, bool* axi64, uint32_t* nnmax)
+static inline int ip_ecc_get_capabilities(bool* hwsecure, bool* shuffle, bool* nndyn, bool* axi64, uint32_t* nnmax)
 {
-	if (IPECC_IS_HW_UNSECURE())
+	if (IPECC_IS_HW_SECURE())
 	{
-		*hw_unsecure = true;
+		*hwsecure = true;
 	} else {
-		*hw_unsecure = false;
+		*hwsecure = false;
 	}
 	if (IPECC_IS_SHUFFLING_SUPPORTED())
 	{
@@ -5329,12 +5364,12 @@ err:
 
 /* To get hardware capabilities from the IP
  */
-int hw_driver_get_capabilities(bool* hw_unsecure, bool* shuffle, bool* nndyn, bool* axi64, uint32_t* nnmax)
+int hw_driver_get_capabilities(bool* hwsecure, bool* shuffle, bool* nndyn, bool* axi64, uint32_t* nnmax)
 {
 	if(driver_setup()){
 		goto err;
 	}
-	if (ip_ecc_get_capabilities(hw_unsecure, shuffle, nndyn, axi64, nnmax)){
+	if (ip_ecc_get_capabilities(hwsecure, shuffle, nndyn, axi64, nnmax)){
 		goto err;
 	}
 	return 0;
@@ -5444,7 +5479,7 @@ err:
 /* Have IP to execute a certain nb of opcodes in microcode
  *
  * (only allowed in HW unsecure mode, otherwise an error
- * is returned, with no action taken)..
+ * is returned, with no action taken).
  */
 int hw_driver_run_opcodes_DBG(uint32_t nbops)
 {
@@ -5505,7 +5540,7 @@ err:
 /* Resume execution of microcode
  *
  * (only allowed in HW unsecure mode, otherwise an error
- * is returned, with no action taken)..
+ * is returned, with no action taken).
  */
 int hw_driver_resume_DBG()
 {
@@ -5860,7 +5895,7 @@ err:
 /* Remove TRNG complete bypass, restoring nominal behaviour
  *
  * (only allowed in HW unsecure mode, otherwise an error
- * is returned, with no action taken)..
+ * is returned, with no action taken).
  */
 int hw_driver_dont_bypass_trng_DBG(void)
 {
@@ -5940,7 +5975,7 @@ err:
 /* To select the random source of which to read the diagnostics
  *
  * (only allowed in HW unsecure mode, otherwise an error
- * is returned, with no action taken)..
+ * is returned, with no action taken).
  */
 int hw_driver_select_trng_diag_source_DBG(uint32_t id)
 {
@@ -5967,7 +6002,7 @@ err:
 /* Get one bit from the raw random FIFO
  *
  * (only allowed in HW unsecure mode, otherwise an error
- * is returned, with no action taken)..
+ * is returned, with no action taken).
  */
 int hw_driver_read_one_raw_random_bit_DBG(uint32_t addr, uint32_t* rawbit)
 {
@@ -6378,7 +6413,7 @@ err:
  * countermeasure.
  *
  * (only allowed in HW unsecure mode, otherwise an error
- * is returned, with no action taken)..
+ * is returned, with no action taken).
  */
 int hw_driver_enable_aximsk(void)
 {
@@ -6400,7 +6435,7 @@ err:
  * countermeasure.
  *
  * (only allowed in HW unsecure mode, otherwise an error
- * is returned, with no action taken)..
+ * is returned, with no action taken).
  */
 int hw_driver_disable_aximsk_DBG(void)
 {
@@ -6746,7 +6781,7 @@ err:
 
 /* Get the value of Program Counter
  * (only allowed in HW unsecure mode, otherwise an error
- * is returned, with no action taken)..
+ * is returned, with no action taken).
  */
 int hw_driver_get_pc_DBG(uint32_t* pc)
 {
@@ -6784,7 +6819,7 @@ err:
  *    folder).
  *
  * (only allowed in HW unsecure mode, otherwise an error
- * is returned, with no action taken)..
+ * is returned, with no action taken).
  */
 int hw_driver_get_fsm_state_DBG(char* state, uint32_t sz)
 {
@@ -6816,7 +6851,7 @@ err:
  *     measure computation duration of point operations.
  *
  * (only allowed in HW unsecure mode, otherwise an error
- * is returned, with no action taken)..
+ * is returned, with no action taken).
  */
 int hw_driver_get_time_DBG(uint32_t* clk_cycles)
 {
@@ -6852,7 +6887,7 @@ err:
  *     process took.
  *
  * (only allowed in HW unsecure mode, otherwise an error
- * is returned, with no action taken)..
+ * is returned, with no action taken).
  */
 int hw_driver_get_trng_raw_fifo_filling_time_DBG(uint32_t* duration)
 {
@@ -6887,7 +6922,7 @@ err:
  * calling the function.
  *
  * (only allowed in HW unsecure mode, otherwise an error
- * is returned, with no action taken)..
+ * is returned, with no action taken).
  */
 int hw_driver_get_trng_raw_fifo_state_DBG(bool* full, uint32_t* nbbits)
 {
@@ -6925,7 +6960,7 @@ err:
  * or debug-halted before calling this funtion.
  *
  * (only allowed in HW unsecure mode, otherwise an error
- * is returned, with no action taken)..
+ * is returned, with no action taken).
  */
 int hw_driver_get_content_of_trng_raw_random_fifo_DBG(char* buf, uint32_t* nbbits)
 {
@@ -7263,7 +7298,7 @@ int hw_driver_is_on_curve(const uint8_t *x, uint32_t x_sz, const uint8_t *y, uin
 	}
 
 	/* Check if it is on curve */
-	if(ip_ecc_exec_command(PT_CHK, on_curve, NULL, NULL)){
+	if(ip_ecc_exec_command(PT_CHK, on_curve, NULL, NULL, NULL)){
 		goto err;
 	}
 
@@ -7322,7 +7357,7 @@ int hw_driver_eq(const uint8_t *x1, uint32_t x1_sz, const uint8_t *y1, uint32_t 
 	}
 
 	/* Check if it the points are equal */
-	if(ip_ecc_exec_command(PT_EQU, is_eq, NULL, NULL)){
+	if(ip_ecc_exec_command(PT_EQU, is_eq, NULL, NULL, NULL)){
 		goto err;
 	}
 
@@ -7382,7 +7417,7 @@ int hw_driver_opp(const uint8_t *x1, uint32_t x1_sz, const uint8_t *y1, uint32_t
 
 
 	/* Check if the points are opposite */
-	if(ip_ecc_exec_command(PT_OPP, is_opp, NULL, NULL)){
+	if(ip_ecc_exec_command(PT_OPP, is_opp, NULL, NULL, NULL)){
 		goto err;
 	}
 
@@ -7564,7 +7599,7 @@ int hw_driver_neg(const uint8_t *x, uint32_t x_sz, const uint8_t *y, uint32_t y_
 	}
 
 	/* Execute our NEG command */
-	if(ip_ecc_exec_command(PT_NEG, NULL, NULL, NULL)){
+	if(ip_ecc_exec_command(PT_NEG, NULL, NULL, NULL, NULL)){
 		goto err;
 	}
 
@@ -7630,7 +7665,7 @@ int hw_driver_dbl(const uint8_t *x, uint32_t x_sz, const uint8_t *y, uint32_t y_
 	}
 
 	/* Execute our DBL command */
-	if(ip_ecc_exec_command(PT_DBL, NULL, NULL, NULL)){
+	if(ip_ecc_exec_command(PT_DBL, NULL, NULL, NULL, NULL)){
 		goto err;
 	}
 
@@ -7705,7 +7740,7 @@ int hw_driver_add(const uint8_t *x1, uint32_t x1_sz, const uint8_t *y1, uint32_t
 	}
 
 	/* Execute our ADD command */
-	if(ip_ecc_exec_command(PT_ADD, NULL, NULL, NULL)){
+	if(ip_ecc_exec_command(PT_ADD, NULL, NULL, NULL, NULL)){
 		goto err;
 	}
 
@@ -7739,7 +7774,7 @@ err:
 int hw_driver_mul(const uint8_t *x, uint32_t x_sz, const uint8_t *y, uint32_t y_sz,
                   const uint8_t *scalar, uint32_t scalar_sz,
                   uint8_t *out_x, uint32_t *out_x_sz, uint8_t *out_y, uint32_t *out_y_sz,
-									kp_trace_info_t* ktrc, uint32_t* zmask)
+									uint32_t* kp_time, uint32_t* zmask, kp_trace_info_t* ktrc)
 {
 	int inf_r0, inf_r1;
 	uint32_t nn_sz;
@@ -7808,7 +7843,7 @@ int hw_driver_mul(const uint8_t *x, uint32_t x_sz, const uint8_t *y, uint32_t y_
 	}
 
 	/* Execute our [k]P command */
-	if(ip_ecc_exec_command(PT_KP, NULL, ktrc, zmask)){
+	if(ip_ecc_exec_command(PT_KP, NULL, kp_time, zmask, ktrc)) {
 		log_print("In hw_driver_mul(): Error in ip_ecc_exec_command()\n\r");
 		goto err;
 	}

@@ -121,7 +121,7 @@ begin
 	gndxb <= (others => '0');
 	gndxc <= (others => '0');
 	dspi_0_pcin <= (others => '0');
-	dsp_pp(0) <= (others => '0');
+	--dsp_pp(0) <= (others => '0');
 
 	A_s <= std_logic_vector(to_unsigned(0, 30 - ww)) & A;
 	B_s <= std_logic_vector(to_unsigned(0, 18 - ww)) & B;

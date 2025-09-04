@@ -38,20 +38,32 @@ package ecc_log is
 	--   4. log2(0) = 1  exists   ! (1 bit is required to binary-encode number 0)
 	function log2(i : natural) return positive;
 
+	-- log2z()
+	--
+	-- same as for log2z() except that log2z(0) = 0
+	-- (this allows to properly handle some vicious side effect that would
+	-- otherwise occur in mm_ndsp.vhd when computing OPAGEW (see (s130) of
+	-- this file), also in ecc_pkg.vhd to compute FP_ADDR_LSB (see (s0) of
+	-- this file), and several times in ecc_fp.vhd & ecc_axi.vhd when
+	-- the lower part (least significant) of addresses to ecc_fp_dram
+	-- are manipulated.
+	function log2z(i : natural) return natural;
+
 	-- ln2(i)
 	--
-	-- function ln2() differs from log2().
+	-- function ln2() differs from log2() and log2z()
 	-- It is equal to the mathematical composition of log funtion (in basis 2)
 	-- with ceil function.
 	-- ln2 is used to determine the number of extra bits resulting from the
-	-- addition (i.e accumulation) of several terms of equal bitwidth
+	-- addition (i.e accumulation) of several terms of equal bitwidth. It is
+	-- used throughout mm_ndsp.vhd, macc_*.vhd and maccx_*.vhd source files.
 	--
 	-- Examples:
 	--
 	--   1. ln2(1) = 0
 	--   2. ln2(2) = 1 as adding 2 terms together requires one extra bit
 	--   3. ln2(3) = 2 as adding 3 terms together requires two extra bits
-	--   4. ln2(0) has no meaning (hence the 'positive' restriction on input)
+	--   4. ln2(0) has no meaning (hence the 'positive' restriction on input arg)
 	function ln2(i : positive) return natural;
 
 	-- log10(i)
@@ -70,13 +82,26 @@ package body ecc_log is
 	-- 'math_real', which we do not want to use) so we use instead a basic
 	-- iterative computation in order to compute log2.
 	-- Mind that with this definition log2(1) = 1 (1 bit is needed to represent
-	-- the integer number 1) and not 0, likewise log2(0) exists and is 1.
+	-- the integer number 1) and not 0, likewise log2(0) exists and is equal to 1.
 	function log2(i : natural) return positive is
 		variable ret_val : positive := 1;
 	begin
 		while i >= (2**ret_val) loop
 			ret_val := ret_val + 1;
 		end loop;
+		return ret_val;
+	end function;
+
+	function log2z(i : natural) return natural is
+		variable ret_val : natural := 1;
+	begin
+		if i = 0 then
+			ret_val := 0;
+		else
+			while i >= (2**ret_val) loop
+				ret_val := ret_val + 1;
+			end loop;
+		end if;
 		return ret_val;
 	end function;
 

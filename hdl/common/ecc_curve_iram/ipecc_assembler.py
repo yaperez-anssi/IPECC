@@ -660,11 +660,11 @@ begin
 		end process;
 	end generate;
 
-	-- -----------------------------------------------------------------
+	-- ----------------------------------------------------------------
 	-- Port B (R only) is the nominal port used by ecc_curve to fetch
 	-- instructions (which makes ecc_curve_iram a ROM when in HW secure
 	-- mode)
-	-- ------------------------------------------------------------------
+	-- ----------------------------------------------------------------
 	r1 : if rdlat = 1 generate -- statically resolved by synthesizer
 		process(clkb)
 		begin

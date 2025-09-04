@@ -56,7 +56,7 @@ entity ecc_fp is
 		xre : in std_logic;
 		xrdata : out std_logic_vector(ww - 1 downto 0);
 		nndyn_nnrnd_mask : in std_logic_vector(ww - 1 downto 0);
-		nndyn_nnrnd_zerowm1 : in std_logic;
+		nndyn_nnrnd_maskwg : in unsigned(log2(w) - 1 downto 0);
 		nndyn_wm1 : in unsigned(log2(w - 1) - 1 downto 0);
 		nndyn_2wm1 : in unsigned(log2((2*w) - 1) - 1 downto 0);
 		-- pragma translate_off
@@ -283,6 +283,8 @@ architecture rtl of ecc_fp is
 		doshxcnt : doshxcnt_type;
 		burstdone : std_logic;
 		finalizesh : std_logic;
+		nnrndz : std_logic;
+		opccntinv : unsigned(log2(w) - 1 downto 0);
 	end record;
 
 	component large_shr is
@@ -694,14 +696,15 @@ architecture rtl of ecc_fp is
 
 begin
 
+	-- (s155)
 	-- large shift-register (support for NNRNDs & NNRNDf instructions)
 	s0: for i in 0 to NB_MSK_SH_REG - 1 generate
 		s0i : large_shr
 			generic map(size => 2*w*ww)
 			port map(
 				clk => clk,
-				ce => r.rnd.doshx(i),
-				d => r.rnd.data(0),
+				ce => r.rnd.doshx(i), -- (s151)
+				d => r.rnd.data(0), -- (s156)
 				q => opo.shr(i)
 		);
 	end generate;
@@ -712,7 +715,8 @@ begin
 	               compkp, compcstmty, comppop, trngdata, trngvalid,
 	               dbgtrngnnrnddet, dbghalted,
 	               dbgtrngcompletebypass, dbgtrngcompletebypassbit,
-	               nndyn_nnrnd_mask, nndyn_nnrnd_zerowm1, nndyn_wm1,
+	               nndyn_nnrnd_mask, nndyn_nnrnd_maskwg,
+	               nndyn_wm1,
 								 nndyn_2wm1, swrst, token_generating,
 								 no_nnrnd_sf)
 		variable v : reg_type;
@@ -894,8 +898,8 @@ begin
 			if opi.redc = '1' then
 				v.mm.push.opaorb := '1';
 				-- latch address of opcodes A, B & C
-				v.opa := opi.a & std_logic_vector(to_unsigned(0, log2(n - 1)));
-				v.opb := opi.b & std_logic_vector(to_unsigned(0, log2(n - 1)));
+				v.opa := opi.a & std_logic_vector(to_unsigned(0, log2z(n - 1)));
+				v.opb := opi.b & std_logic_vector(to_unsigned(0, log2z(n - 1)));
 				v.mm.push.opic := opi.c; -- (s10)
 				v.mm.push.do := '1';
 				v.ctrl.redc := '1';
@@ -903,9 +907,9 @@ begin
 				-- subtraction or addition
 				v.addsub.do := '1';
 				-- latch address of opcodes A, B & C addresses
-				v.opa := opi.a & std_logic_vector(to_unsigned(0, log2(n - 1)));
-				v.opb := opi.b & std_logic_vector(to_unsigned(0, log2(n - 1)));
-				v.opc := opi.c & std_logic_vector(to_unsigned(0, log2(n - 1)));
+				v.opa := opi.a & std_logic_vector(to_unsigned(0, log2z(n - 1)));
+				v.opb := opi.b & std_logic_vector(to_unsigned(0, log2z(n - 1)));
+				v.opc := opi.c & std_logic_vector(to_unsigned(0, log2z(n - 1)));
 				if opi.sub = '1' then
 					v.ctrl.sub := '1';
 				elsif opi.add = '1' then
@@ -918,9 +922,9 @@ begin
 				-- latch address of opcodes A, B & C addresses
 				-- note that ecc_curve guarantees that op[abc](0) = 0
 				-- for a double-size operation
-				v.opa := opi.a & std_logic_vector(to_unsigned(0, log2(n - 1)));
-				v.opb := opi.b & std_logic_vector(to_unsigned(0, log2(n - 1)));
-				v.opc := opi.c & std_logic_vector(to_unsigned(0, log2(n - 1)));
+				v.opa := opi.a & std_logic_vector(to_unsigned(0, log2z(n - 1)));
+				v.opb := opi.b & std_logic_vector(to_unsigned(0, log2z(n - 1)));
+				v.opc := opi.c & std_logic_vector(to_unsigned(0, log2z(n - 1)));
 				v.ctrl.xxor := '1';
 			elsif (opi.ssrl or opi.ssll or opi.div2) = '1' then
 				-- bit shift
@@ -931,12 +935,12 @@ begin
 					  & std_logic_vector(
 					      -- n > w and nndyn_wm1 is an unsigned, so resize
 				        -- function can't but extend it with 0 MSbits
-					      resize(nndyn_wm1, log2(n - 1)));
+					      resize(nndyn_wm1, log2z(n - 1)));
 					v.opc := opi.c
 					  & std_logic_vector(
 					      -- n > w and nndyn_wm1 is an unsigned, so resize
 				        -- function can't but extend it with 0 MSbits
-					      resize(nndyn_wm1, log2(n - 1)));
+					      resize(nndyn_wm1, log2z(n - 1)));
 					-- instruction NNDIV2 is handled as a special case of NNSRL
 					if opi.div2 = '1' then
 						v.ctrl.div2 := '1';
@@ -945,8 +949,8 @@ begin
 					end if;
 				else -- can be nothing but opcode NNSLL
 					v.ctrl.ssll := '1';
-					v.opa := opi.a & std_logic_vector(to_unsigned(0, log2(n - 1)));
-					v.opc := opi.c & std_logic_vector(to_unsigned(0, log2(n - 1)));
+					v.opa := opi.a & std_logic_vector(to_unsigned(0, log2z(n - 1)));
+					v.opc := opi.c & std_logic_vector(to_unsigned(0, log2z(n - 1)));
 				end if;
 				v.ctrl.extended := opi.extended;
 				if opi.ssrl = '1' and opi.ssrl_sh = '1' then
@@ -959,12 +963,12 @@ begin
 				-- parity test
 				v.par.do := '1';
 				v.ctrl.par := '1';
-				v.opa := opi.a & std_logic_vector(to_unsigned(0, log2(n - 1)));
+				v.opa := opi.a & std_logic_vector(to_unsigned(0, log2z(n - 1)));
 			elsif opi.rnd = '1' then
 				-- randomization
 				v.rnd.do := '1';
 				v.ctrl.rnd := '1';
-				v.opc := opi.c & std_logic_vector(to_unsigned(0, log2(n - 1)));
+				v.opc := opi.c & std_logic_vector(to_unsigned(0, log2z(n - 1)));
 				v.rnd.masked := opi.m;
 				v.rnd.shift := opi.sh;
 				v.rnd.shiftf := opi.shf;
@@ -1902,21 +1906,36 @@ begin
 			v.rnd.busy := '1';
 			v.rnd.trngrdy := '1'; -- to start pulling random numbers
 			v.rnd.opccnt := nndyn_wm1;
+			v.rnd.opccntinv := (others => '0');
 			v.fpram.waddrmuxsel := "100"; -- (s141), see (s20)
 			v.rnd.zero := '1';
 			v.rnd.burstdone := '0';
+			v.rnd.nnrndz := '0';
 		end if;
 
-		-- actual transfer of random words into ecc_fp_dram memory
-		-- (taking into account the possible masking of the most significant
-		-- ww-bit word, so as to guarantee that the size of the random large
-		-- number is nn (or nn_dyn) bits)
+		-- Transfer of random ww-bit words into ecc_fp_dram memory
+		-- (drive r.rnd.write and r.rnd.data).
+		--
+		-- One ww-bit word is written each cycle that r.rnd.write = 1,
+		-- see (s149) & (s152).
+		--
+		-- We also take into account the possible masking of the most
+		-- significant ww-bit word for the NNRNDm instruction. This is
+		-- to guarantee that the size of the random large number is
+		-- no more than 'nn' bits. Thus by subsequently subtracting 'p'
+		-- (meaning in the microcode, not in the RTL logic below) we
+		-- are guaranteed to get a *reduced* random large number.
+		--
 		v.rnd.write := '0'; -- (s116)
 		if r.rnd.busy = '1' then
 			if r.rnd.trngrdy = '1' and trngvalid = '1' then -- (s107)
+
 				v.rnd.trngrdy := '0'; -- (s143)
-				v.rnd.write := '1'; -- stays asserted only 1 cycle thx to (s116)
+				v.rnd.write := '1'; -- (s149), stays asserted only 1 cycle thx to (s116)
+
+				-- Differenciating between NNRND and NNRNDm instructions
 				if r.rnd.masked = '0' then
+					-- This is an NNRND instruction (not an NNRDNm)
 					if not hwsecure then
 						if dbgtrngcompletebypass = '1' then
 							v.rnd.data := (others => dbgtrngcompletebypassbit);
@@ -1930,15 +1949,11 @@ begin
 					end if;
 				elsif r.rnd.masked = '1' then
 					-- this is an NNRNDm instruction that is being executed
-					if r.rnd.opccnt = to_unsigned(0, log2(w - 1)) then
-						-- this is the most significant ww-bit word (last one in the burst,
-						-- the one of weight w - 1, with w dynamic if nn_dynamic = TRUE)
-						if nndyn_nnrnd_zerowm1 = '1' then
-							-- (s101) most significant ww-bit word must be set to 0
-							-- (see also (s102) below)
-							v.rnd.data := (others => '0');
-						elsif nndyn_nnrnd_zerowm1 = '0' then
-							-- last ww-bit word must be masked w/ nndyn_nnrnd_mask
+					if r.rnd.nnrndz = '1' then
+						v.rnd.data := (others => '0');
+					elsif r.rnd.nnrndz = '0' then
+						if r.rnd.opccntinv = nndyn_nnrnd_maskwg then
+							v.rnd.nnrndz := '1';
 							if not hwsecure then -- statically resolved by synthesizer
 								if dbgtrngcompletebypass = '1' then
 									v.rnd.data := (others => dbgtrngcompletebypassbit);
@@ -1952,92 +1967,81 @@ begin
 							else
 								v.rnd.data := trngdata(ww - 1 downto 0) and nndyn_nnrnd_mask;
 							end if;
-						end if;
-					elsif r.rnd.opccnt = to_unsigned(1, log2(w - 1)) then
-						-- this is the ww-bit word just before the most significant one
-						-- (and therefore also the one before the last in the burst)
-						if nndyn_nnrnd_zerowm1 = '1' then
-							-- (s102) if most significant ww-bit word must be set to 0
-							-- (see (s101) above) then it means mask 'nndyn_nnrnd_mask'
-							-- is to be applied to the one before the last, i.e now
-							if not hwsecure then -- statically resolved by synthesizer
-								if dbgtrngcompletebypass = '1' then
-									v.rnd.data := (others => dbgtrngcompletebypassbit);
-									v.rnd.data := v.rnd.data and nndyn_nnrnd_mask;
-								elsif dbgtrngnnrnddet = '1' then
-									v.rnd.data := (others => '1'); -- useless but for readability
-									v.rnd.data := v.rnd.data and nndyn_nnrnd_mask;
-								else
-									v.rnd.data := trngdata(ww - 1 downto 0) and nndyn_nnrnd_mask;
-								end if;
-							else
-								v.rnd.data := trngdata(ww - 1 downto 0) and nndyn_nnrnd_mask;
-							end if;
-						elsif nndyn_nnrnd_zerowm1 = '0' then
-							-- if last word is not to be set to 0 (see (s101) above)
-							-- then the next-to-the-last word is to be handled as any
-							-- other one (i.e no mask, as in the nominal case)
-							if not hwsecure then -- statically resolved by synthesizer
+						else -- .opccntinv /= nndyn_nnrnd_maskwg
+							-- nominal case
+							if not hwsecure then
 								if dbgtrngcompletebypass = '1' then
 									v.rnd.data := (others => dbgtrngcompletebypassbit);
 								elsif dbgtrngnnrnddet = '1' then
-									v.rnd.data := (others =>'1');
+									v.rnd.data := (others => '1');
 								else
 									v.rnd.data := trngdata(ww - 1 downto 0);
 								end if;
 							else
 								v.rnd.data := trngdata(ww - 1 downto 0);
 							end if;
-						end if;
-					else
-						-- nominal case (r.rnd.opccnt modulo w is neither 0 nor 1)
-						if not hwsecure then
-							if dbgtrngcompletebypass = '1' then
-								v.rnd.data := (others => dbgtrngcompletebypassbit);
-							elsif dbgtrngnnrnddet = '1' then
-								v.rnd.data := (others => '1');
-							else
-								v.rnd.data := trngdata(ww - 1 downto 0);
-							end if;
-						else
-							v.rnd.data := trngdata(ww - 1 downto 0);
-						end if;
-					end if; -- r.rnd.opccnt
+						end if; -- r.rnd.opccntinv
+					end if; -- r.rnd.nnrndz
 				end if; -- r.rnd.masked
-				-- if we're dealing w/ an NNRNDs instruction (or an NNRNDf one)
-				-- (that is if r.rnd.shift = '1') then we must deassert trngrdy so
+
+				-- We're still protected by condition (s107) above, meaning
+				-- trngrdy=1 and trngvalid=1 (one ww-bit word is currently being
+				-- pulled out from the TRNG).
+				--
+				-- If we're dealing w/ an NNRNDs instruction or an NNRNDf one
+				-- (that is if r.rnd.shift = 1) then we must deassert trngrdy so
 				-- as to stall the interface with ecc_trng and allow us some cycles
 				-- to transfer the random ww-bit data word into the adequate
-				-- shift-register
+				-- shift-register.
+				--
+				-- We must also assert .dosh (and the proper .doshx among
+				-- one of the possible ones, as they are in number 'NB_MSK_SH_REG',
+				-- see ecc_pkg.vhd). Asserting .dosh is to right-shift (empty)
+				-- r.rnd.data, see (s150). Asserting .doshx(i) is to right-shift
+				-- (fill) the proper large_shr component, see (s155) & (s151).
+
 				if r.rnd.shift = '1' then
 					--v.rnd.trngrdy := '0'; -- useless, already deasserted by (s143)
 					v.rnd.doshx(to_integer(r.rnd.shregid)) := '1'; -- (s112)
 					v.rnd.dosh := '1';
 					v.rnd.doshcnt := to_unsigned(ww - 1, log2(ww - 1));
 				end if;
+
+				if r.rnd.shift = '1' then
+					if r.rnd.opccnt = (r.rnd.opccnt'range => '0') then
+						v.rnd.burstdone := '1';
+					end if;
+				end if;
+
 			end if;
 		end if;
 
+		-- Transfer r.rnd.write -> r.fpram.we
 		if r.rnd.busy = '1' then -- (s117)
-			if r.rnd.write = '1' then
+			if r.rnd.write = '1' then -- (s152)
 				v.fpram.we := '1';
-			else
+			elsif r.rnd.write = '0' then
 				v.fpram.we := '0';
 			end if;
 		end if;
 
-		-- detection of a null result
-		if r.rnd.busy = '1' and r.fpram.we = '1' then
-			if r.fpram.wdata /= std_logic_vector(to_unsigned(0, ww)) then
+		-- Detection of a null result
+					--if r.rnd.busy = '1' and r.fpram.we = '1' then
+					--	if r.fpram.wdata /= std_logic_vector(to_unsigned(0, ww)) then
+		if r.rnd.busy = '1' and r.rnd.write = '1' then
+			if r.rnd.data /= std_logic_vector(to_unsigned(0, ww)) then
 				v.rnd.zero := '0'; -- (s80) bypass of (s79)
 			end if;
 		end if;
 
-		-- support for NNRNDs and NNRNDf instructions
+		-- Support for NNRNDs and NNRNDf instructions
+		--
+		-- Counting cycles using r.rnd.doshx*cnt to shift-empty r.rnd.data
+		-- into one of the large_shr components.
 		v.rnd.last := '0';
 		if r.rnd.dosh = '1' then
-			-- right-shift r.rnd.data (to empty it)
-			v.rnd.data := '0' & r.rnd.data(ww - 1 downto 1);
+			-- right-shift r.rnd.data (meaning emptying it)
+			v.rnd.data := '0' & r.rnd.data(ww - 1 downto 1); -- (s150)
 			-- decrement the total shift nb for the targeted shift-reg
 			v.rnd.doshxcnt(to_integer(r.rnd.shregid)) :=
 				r.rnd.doshxcnt(to_integer(r.rnd.shregid)) - 1;
@@ -2046,32 +2050,37 @@ begin
 			-- detect possible end of write-burst (same as (s104) below for
 			-- the nominal NNRND opcode (i.e the one that is neither NNRNDs
 			-- nor NNRNDf))
-			if r.rnd.doshcnt(log2(ww-1)-1) = '0' and v.rnd.doshcnt(log2(ww-1)-1) = '1'
+			--if r.rnd.doshcnt(log2(ww-1)-1) = '0' and v.rnd.doshcnt(log2(ww-1)-1) = '1'
+			if r.rnd.doshcnt = (r.rnd.doshcnt'range => '0')
 			then
 				v.rnd.dosh := '0';
 				v.rnd.doshx := (others => '0'); -- (s109)
-				--if r.rnd.shift = '1' then -- can be but asserted since .dosh = 1
+				--if r.rnd.shift = '1' then -- useless (can be but asserted as .dosh=1)
+
 					if r.rnd.shiftf = '0' then
 						if r.rnd.burstdone = '1' then -- (s105)
-							v.rnd.last := '1';
+							v.rnd.last := '1'; -- enable (s153) logic (end of instruction)
 							--v.rnd.trngrdy := '0'; useless, already deasserted by (s143)
 						elsif r.rnd.burstdone = '0' then
 							-- (s106) just below will re-authorize TRNG incoming data
 							v.rnd.trngrdy := '1'; -- (s106), see (s107) above
 						end if;
+
+					-- Case of instruction NNRNDf
 					elsif r.rnd.shiftf = '1' then
 						if r.rnd.burstdone = '1' then -- (s118)
 							if r.rnd.doshxcnt(to_integer(r.rnd.shregid)) =
 								(r.rnd.doshxcnt(0)'range => '0')
 							then
-								v.rnd.last := '1';
+								v.rnd.last := '1'; -- enable (s153) logic (end of instruction)
 								--v.rnd.trngrdy := '0'; useless, already deasserted by (s143)
 							else
 								-- (s113) is a bypass of (s109)
 								v.rnd.doshx(to_integer(r.rnd.shregid)) := '1'; -- (s113)
-								v.rnd.finalizesh := '1';
-								v.rnd.data(0) := '0'; -- nasty, but works
+								v.rnd.finalizesh := '1'; -- activate (s157) logic
+								v.rnd.data(0) := '0'; -- a bit nasty, but works (see (s156))
 							end if;
+
 						elsif r.rnd.burstdone = '0' then
 							-- (s144) just below will re-authorize TRNG incoming data
 							v.rnd.trngrdy := '1'; -- (s144), see (s107) above
@@ -2097,7 +2106,9 @@ begin
 			end if;
 		end if;
 
-		-- finalization of the shift-register (alignment of data at right top).
+		-- (s157)
+		-- for NNRNDf instructions)
+		-- Finalization of the shift-register (alignment of data at right edge)
 		if r.rnd.finalizesh = '1' then
 			-- decrement the total shift nb for the targeted shift-reg
 			v.rnd.doshxcnt(to_integer(r.rnd.shregid)) :=
@@ -2118,18 +2129,20 @@ begin
 			v.opc(log2(n - 1) - 1 downto 0) :=
 				std_logic_vector(unsigned(r.opc(log2(n - 1) - 1 downto 0)) + 1);
 			v.rnd.opccnt := r.rnd.opccnt - 1;
+			v.rnd.opccntinv := r.rnd.opccntinv + 1;
 			-- (s104) detect end of write-burst (except for NNRNDs & NNRNDf opcodes)
 			if r.rnd.opccnt(log2(w-1)-1) = '0' and v.rnd.opccnt(log2(w-1) - 1) = '1'
 			then
 				if r.rnd.shift = '0' then
+					-- This is NOT an NNRND[sf] opcode (just NNRND)
 					v.rnd.last := '1';
 					v.rnd.trngrdy := '0';
 					--v.rnd.write := '0'; -- useless due to (s116)
 				elsif r.rnd.shift = '1' then
-					-- end of write-bursts is handled by (s103) above, just post info
-					-- here that the burst is over so that (s105) can later detect &
-					-- handle it
-					v.rnd.burstdone := '1';
+					-- This is an NNRNDs or NNRNDf opcode.
+					-- Post info that the write-burst (into ecc_fp_dram) is over
+					-- so that (s105) can later detect & handle it
+					--v.rnd.burstdone := '1';
 				end if;
 			elsif r.rnd.shift = '0' then
 				-- (s145) just below will re-authorize TRNG incoming data
@@ -2145,6 +2158,7 @@ begin
 			end loop;
 		end if;
 
+		-- (s153)
 		if r.rnd.last = '1' then
 			v.done := '1'; -- (s139), stays asserted only 1 cycle thx to (s7)
 			-- pragma translate_off
@@ -2157,6 +2171,8 @@ begin
 			-- availability to accept a new operation
 			v.rdy := '1';
 			v.ctrl.rnd := '0';
+			--v.rnd.nnrndz := '0'; -- not required (left here for\
+			--v.rnd.masked := '0'; -- not required  \sake of readability)
 		end if;
 
 		-- -------------------------------------------------------------
@@ -2234,7 +2250,7 @@ begin
 		-- to burst-write the result of multiplication into ecc_fp_dram
 		if r.mm.pull.shstart(1) = '1' then
 			v.mm.pull.opc := r.mm.push.opc(r.mm.pull.done_id1)
-				& std_logic_vector(to_unsigned(0, log2(n - 1)));
+				& std_logic_vector(to_unsigned(0, log2z(n - 1)));
 		elsif r.mm.pull.pulling = '1' then
 			v.mm.pull.opc(log2(n - 1) - 1 downto 0) := std_logic_vector(
 				unsigned(r.mm.pull.opc(log2(n - 1) - 1 downto 0)) + 1);
@@ -2552,15 +2568,15 @@ begin
 					or r.rnd.do) = '1'
 				then
 					vi := 0;
-					vaddra := r.opa(4 + log2(n - 1) downto log2(n - 1));
-					vaddrb := r.opb(4 + log2(n - 1) downto log2(n - 1));
-					vaddrc := r.opc(4 + log2(n - 1) downto log2(n - 1));
+					vaddra := r.opa(FP_ADDR_MSB - 1 + log2z(n - 1) downto log2z(n - 1));
+					vaddrb := r.opb(FP_ADDR_MSB - 1 + log2z(n - 1) downto log2z(n - 1));
+					vaddrc := r.opc(FP_ADDR_MSB - 1 + log2z(n - 1) downto log2z(n - 1));
 				end if;
 				if (r.fpram.we = '0' and r.mm.pull.pulling = '1') then
 					vip := 0;
-					vaddra := r.opa(4 + log2(n - 1) downto log2(n - 1));
-					vaddrb := r.opb(4 + log2(n - 1) downto log2(n - 1));
-					vaddrc := r.opc(4 + log2(n - 1) downto log2(n - 1));
+					vaddra := r.opa(FP_ADDR_MSB - 1 + log2z(n - 1) downto log2z(n - 1));
+					vaddrb := r.opb(FP_ADDR_MSB - 1 + log2z(n - 1) downto log2z(n - 1));
+					vaddrc := r.opc(FP_ADDR_MSB - 1 + log2z(n - 1) downto log2z(n - 1));
 				end if;
 				if r.active = '1' then
 					-- -------------------------------
@@ -2582,7 +2598,17 @@ begin
 						write(lineout, string'("[0x"));
 						hex_write(lineout, pc);
 						write(lineout, string'("] "));
-						write(lineout, string'("  FPREDC   "));
+						write(lineout, string'("  FPREDC"));
+						-- possible ',p' patch
+						if patching = '1' then
+							if patchid < 10 then
+								write(lineout, string'(",p" & integer'image(patchid) & "      "));
+							else
+								write(lineout, string'(",p" & integer'image(patchid) & "     "));
+							end if;
+						elsif patching = '0' then
+							write(lineout, string'("    " & "     "));
+						end if;
 						vj := vfpnbc0;
 						while vj > 0 loop
 							write(lineout, string'(" "));
@@ -2591,9 +2617,11 @@ begin
 						write(lineout, string'("  ("));
 						write_addr2(lineout, r.mm.push.opc(r.mm.push.id1));
 						write(lineout, string'(" <- "));
-						write_addr2(lineout, r.opa(4 + log2(n - 1) downto log2(n - 1)));
+						write_addr2(lineout,
+							r.opa(FP_ADDR_MSB - 1 + log2z(n - 1) downto log2z(n - 1)));
 						write(lineout, string'("  x  "));
-						write_addr2(lineout, r.opb(4 + log2(n - 1) downto log2(n - 1)));
+						write_addr2(lineout,
+							r.opb(FP_ADDR_MSB - 1 + log2z(n - 1) downto log2z(n - 1)));
 						write(lineout, string'(")  ["));
 						write(lineout, time'image(now));
 						write(lineout, string'("]"));
@@ -2620,8 +2648,8 @@ begin
 							vip := vip + 1;
 							if vip = vw then
 								-- last word is being written, log out whole result on console
-								write(lineout, string'("        "));
-								write(lineout, string'("  FPREDC 0x"));
+								write(lineout, string'("         "));
+								write(lineout, string'(" FPREDC       0x"));
 								hex_write(lineout, vres(vw*ww - 1 downto 0));
 								write(lineout, string'("  ("));
 								write_addr2(lineout,
@@ -2652,9 +2680,35 @@ begin
 								hex_write(lineout, pc);
 								write(lineout, string'("] "));
 								if r.ctrl.add = '1' then
-									write(lineout, string'("   NNADD 0x"));
-								else --if r.ctrl.sub = '1'
-									write(lineout, string'("   NNSUB 0x"));
+									write(lineout, string'("   NNADD"));
+								else -- if r.ctrl.sub = 1
+									write(lineout, string'("   NNSUB"));
+								end if;
+								-- possible ',X' flag
+								if r.ctrl.extended = '1' then
+									write(lineout, string'(",X"));
+									-- possible ',p' patch
+									if patching = '1' then
+										if patchid < 10 then
+											write(lineout, string'(",p" & integer'image(patchid) & "  0x"));
+										else
+											write(lineout, string'(",p" & integer'image(patchid) & " 0x"));
+										end if;
+									elsif patching = '0' then
+										write(lineout, string'("    " & "   0x"));
+									end if;
+								else
+									-- possible ',p' patch
+									if patching = '1' then
+										if patchid < 10 then
+											write(lineout, string'(",p" & integer'image(patchid) & "    0x"));
+										else
+											write(lineout, string'(",p" & integer'image(patchid) & "   0x"));
+										end if;
+									elsif patching = '0' then
+										write(lineout, string'("      " & " 0x"));
+									end if;
+									--write(lineout, string'("  "));
 								end if;
 								hex_write(lineout, vres(vw*ww - 1 downto 0));
 								vj := vfpnbc;
@@ -2710,7 +2764,7 @@ begin
 								write(lineout, string'("[0x"));
 								hex_write(lineout, pc);
 								write(lineout, string'("] "));
-								write(lineout, string'("   NNXOR 0x"));
+								write(lineout, string'("   NNXOR       0x"));
 								hex_write(lineout, vres(vw*ww - 1 downto 0));
 								write(lineout, string'("  ("));
 								write_addr2(lineout, vaddrc);
@@ -2757,7 +2811,15 @@ begin
 									write(lineout, string'("[0x"));
 									hex_write(lineout, pc);
 									write(lineout, string'("] "));
-									write(lineout, string'("   NNSRL 0x"));
+									if r.shift.rsh = '1' then
+										write(lineout, string'("   NNSRLs      0x"));
+									else
+										if r.ctrl.extended = '1' then
+											write(lineout, string'("   NNSRL,X     0x"));
+										elsif r.ctrl.extended = '0' then
+											write(lineout, string'("   NNSRL       0x"));
+										end if;
+									end if;
 									hex_write(lineout, vres(vw*ww - 1 downto 0));
 									write(lineout, string'("  ("));
 									write_addr2(lineout, vaddrc);
@@ -2800,7 +2862,11 @@ begin
 									write(lineout, string'("[0x"));
 									hex_write(lineout, pc);
 									write(lineout, string'("] "));
-									write(lineout, string'("   NNSLL 0x"));
+									if r.ctrl.extended = '1' then
+										write(lineout, string'("   NNSLL,X     0x"));
+									elsif r.ctrl.extended = '0' then
+										write(lineout, string'("   NNSLL       0x"));
+									end if;
 									hex_write(lineout, vres(vw*ww - 1 downto 0));
 									write(lineout, string'("  ("));
 									write_addr2(lineout, vaddrc);
@@ -2843,7 +2909,7 @@ begin
 									write(lineout, string'("[0x"));
 									hex_write(lineout, pc);
 									write(lineout, string'("] "));
-									write(lineout, string'("  NNDIV2 0x"));
+									write(lineout, string'("  NNDIV2       0x"));
 									hex_write(lineout, vres(vw*ww - 1 downto 0));
 									write(lineout, string'("  ("));
 									write_addr2(lineout, vaddrc);
@@ -2884,9 +2950,9 @@ begin
 						hex_write(lineout, pc);
 						write(lineout, string'("] "));
 						if opi.parsh = '0' then
-							write(lineout, string'(" TESTPAR     "));
+							write(lineout, string'(" TESTPAR           "));
 						elsif opi.parsh = '1' then
-							write(lineout, string'(" TESTPARs    "));
+							write(lineout, string'(" TESTPARs          "));
 						end if;
 						vj := vfpnbc0;
 						while vj > 0 loop
@@ -2956,7 +3022,13 @@ begin
 								write(lineout, string'("[0x"));
 								hex_write(lineout, pc);
 								write(lineout, string'("] "));
-								write(lineout, string'("   NNRND 0x"));
+								if r.rnd.shiftf = '1' then
+									write(lineout, string'("   NNRNDf      0x"));
+								elsif r.rnd.shift = '1' then
+									write(lineout, string'("   NNRNDs      0x"));
+								else
+									write(lineout, string'("   NNRND       0x"));
+								end if;
 								hex_write(lineout, vres(vw*ww - 1 downto 0));
 								write(lineout, string'("  ("));
 								write_addr2(lineout, vaddrc);
@@ -2997,7 +3069,7 @@ begin
 					write(lineout, string'("[0x"));
 					hex_write(lineout, pc);
 					write(lineout, string'("] "));
-					write(lineout, string'("       J 0x"));
+					write(lineout, string'("       J       0x"));
 					hex_write(lineout, imma);
 					vj := vanbc;
 					while vj > 0 loop
@@ -3025,7 +3097,7 @@ begin
 					write(lineout, string'("[0x"));
 					hex_write(lineout, pc);
 					write(lineout, string'("] "));
-					write(lineout, string'("      Jz 0x"));
+					write(lineout, string'("      Jz       0x"));
 					hex_write(lineout, imma);
 					vj := vanbc;
 					while vj > 0 loop
@@ -3053,7 +3125,7 @@ begin
 					write(lineout, string'("[0x"));
 					hex_write(lineout, pc);
 					write(lineout, string'("] "));
-					write(lineout, string'("     Jsn 0x"));
+					write(lineout, string'("     Jsn       0x"));
 					hex_write(lineout, imma);
 					vj := vanbc;
 					while vj > 0 loop
@@ -3081,7 +3153,7 @@ begin
 					write(lineout, string'("[0x"));
 					hex_write(lineout, pc);
 					write(lineout, string'("] "));
-					write(lineout, string'("    Jodd 0x"));
+					write(lineout, string'("    Jodd       0x"));
 					hex_write(lineout, imma);
 					vj := vanbc;
 					while vj > 0 loop
@@ -3109,7 +3181,7 @@ begin
 					write(lineout, string'("[0x"));
 					hex_write(lineout, pc);
 					write(lineout, string'("] "));
-					write(lineout, string'("      JL 0x"));
+					write(lineout, string'("      JL       0x"));
 					hex_write(lineout, imma);
 					vj := vanbc;
 					while vj > 0 loop
@@ -3137,7 +3209,7 @@ begin
 					write(lineout, string'("[0x"));
 					hex_write(lineout, pc);
 					write(lineout, string'("] "));
-					write(lineout, string'("  JLsn 0x"));
+					write(lineout, string'("  JLsn       0x"));
 					hex_write(lineout, imma);
 					vj := vanbc;
 					while vj > 0 loop
@@ -3165,7 +3237,7 @@ begin
 					write(lineout, string'("[0x"));
 					hex_write(lineout, pc);
 					write(lineout, string'("] "));
-					write(lineout, string'("     RET (0x"));
+					write(lineout, string'("     RET      (0x"));
 					hex_write(lineout, retpc);
 					write(lineout, string'(")"));
 					vj := vanbc;
@@ -3173,7 +3245,7 @@ begin
 						write(lineout, string'(" "));
 						vj := vj - 1;
 					end loop;
-					vj := vadec;
+					vj := vadec + 1;
 					while vj > 0 loop
 						write(lineout, string'(" "));
 						vj := vj - 1;
@@ -3194,7 +3266,7 @@ begin
 					write(lineout, string'("[0x"));
 					hex_write(lineout, pc);
 					write(lineout, string'("] "));
-					write(lineout, string'("     NOP "));
+					write(lineout, string'("     NOP       "));
 					write(lineout, string'("  "));
 					vj := vfpnbc0;
 					while vj > 0 loop

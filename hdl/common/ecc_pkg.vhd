@@ -83,10 +83,10 @@ package ecc_pkg is
 	-- FP_ADDR_MSB
 	--
 	-- this is the number of bits required to encode the address of one of the
-	-- large numbers in ecc_fp_dram (which are in qty nblargenb). Parameter
+	-- large numbers in ecc_fp_dram (which are in qty 'nblargenb'). Parameter
 	-- FP_ADDR_MSB obviously has an effect on the size of opcode words in
-	-- ecc_curve_iram, that's why modifying parameter nblargenb in
-	-- ecc_customize.vhd should be made with caution (increasing nblargenb
+	-- ecc_curve_iram, that's why modifying parameter 'nblargenb' in
+	-- ecc_customize.vhd should be made with caution (increasing 'nblargenb'
 	-- would increase FP_ADDR_MSB which in turn may have the opcode size
 	-- exceed the current nominal size of 32 bit)
 	constant FP_ADDR_MSB : positive := log2(nblargenb - 1);
@@ -97,7 +97,7 @@ package ecc_pkg is
 	-- ww-bit limbs that form one large number. This parameter has no effect
 	-- on the size of opcode words, but modification should not be made has
 	-- parameter n is computed automatically based on nn and ww
-	constant FP_ADDR_LSB : positive := log2(n - 1);
+	constant FP_ADDR_LSB : integer := log2z(n - 1); -- (s0)
 
 	-- FP_ADDR
 	--
@@ -194,19 +194,17 @@ package ecc_pkg is
 	constant OP_PATCH_MSB : integer := OP_PATCH_LSB + OP_PATCH_SZ - 1; -- 21
 	constant OP_P_POS : integer := OP_PATCH_LSB + OP_PATCH_SZ;         -- 22
 	constant OP_X_POS : integer := OP_P_POS + 1;                       -- 23
-
-	-- There are currently 16 different opcodes per type of opcodes (hence
+	-- there are currently 16 different opcodes per type of opcodes (hence
 	-- NB_OF_OP is set to 16 right below). This allows to encode 16 arith and/or
 	-- logical instructions, and 16 conditional branchs
 	constant NB_OF_OP : integer := 16;
 	constant OP_OP_SZ : integer := log2(NB_OF_OP - 1);
 	constant OP_OP_LSB : integer := OP_X_POS + 1;                      -- 24
 	constant OP_OP_MSB : integer := OP_OP_LSB + OP_OP_SZ - 1;          -- 27
-
-	-- There are currently 4 types of opcodes (hence NB_OF_TYPE is set to 4 right
+	-- there are currently 4 types of opcodes (hence NB_OF_TYPE is set to 4 right
 	-- below) which are: ARITH, BRANCH, UPDATE (now obsolete) and NOP
 	constant NB_OF_TYPE : integer := 4;
-	constant OP_TYPE_SZ : integer := log2(NB_OF_TYPE - 1); -- 2
+	constant OP_TYPE_SZ : integer := log2(NB_OF_TYPE - 1);
 	constant OP_TYPE_LSB : integer := OP_OP_MSB + 1;                   -- 28
 	constant OP_TYPE_MSB : integer := OP_TYPE_LSB + OP_TYPE_SZ - 1;    -- 29
 	constant OP_B_POS : integer := OP_TYPE_MSB + 1;                    -- 30
@@ -463,14 +461,14 @@ package ecc_pkg is
 	--
 	--   if hwsecure = FALSE: the complete ADB (= 6) bits are decoded, allowing
 	--                        software driver to access the complete bank of 64
-	--                        registers - both the nominal lower half, the one
-	--                        with address offsets 0x000-0x0f8) and the upper,
-	--                        the one with address offsets 0x100-0x1f8 
+	--                        registers - both the nominal lower half (the one
+	--                        with address offsets 0x000-0x0f8) and the upper
+	--                        (the one with address offsets 0x100-0x1f8)
 	--
 	--   if hwsecure = TRUE:  only the lower half of the bank made of the first
 	--                        32 registers can be accessed by the software driver.
 	--
-	-- Hence both in write & read spaces, the nominal 32 registgers,
+	-- Hence both in write & read spaces, the nominal 32 registers,
 	-- some of which are reserved, are mapped in address offset range
 	-- +0x000 to +0x0f8, while the remaining 32 hw(un)secure registers,
 	-- some of which also are reserved, are mapped in address offset range
@@ -479,6 +477,14 @@ package ecc_pkg is
 	subtype rat is std_logic_vector(ADB - 1 downto 0);
 
 	function set_phys_addr_width return positive;
+
+	subtype std_logic_wide is std_logic_vector((2*n*ww) - 1 downto 0);
+
+	function get_min_slk(sr, nd : positive) return positive;
+
+	function get_min_slk_last(nd : positive) return positive;
+
+	function get_slk_max(nb, wx, sr : integer) return integer;
 
 end package ecc_pkg;
 
@@ -489,9 +495,9 @@ package body ecc_pkg is
 	function set_ndsp return positive is
 		variable tmp : positive;
 	begin
-		assert (nbdsp > 1)
-			report "minimal allowed value of nbdsp user parameter is 2"
-				severity failure;
+		--assert (nbdsp > 1)
+		--	report "minimal allowed value of nbdsp user parameter is 2"
+		--		severity failure;
 		if nbdsp > w then -- 'nbdsp' is defined by user
 			tmp := w;
 		else
@@ -529,5 +535,51 @@ package body ecc_pkg is
 		end if;
 		return tmp;
 	end function set_phys_addr_width;
+
+	-- sr = sramlat
+	-- nd = ndsp
+	function get_min_slk(sr, nd : positive) return positive is
+		variable tmp : positive;
+	begin
+		if nd = 1 then
+			tmp := sr + 2;
+		elsif nd = 2 then
+			tmp := 4;
+		else -- nd > 2
+			tmp := nd + 1;
+		end if;
+		return tmp;
+	end function get_min_slk;
+
+	-- nd = ndsp
+	function get_min_slk_last(nd : positive) return positive is
+		variable tmp : positive;
+	begin
+		if nd = 1 then
+			tmp := 2;
+		elsif nd = 2 then
+			tmp := 3;
+		else -- nd > 2
+			tmp := nd - 1;
+		end if;
+		return tmp;
+	end function get_min_slk_last;
+
+	-- nb = NBRP
+	-- wx = w
+	-- sr = sramlat
+	function get_slk_max(nb, wx, sr : integer) return integer is
+		variable tmp : integer;
+		variable tmp1 : integer;
+	begin
+		tmp := max4(nb + 6, nb + wx + 3, wx + 2, 7 + 2*wx);
+		tmp1 := (2*sr) + 9 - (2*wx);
+		if tmp1 < 0 then
+			if -tmp1 > tmp then
+				tmp := -tmp1;
+			end if;
+		end if;
+		return tmp;
+	end function get_slk_max;
 
 end package body ecc_pkg;

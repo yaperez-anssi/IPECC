@@ -566,7 +566,7 @@ package ecc_tb_pkg is
 
 	-- Emulate software driver writing a specific ww-bit word at a specific
 	-- location of ecc_fp_dram
-	-- (assumes IP is already debug-halted)
+	-- (assumes IP is already debug-halted in HW unsecure mode)
 	procedure dbgwrite_one_limb_into_ecc_fp_dram(
 		signal clk: in std_logic;
 		signal axi: out axi_in_type;
@@ -577,7 +577,7 @@ package ecc_tb_pkg is
 		constant val: in std_logic_ww);
 
 	-- Emulate software driver clearing an entire large number in ecc_fp_dram
-	-- (assumes IP is already debug-halted)
+	-- (assumes IP is already debug-halted in HW unsecure mode)
 	procedure clear_one_lgnb_hw_ecc_fp_dram(
 		signal clk: in std_logic;
 		signal axi: out axi_in_type;
@@ -587,7 +587,7 @@ package ecc_tb_pkg is
 
 	-- Emulate software driver reading one ww-bit limb of a large number
 	-- from ecc_fp_dram
-	-- (assumes IP is already debug-halted)
+	-- (assumes IP is already debug-halted in HW unsecure mode)
 	procedure dbgread_one_limb_from_ecc_fp_dram(
 		signal clk: in std_logic;
 		signal axi: out axi_in_type;
