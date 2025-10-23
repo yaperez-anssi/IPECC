@@ -243,6 +243,8 @@ architecture struct of ecc is
 			dbgpgmstate : in std_logic_vector(3 downto 0);
 			dbgnbbits : in std_logic_vector(15 downto 0);
 			dbgjoyebit : in std_logic_vector(log2(2*nn - 1) - 1 downto 0);
+			dbgxy01addr : in std_logic_vector(7 downto 0);
+			dbgxy01nextaddr : in std_logic_vector(7 downto 0);
 			-- HW unsecure/Side-Channel analysis features
 			--   (interface with ecc_curve)
 			dbgbreakpoints : out breakpoints_type;
@@ -476,6 +478,8 @@ architecture struct of ecc is
 			dbgbreakpointid : out std_logic_vector(1 downto 0);
 			dbgbreakpointhit : out std_logic;
 			dbgtrngcompletebypass : in std_logic;
+			dbgxy01addr : out std_logic_vector(7 downto 0);
+			dbgxy01nextaddr : out std_logic_vector(7 downto 0);
 			-- HW unsecure/Side-Channel analysis features
 			--   (interface with ecc_scalar shared w/ ecc_axi)
 			dbgpgmstate : in std_logic_vector(3 downto 0);
@@ -1015,6 +1019,8 @@ architecture struct of ecc is
 	signal dbgnbbits : std_logic_vector(15 downto 0);
 	signal dbgjoyebit : std_logic_vector(log2(2*nn - 1) - 1 downto 0);
 	signal dbghalted_s : std_logic;
+	signal dbgxy01addr : std_logic_vector(7 downto 0);
+	signal dbgxy01nextaddr : std_logic_vector(7 downto 0);
 	-- HW unsecure/Side-Channel analysis features (signals between ecc_axi & ecc_curve_iram)
 	signal dbgiwaddr : std_logic_vector(IRAM_ADDR_SZ - 1 downto 0);
 	signal dbgiwdata : std_logic_vector(OPCODE_SZ - 1 downto 0);
@@ -1252,6 +1258,8 @@ begin
 			dbgpgmstate => dbgpgmstate,
 			dbgnbbits => dbgnbbits,
 			dbgjoyebit => dbgjoyebit,
+			dbgxy01addr => dbgxy01addr,
+			dbgxy01nextaddr => dbgxy01nextaddr,
 			-- HW unsecure features (interface with ecc_curve)
 			dbgbreakpoints => dbgbreakpoints,
 			dbgnbopcodes => dbgnbopcodes,
@@ -1478,6 +1486,8 @@ begin
 			dbgbreakpointid => dbgbreakpointid,
 			dbgbreakpointhit => dbgbreakpointhit,
 			dbgtrngcompletebypass => dbgtrngcompletebypass,
+			dbgxy01addr => dbgxy01addr,
+			dbgxy01nextaddr => dbgxy01nextaddr,
 			-- HW unsecure/Side-Channel analysis features (interface with ecc_scalar)
 			dbgpgmstate => dbgpgmstate,
 			dbgnbbits => dbgnbbits

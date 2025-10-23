@@ -472,6 +472,13 @@ int hw_driver_get_content_of_trng_raw_random_fifo_DBG(char*, uint32_t*);
  */
 int hw_driver_get_clocks_freq_DBG(uint32_t*, uint32_t*, uint32_t);
 
+/* To get permutation address of each sensitive large numbers [XY]R[01]
+ * (when XY-shuffling countermeasure is active) both the input address
+ * and the ouput address.
+ */
+int hw_driver_get_xyshuf_perms_DBG(uint8_t*, uint8_t*, uint8_t*, uint8_t*,
+		uint8_t*, uint8_t*, uint8_t*, uint8_t*);
+
 /* To get all the TRNG diagnostic infos in one API call
  * (only in HW unsecure mode) */
 int hw_driver_get_trng_diagnostics_DBG(trng_diagcnt_t*);

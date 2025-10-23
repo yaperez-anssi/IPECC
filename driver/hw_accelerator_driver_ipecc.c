@@ -465,46 +465,24 @@ static volatile uint64_t *ipecc_baddr = NULL;
 #define IPECC_R_DBG_CLKMM_CNT_MSK     (0xffffffff)
 #define IPECC_R_DBG_CLKMM_PRECNT      (16)
 
-/* Fields for R_DBG_HW_CONFIG_0 */
-#define IPECC_R_DBG_HW_CFG0_NBDSP_POS    (0)
-#define IPECC_R_DBG_HW_CFG0_NBDSP_MSK    (0x7f)
-#define IPECC_R_DBG_HW_CFG0_NBMULT       (((uint32_t)0x1) << 7)
-#define IPECC_R_DBG_HW_CFG0_SRAMLAT      (((uint32_t)0x1) << 8)
-#define IPECC_R_DBG_HW_CFG0_ASYNC        (((uint32_t)0x1) << 9)
-#define IPECC_R_DBG_HW_CFG0_SHUFFLE_POS    (10)
-#define IPECC_R_DBG_HW_CFG0_SHUFFLE_MSK    (0x3)
-#define IPECC_R_DBG_HW_CFG0_ZREMASK_POS    (12)
-#define IPECC_R_DBG_HW_CFG0_ZREMASK_MSK    (0x3ff)
-#define IPECC_R_DBG_HW_CFG0_BLINDING_POS    (22)
-#define IPECC_R_DBG_HW_CFG0_BLINDING_MSK    (0x3ff)
+/* Fields for R_DBG_XYSHUF_PERM */
+#define IPECC_R_DBG_XYSHF_PERM_X0_POS (0)
+#define IPECC_R_DBG_XYSHF_PERM_X0_MSK (0x3)
+#define IPECC_R_DBG_XYSHF_PERM_Y0_POS (2)
+#define IPECC_R_DBG_XYSHF_PERM_Y0_MSK (0x3)
+#define IPECC_R_DBG_XYSHF_PERM_X1_POS (4)
+#define IPECC_R_DBG_XYSHF_PERM_X1_MSK (0x3)
+#define IPECC_R_DBG_XYSHF_PERM_Y1_POS (6)
+#define IPECC_R_DBG_XYSHF_PERM_Y1_MSK (0x3)
+#define IPECC_R_DBG_XYSHF_PERM_X0_NEXT_POS (8)
+#define IPECC_R_DBG_XYSHF_PERM_X0_NEXT_MSK (0x3)
+#define IPECC_R_DBG_XYSHF_PERM_Y0_NEXT_POS (10)
+#define IPECC_R_DBG_XYSHF_PERM_Y0_NEXT_MSK (0x3)
+#define IPECC_R_DBG_XYSHF_PERM_X1_NEXT_POS (12)
+#define IPECC_R_DBG_XYSHF_PERM_X1_NEXT_MSK (0x3)
+#define IPECC_R_DBG_XYSHF_PERM_Y1_NEXT_POS (14)
+#define IPECC_R_DBG_XYSHF_PERM_Y1_NEXT_MSK (0x3)
 
-/* Fields for R_DBG_HW_CONFIG_1 */
-#define IPECC_R_DBG_HW_CFG1_NBTRNG_POS    (0)
-#define IPECC_R_DBG_HW_CFG1_NBTRNG_MSK    (0xf)
-#define IPECC_R_DBG_HW_CFG1_TRNGTA_POS    (4)
-#define IPECC_R_DBG_HW_CFG1_TRNGTA_MSK    (0x3ff)
-#define IPECC_R_DBG_HW_CFG1_SZ_RAW_POS    (16)
-#define IPECC_R_DBG_HW_CFG1_SZ_RAW_MSK    (0xff)
-#define IPECC_R_DBG_HW_CFG1_SZ_AXI_POS    (24)
-#define IPECC_R_DBG_HW_CFG1_SZ_AXI_MSK    (0xff)
-
-/* Fields for R_DBG_HW_CONFIG_2 */
-#define IPECC_R_DBG_HW_CFG2_SZ_FPR_POS    (0)
-#define IPECC_R_DBG_HW_CFG2_SZ_FPR_MSK    (0xff)
-#define IPECC_R_DBG_HW_CFG2_SZ_CRV_POS    (8)
-#define IPECC_R_DBG_HW_CFG2_SZ_CRV_MSK    (0xff)
-#define IPECC_R_DBG_HW_CFG2_SZ_SHF_POS    (16)
-#define IPECC_R_DBG_HW_CFG2_SZ_SHF_MSK    (0xff)
-
-/* Fields for R_DBG_HW_TEST_NB */
-#define IPECC_R_DBG_HW_TEST_NB_BOARD_POS  (24)
-#define IPECC_R_DBG_HW_TEST_NB_BOARD_MSK  (0xff)
-#define IPECC_R_DBG_HW_TEST_NB_TEST_POS   (0)
-#define IPECC_R_DBG_HW_TEST_NB_TEST_MSK   (0xffffff)
-
-/* Fields for R_DBG_HW_RANDOM */
-#define IPECC_R_DBG_HW_RANDOM_POS   (0)
-#define IPECC_R_DBG_HW_RANDOM_MSK   (0xffffffff)
 
 /*************************************************************
  * Low-level macros: actions involving a direct write or read
@@ -1704,86 +1682,40 @@ static volatile uint64_t *ipecc_baddr = NULL;
 	((IPECC_GET_REG(IPECC_R_DBG_CLKMM_MHZ) >> IPECC_R_DBG_CLKMM_CNT_POS) \
 	 & IPECC_R_DBG_CLKMM_CNT_MSK)
 
-/* Actions involving register R_DBG_HW_CONFIG_0
+/* Actions involving register R_DBG_XYSHUF_PERM
  * ********************************************
  */
-#define IPECC_GET_HW_CFG_NBDSP() \
-	((IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_0) >> IPECC_R_DBG_HW_CFG0_NBDSP_POS) \
-	 & IPECC_R_DBG_HW_CFG0_NBDSP_MSK)
+#define IPECC_GET_XYSHUF_PERM_X0() \
+	((IPECC_GET_REG(IPECC_R_DBG_XYSHUF_PERM) >> IPECC_R_DBG_XYSHF_PERM_X0_POS) \
+	 & IPECC_R_DBG_XYSHF_PERM_X0_MSK)
 
-#define IPECC_GET_HW_CFG_NBMULT() \
-	(!!(IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_0) & IPECC_R_DBG_HW_CFG0_NBMULT))
+#define IPECC_GET_XYSHUF_PERM_Y0() \
+	((IPECC_GET_REG(IPECC_R_DBG_XYSHUF_PERM) >> IPECC_R_DBG_XYSHF_PERM_Y0_POS) \
+	 & IPECC_R_DBG_XYSHF_PERM_Y0_MSK)
 
-#define IPECC_GET_HW_CFG_SRAMLAT() \
-	(!!(IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_0) & IPECC_R_DBG_HW_CFG0_SRAMLAT))
+#define IPECC_GET_XYSHUF_PERM_X1() \
+	((IPECC_GET_REG(IPECC_R_DBG_XYSHUF_PERM) >> IPECC_R_DBG_XYSHF_PERM_X1_POS) \
+	 & IPECC_R_DBG_XYSHF_PERM_X1_MSK)
 
-#define IPECC_GET_HW_CFG_ASYNC() \
-	(!!(IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_0) & IPECC_R_DBG_HW_CFG0_ASYNC))
+#define IPECC_GET_XYSHUF_PERM_Y1() \
+	((IPECC_GET_REG(IPECC_R_DBG_XYSHUF_PERM) >> IPECC_R_DBG_XYSHF_PERM_Y1_POS) \
+	 & IPECC_R_DBG_XYSHF_PERM_Y1_MSK)
 
-#define IPECC_GET_HW_CFG_SHUFFLE() \
-	((IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_0) >> IPECC_R_DBG_HW_CFG0_SHUFFLE_POS) \
-	 & IPECC_R_DBG_HW_CFG0_SHUFFLE_MSK)
+#define IPECC_GET_XYSHUF_PERM_X0_NEXT() \
+	((IPECC_GET_REG(IPECC_R_DBG_XYSHUF_PERM) >> IPECC_R_DBG_XYSHF_PERM_X0_NEXT_POS) \
+	 & IPECC_R_DBG_XYSHF_PERM_X0_NEXT_MSK)
 
-#define IPECC_GET_HW_CFG_ZREMASK() \
-	((IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_0) >> IPECC_R_DBG_HW_CFG0_ZREMASK_POS) \
-	 & IPECC_R_DBG_HW_CFG0_ZREMASK_MSK)
+#define IPECC_GET_XYSHUF_PERM_Y0_NEXT() \
+	((IPECC_GET_REG(IPECC_R_DBG_XYSHUF_PERM) >> IPECC_R_DBG_XYSHF_PERM_Y0_NEXT_POS) \
+	 & IPECC_R_DBG_XYSHF_PERM_Y0_NEXT_MSK)
 
-#define IPECC_GET_HW_CFG_BLINDING() \
-	((IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_0) >> IPECC_R_DBG_HW_CFG0_BLINDING_POS) \
-	 & IPECC_R_DBG_HW_CFG0_BLINDING_MSK)
+#define IPECC_GET_XYSHUF_PERM_X1_NEXT() \
+	((IPECC_GET_REG(IPECC_R_DBG_XYSHUF_PERM) >> IPECC_R_DBG_XYSHF_PERM_X1_NEXT_POS) \
+	 & IPECC_R_DBG_XYSHF_PERM_X1_NEXT_MSK)
 
-/* Actions involving register R_DBG_HW_CONFIG_1
- * ********************************************
- */
-#define IPECC_GET_HW_CFG_NBTRNG() \
-	((IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_1) >> IPECC_R_DBG_HW_CFG1_NBTRNG_POS) \
-	 & IPECC_R_DBG_HW_CFG1_NBTRNG_MSK)
-
-#define IPECC_GET_HW_CFG_TRNGTA() \
-	((IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_1) >> IPECC_R_DBG_HW_CFG1_TRNGTA_POS) \
-	 & IPECC_R_DBG_HW_CFG1_TRNGTA_MSK)
-
-#define IPECC_GET_HW_CFG_SZ_RAW() \
-	((IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_1) >> IPECC_R_DBG_HW_CFG1_SZ_RAW_POS) \
-	 & IPECC_R_DBG_HW_CFG1_SZ_RAW_MSK)
-
-#define IPECC_GET_HW_CFG_SZ_AXI() \
-	((IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_1) >> IPECC_R_DBG_HW_CFG1_SZ_AXI_POS) \
-	 & IPECC_R_DBG_HW_CFG1_SZ_AXI_MSK)
-
-/* Actions involving register R_DBG_HW_CONFIG_2
- * ********************************************
- */
-#define IPECC_GET_HW_CFG_SZ_FPR() \
-	((IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_2) >> IPECC_R_DBG_HW_CFG2_SZ_FPR_POS) \
-	 & IPECC_R_DBG_HW_CFG2_SZ_FPR_MSK)
-
-#define IPECC_GET_HW_CFG_SZ_CRV() \
-	((IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_2) >> IPECC_R_DBG_HW_CFG2_SZ_CRV_POS) \
-	 & IPECC_R_DBG_HW_CFG2_SZ_CRV_MSK)
-
-#define IPECC_GET_HW_CFG_SZ_SHF() \
-	((IPECC_GET_REG(IPECC_R_DBG_HW_CONFIG_2) >> IPECC_R_DBG_HW_CFG2_SZ_SHF_POS) \
-	 & IPECC_R_DBG_HW_CFG2_SZ_SHF_MSK)
-
-/* Actions involving register R_DBG_HW_TEST_NB
- * *******************************************
- */
-#define IPECC_GET_HW_TEST_BOARD() \
-	((IPECC_GET_REG(IPECC_R_DBG_HW_TEST_NB) >> IPECC_R_DBG_HW_TEST_NB_BOARD_POS) \
-	 & IPECC_R_DBG_HW_TEST_NB_BOARD_MSK)
-
-#define IPECC_GET_HW_TEST_TEST() \
-	((IPECC_GET_REG(IPECC_R_DBG_HW_TEST_NB) >> IPECC_R_DBG_HW_TEST_NB_TEST_POS) \
-	 & IPECC_R_DBG_HW_TEST_NB_TEST_MSK)
-
-/* Actions involving register R_DBG_HW_RANDOM
- * ******************************************
- */
-#define IPECC_GET_HW_RANDOM() \
-	((IPECC_GET_REG(IPECC_R_DBG_HW_RANDOM) >> IPECC_R_DBG_HW_RANDOM_POS) \
-	 & IPECC_R_DBG_HW_RANDOM_MSK)
-
+#define IPECC_GET_XYSHUF_PERM_Y1_NEXT() \
+	((IPECC_GET_REG(IPECC_R_DBG_XYSHUF_PERM) >> IPECC_R_DBG_XYSHF_PERM_Y1_NEXT_POS) \
+	 & IPECC_R_DBG_XYSHF_PERM_Y1_NEXT_MSK)
 
 /*
  * The pseudo TRNG device (HW unsecure mode only)
@@ -4279,6 +4211,46 @@ static inline int ip_ecc_get_clocks_freq(uint32_t* mhz, uint32_t* mhz_mm, uint32
 
 	return 0;
 }
+
+/* To get permutation address of each sensitive large numbers [XY]R[01]
+ * (when XY-shuffling countermeasure is active) both the input address
+ * and the ouput address.
+ *
+ * Let's recall indeed that when XY-shuffling is active, each of the
+ * four sensitive variables has two addresses:
+ *
+ *   - one that corresponds to its address upon entering the ZADDU
+ *     (or ZADDC) routine, let's call this the INPUT permutation address;
+ *
+ *   - one that corresponds to its address upon leaving the routine,
+ *     let's call that the OUTPUT permutation address.
+ *
+ * A new permutation is generated for each ZADD[UC] routine, hence
+ * this words as follows:
+ *
+ *   - the OUTPUT permutation for ZADDU routine #i is used as
+ *     the INPUT permutation for ZADDC routine #i
+ *
+ *   - the OUTPUT permutation for ZADDC routine #i is used as
+ *     the INPUT permutation of ZADDU routine #i+1
+ *
+ * (should be called only in HW unsecure mode)
+ */
+static inline int ip_ecc_get_xyshuf_perms(uint8_t* x0, uint8_t* y0, uint8_t* x1, uint8_t* y1,
+		uint8_t* x0n, uint8_t* y0n, uint8_t* x1n, uint8_t* y1n)
+{
+	*x0 = (uint8_t)(IPECC_LARGE_NB_XR0_ADDR + IPECC_GET_XYSHUF_PERM_X0());
+	*y0 = (uint8_t)(IPECC_LARGE_NB_XR0_ADDR + IPECC_GET_XYSHUF_PERM_Y0());
+	*x1 = (uint8_t)(IPECC_LARGE_NB_XR0_ADDR + IPECC_GET_XYSHUF_PERM_X1());
+	*y1 = (uint8_t)(IPECC_LARGE_NB_XR0_ADDR + IPECC_GET_XYSHUF_PERM_Y1());
+	*x0n = (uint8_t)(IPECC_LARGE_NB_XR0_ADDR + IPECC_GET_XYSHUF_PERM_X0_NEXT());
+	*y0n = (uint8_t)(IPECC_LARGE_NB_XR0_ADDR + IPECC_GET_XYSHUF_PERM_Y0_NEXT());
+	*x1n = (uint8_t)(IPECC_LARGE_NB_XR0_ADDR + IPECC_GET_XYSHUF_PERM_X1_NEXT());
+	*y1n = (uint8_t)(IPECC_LARGE_NB_XR0_ADDR + IPECC_GET_XYSHUF_PERM_Y1_NEXT());
+
+	return 0;
+}
+
 
 #if defined(KP_TRACE) || defined(KP_CHECK_ZMASK)
 void ip_debug_read_all_limbs(uint32_t lgnb, uint32_t* nbbuf)
@@ -7016,6 +6988,32 @@ int hw_driver_get_clocks_freq_DBG(uint32_t* mhz, uint32_t* mhz_mm, uint32_t sec)
 err:
 	return -1;
 }
+
+/* To get permutation address of each sensitive large numbers [XY]R[01]
+ * (when XY-shuffling countermeasure is active) both the input address
+ * and the ouput address.
+ */
+int hw_driver_get_xyshuf_perms_DBG(uint8_t* x0, uint8_t* y0, uint8_t* x1, uint8_t* y1,
+		uint8_t* x0n, uint8_t* y0n, uint8_t* x1n, uint8_t* y1n)
+{
+	if(driver_setup()){
+		goto err;
+	}
+
+	/* Test HW unsecure capability */
+	if (IPECC_IS_HW_SECURE())
+	{
+		goto err;
+	}
+
+	/* Call to low level equivalent function */
+	ip_ecc_get_xyshuf_perms(x0, y0, x1, y1, x0n, y0n, x1n, y1n);
+
+	return 0;
+err:
+	return -1;
+}
+
 
 /* To get all the TRNG diagnostic infos in one API call
  */

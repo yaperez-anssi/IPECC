@@ -328,7 +328,7 @@ architecture rtl of ecc_scalar is
 	-- extracted are all the addresses whose label is suffixed with the
 	-- string "_export":
 	--
-	--   1. this suffixe is removed, as long as the uppercase letter 'L'
+	--   1. this suffixe is removed, as well as the uppercase letter 'L'
 	--      preceeding it, as well as the initial dot prefixing the label name
 	--   2. the remaining identification string is switched to uppercase
 	--   3. it is prefixed with the string "ECC_IRAM_"

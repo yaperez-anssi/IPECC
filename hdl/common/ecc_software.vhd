@@ -112,13 +112,8 @@ package ecc_software is
 	constant R_DBG_EXP_FLAGS : rat := std_nat(46, ADB);      -- 0x170
 	constant R_DBG_CLK_MHZ : rat := std_nat(47, ADB);        -- 0x178
 	constant R_DBG_CLKMM_MHZ : rat := std_nat(48, ADB);      -- 0x180
-	-- TODO: remove R_DBG_HW_CONFIG_[012]; R_DBG_HW_TEST_NB & R_DBG_HW_RANDOM
-	constant R_DBG_HW_CONFIG_0 : rat := std_nat(49, ADB);    -- 0x188
-	constant R_DBG_HW_CONFIG_1 : rat := std_nat(50, ADB);    -- 0x190
-	constant R_DBG_HW_CONFIG_2 : rat := std_nat(51, ADB);    -- 0x198
-	constant R_DBG_HW_TEST_NB : rat := std_nat(52, ADB);     -- 0x1a0
-	constant R_DBG_HW_RANDOM : rat := std_nat(53, ADB);      -- 0x1a8
-	-- reserved                                              -- 0x1b0...0x1f8
+	constant R_DBG_XYSHUF_PERM : rat := std_nat(49, ADB);    -- 0x188
+	-- reserved                                              -- 0x190...0x1f8
 	-- end of ECC registers/>
 
 	-- Register bank of pseudo TRNG device (external to the IP), if any.
@@ -388,5 +383,15 @@ package ecc_software is
 	constant R_DBG_CLKMM_MHZ_PRECNT :  natural := 16;
 	constant R_DBG_CLKMM_MHZ_MSB : natural := 31;
 	constant R_DBG_CLKMM_MHZ_LSB : natural := 0;
+
+	-- bit positions in R_DBG_XYSHUF_PERM register
+	constant R_DBG_XYSHF_PERM_X0 : natural := 0;
+	constant R_DBG_XYSHF_PERM_Y0 : natural := 2;
+	constant R_DBG_XYSHF_PERM_X1 : natural := 4;
+	constant R_DBG_XYSHF_PERM_Y1 : natural := 6;
+	constant R_DBG_XYSHF_PERM_X0_NEXT : natural := 8;
+	constant R_DBG_XYSHF_PERM_Y0_NEXT : natural := 10;
+	constant R_DBG_XYSHF_PERM_X1_NEXT : natural := 12;
+	constant R_DBG_XYSHF_PERM_Y1_NEXT : natural := 14;
 
 end package ecc_software;

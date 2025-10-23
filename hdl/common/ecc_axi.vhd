@@ -175,6 +175,8 @@ entity ecc_axi is
 		dbgpgmstate : in std_logic_vector(3 downto 0);
 		dbgnbbits : in std_logic_vector(15 downto 0);
 		dbgjoyebit : in std_logic_vector(log2(2*nn - 1) - 1 downto 0);
+		dbgxy01addr : in std_logic_vector(7 downto 0);
+		dbgxy01nextaddr : in std_logic_vector(7 downto 0);
 		-- HW unsecure/Side-Channel analysis features (interface with ecc_curve)
 		dbgbreakpoints : out breakpoints_type;
 		dbgnbopcodes : out std_logic_vector(15 downto 0);
@@ -792,7 +794,8 @@ begin
 								-- /HW unsecure only
 	              , laststep, firstzdbl, firstzaddu, first2pz, first3pz, 
 	              torsion2, kap, kapp, zu, zc, r0z, r1z, dbgjoyebit,
-	              pts_are_equal, pts_are_oppos, phimsb, kb0end
+	              pts_are_equal, pts_are_oppos, phimsb, kb0end,
+	              dbgxy01addr, dbgxy01nextaddr
 								-- HW unsecure only/
 							)
 		variable v : reg_type;
@@ -3433,10 +3436,10 @@ begin
 				-- 2nd byte: minor number
 				-- 3rd & 4th bytes: patch number
 				dw := (others => '0');
-				-- Version 1.5.0
+				-- Version 1.5.1
 				dw(HW_VERSION_MAJ_MSB downto HW_VERSION_MAJ_LSB) := x"01"; -- major
 				dw(HW_VERSION_MIN_MSB downto HW_VERSION_MIN_LSB) := x"05"; -- minor
-				dw(HW_VERSION_PATCH_MSB downto HW_VERSION_PATCH_LSB) := x"0000"; -- patch
+				dw(HW_VERSION_PATCH_MSB downto HW_VERSION_PATCH_LSB) := x"0001"; -- patch
 				v.axi.rdatax := dw;
 				v.axi.rvalid := '1'; -- (s5)
 			-- --------------------------------------
@@ -3776,6 +3779,23 @@ begin
 				dw(R_DBG_CLKMM_MHZ_MSB downto R_DBG_CLKMM_MHZ_LSB) :=
 					std_logic_vector(resize(r.debug.clkmmcnt,
 						R_DBG_CLKMM_MHZ_MSB - R_DBG_CLKMM_MHZ_LSB + 1));
+				v.axi.rdatax(31 downto 0) := dw;
+				v.axi.rvalid := '1'; -- (s5)
+			-- -------------------------------------------
+			-- decoding read of R_DBG_XYSHUF_PERM register
+			-- -------------------------------------------
+			elsif (not hwsecure) -- statically resolved by synthesizer
+				and s_axi_araddr(ADB + 2 downto 3) = R_DBG_XYSHUF_PERM
+			then
+				dw := (others => '0');
+				dw(R_DBG_XYSHF_PERM_X0 + 1 downto R_DBG_XYSHF_PERM_X0) := dbgxy01addr(1 downto 0);
+				dw(R_DBG_XYSHF_PERM_Y0 + 1 downto R_DBG_XYSHF_PERM_Y0) := dbgxy01addr(3 downto 2);
+				dw(R_DBG_XYSHF_PERM_X1 + 1 downto R_DBG_XYSHF_PERM_X1) := dbgxy01addr(5 downto 4);
+				dw(R_DBG_XYSHF_PERM_Y1 + 1 downto R_DBG_XYSHF_PERM_Y1) := dbgxy01addr(7 downto 6);
+				dw(R_DBG_XYSHF_PERM_X0_NEXT + 1 downto R_DBG_XYSHF_PERM_X0_NEXT) := dbgxy01nextaddr(1 downto 0);
+				dw(R_DBG_XYSHF_PERM_Y0_NEXT + 1 downto R_DBG_XYSHF_PERM_Y0_NEXT) := dbgxy01nextaddr(3 downto 2);
+				dw(R_DBG_XYSHF_PERM_X1_NEXT + 1 downto R_DBG_XYSHF_PERM_X1_NEXT) := dbgxy01nextaddr(5 downto 4);
+				dw(R_DBG_XYSHF_PERM_Y1_NEXT + 1 downto R_DBG_XYSHF_PERM_Y1_NEXT) := dbgxy01nextaddr(7 downto 6);
 				v.axi.rdatax(31 downto 0) := dw;
 				v.axi.rvalid := '1'; -- (s5)
 			-- --------------------------------------------

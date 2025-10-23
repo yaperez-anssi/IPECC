@@ -88,6 +88,8 @@ entity ecc_curve is
 		dbgbreakpointid : out std_logic_vector(1 downto 0);
 		dbgbreakpointhit : out std_logic;
 		dbgtrngcompletebypass : in std_logic;
+		dbgxy01addr : out std_logic_vector(7 downto 0);
+		dbgxy01nextaddr : out std_logic_vector(7 downto 0);
 		-- HW unsecure/Side-Channel analysis features (interface with ecc_scalar)
 		dbgpgmstate : in std_logic_vector(3 downto 0);
 		dbgnbbits : in std_logic_vector(15 downto 0)
@@ -331,14 +333,14 @@ architecture rtl of ecc_curve is
 	signal r, rin : reg_type;
 
 	-- address of variable OPC_VOID below must be chosen in such a way that
-	-- it does not bash any useful variable (variable OPC_VOID is used as a
+	-- it does not bash any useful variable. Variable OPC_VOID is used as a
 	-- dummy target variable:
 	--   - during blinding when the result of the instruction opcode must be
 	--     discarded due to the patch, instead of being written to variable
-	--     kb0 or kb1)
+	--     kb0 or kb1
 	--   - during .setupL routine, when returning back from .dblL, in case
 	--     initial point P was of order 2, because in this situation ZR01
-	--     must be restored back from ZPBK
+	--     must be restored back from ZPBK.
 	constant C_PATCH_OPC_VOID : std_logic_vector(FP_ADDR_MSB - 1 downto 0) :=
 		std_logic_vector(to_unsigned(23, FP_ADDR_MSB)); --"10111";
 	-- address of variable _KB0 (resp. _KB1) below must be kept the same as the
@@ -3624,6 +3626,10 @@ begin
 	dbgdecodepc <= r.decode.pc;
 	dbgbreakpointid <= r.debug.breakpointid;
 	dbgbreakpointhit <= r.debug.breakpointhit;
+	dbgxy01addr <= r.shuffle.adr_y1 & r.shuffle.adr_x1
+								 & r.shuffle.adr_y0 & r.shuffle.adr_x0;
+	dbgxy01nextaddr <= r.shuffle.next_adr_y1 & r.shuffle.next_adr_x1
+										 & r.shuffle.next_adr_y0 & r.shuffle.next_adr_x0;
 
 	-- pragma translate_off
 	pc <= r.decode.pc;
